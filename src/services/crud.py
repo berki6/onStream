@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from src.schema import models, schemas
 from src.core.logger import get_logger
+from typing import Optional
 
 logger = get_logger(__name__)
 
@@ -38,12 +39,17 @@ def get_videos_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 10
 
 
 def create_video(db: Session, video: schemas.VideoCreate, user_id: int):
-    db_video = models.Video(**video.dict(), user_id=user_id)
+    from src.utils.upload_id import generate_unique_upload_id
+
+    # Generate unique upload_id
+    upload_id = generate_unique_upload_id(db)
+
+    db_video = models.Video(**video.dict(), user_id=user_id, upload_id=upload_id)
     db.add(db_video)
     db.commit()
     db.refresh(db_video)
     logger.info(
-        f"Created video: ID {db_video.id}, title '{video.title}' for user ID {user_id}"
+        f"Created video: upload_id '{db_video.upload_id}', title '{video.title}' for user ID {user_id}"
     )
     return db_video
 
@@ -62,10 +68,64 @@ def update_video_status(db: Session, video_id: int, status: str):
     return video
 
 
-def delete_video(db: Session, video_id: int):
-    video = db.query(models.Video).filter(models.Video.id == video_id).first()
+def get_video_by_upload_id(db: Session, upload_id: str):
+    return db.query(models.Video).filter(models.Video.upload_id == upload_id).first()
+
+
+def delete_video_by_upload_id(db: Session, upload_id: str):
+    video = db.query(models.Video).filter(models.Video.upload_id == upload_id).first()
     if video:
         db.delete(video)
         db.commit()
-        logger.info(f"Deleted video ID {video_id}")
+        logger.info(f"Deleted video upload_id {upload_id}")
     return video
+
+
+def create_video_job(db: Session, job: schemas.VideoJobCreate):
+    db_job = models.VideoJob(**job.dict())
+    db.add(db_job)
+    db.commit()
+    db.refresh(db_job)
+    logger.info(f"Created video job for upload_id {job.upload_id}")
+    return db_job
+
+
+def get_video_job(db: Session, upload_id: str):
+    return (
+        db.query(models.VideoJob).filter(models.VideoJob.upload_id == upload_id).first()
+    )
+
+
+def update_video_job_status(
+    db: Session,
+    upload_id: str,
+    status: str,
+    progress: Optional[int] = None,
+    eta: Optional[int] = None,
+    message: Optional[str] = None,
+):
+    job = (
+        db.query(models.VideoJob).filter(models.VideoJob.upload_id == upload_id).first()
+    )
+    if job:
+        job.status = status
+        if progress is not None:
+            job.progress = progress
+        if eta is not None:
+            job.eta = eta
+        if message is not None:
+            job.message = message
+        db.commit()
+        db.refresh(job)
+        logger.info(
+            f"Updated video job {upload_id}: status={status}, progress={progress}%"
+        )
+    return job
+
+
+def get_video_job_by_video(db: Session, video: models.Video):
+    return (
+        db.query(models.VideoJob)
+        .filter(models.VideoJob.upload_id == video.upload_id)
+        .first()
+    )
