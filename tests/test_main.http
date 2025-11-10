@@ -1,6 +1,7 @@
 # Test your FastAPI Video Player Backend
 # Run with: uvicorn src.main:app --reload
 # Base URL: http://127.0.0.1:8000
+# Features: Redis job queue, HLS streaming, progress tracking
 
 ### Root Endpoint
 GET http://127.0.0.1:8000/
@@ -56,6 +57,7 @@ username=testuser&password=testpass123
 
 # ============================================================================
 # VIDEO MANAGEMENT (requires authentication)
+# All uploads are processed asynchronously via Redis job queue
 # ============================================================================
 
 ### Upload Video (title auto-generated from filename if not provided)
@@ -111,6 +113,13 @@ Accept: application/json
 
 ###
 
+### Get Video Job Status (NEW - check processing progress)
+GET http://127.0.0.1:8000/videos/NaLGESGB/job
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0dXNlciIsImV4cCI6MTc2Mjc5NTg5OH0.-qPjWmp0HhdnElYkwX2ZCur4DO59gMHT3MfHfa37PWQ
+Accept: application/json
+
+###
+
 ### Delete Video (use upload_id from response)
 DELETE http://127.0.0.1:8000/videos/NaLGESGB
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0dXNlciIsImV4cCI6MTc2Mjc5NTg5OH0.-qPjWmp0HhdnElYkwX2ZCur4DO59gMHT3MfHfa37PWQ
@@ -119,17 +128,18 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0dXNlc
 
 # ============================================================================
 # VIDEO STREAMING (requires authentication)
+# HLS streaming with adaptive bitrate (720p, AAC audio)
 # ============================================================================
 
 ### Get HLS Playlist (use upload_id from video response)
-GET http://127.0.0.1:8000/stream/NaLGESGB/playlist.m3u8
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0dXNlciIsImV4cCI6MTc2Mjc5NTg5OH0.-qPjWmp0HhdnElYkwX2ZCur4DO59gMHT3MfHfa37PWQ
+GET http://127.0.0.1:8000/stream/NaLGESGB/index.m3u8
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0dXNlciIsImV4cCI6MTc2Mjc5NTg5OH0.-qPjWmp0HhdnElYkwX2ZCur4DO59gMHT3MfHfa37PWQ
 Accept: application/vnd.apple.mpegurl
 
 ###
 
 ### Get HLS Segment (use upload_id from video response)
-GET http://127.0.0.1:8000/stream/NaLGESGB/segment00001.ts
+GET http://127.0.0.1:8000/stream/NaLGESGB/segment_001.ts
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0dXNlciIsImV4cCI6MTc2Mjc5NTg5OH0.-qPjWmp0HhdnElYkwX2ZCur4DO59gMHT3MfHfa37PWQ
 Accept: video/MP2T
 
