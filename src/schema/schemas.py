@@ -17,7 +17,7 @@ class User(UserBase):
     id: int
     created_at: datetime
 
-    class Config:
+    class ConfigDict:
         from_attributes = True
 
 
@@ -57,7 +57,7 @@ class Video(VideoBase):
     status: VideoStatus
     is_public: bool = False
 
-    class Config:
+    class ConfigDict:
         from_attributes = True
 
 
@@ -81,7 +81,7 @@ class VideoJob(VideoJobBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
-    class Config:
+    class ConfigDict:
         from_attributes = True
 
 

@@ -44,7 +44,7 @@ def create_video(db: Session, video: schemas.VideoCreate, user_id: int):
     # Generate unique upload_id
     upload_id = generate_unique_upload_id(db)
 
-    db_video = models.Video(**video.dict(), user_id=user_id, upload_id=upload_id)
+    db_video = models.Video(**video.model_dump(), user_id=user_id, upload_id=upload_id)
     db.add(db_video)
     db.commit()
     db.refresh(db_video)
@@ -72,7 +72,7 @@ def delete_video_by_upload_id(db: Session, upload_id: str):
 
 
 def create_video_job(db: Session, job: schemas.VideoJobCreate):
-    db_job = models.VideoJob(**job.dict())
+    db_job = models.VideoJob(**job.model_dump())
     db.add(db_job)
     db.commit()
     db.refresh(db_job)
