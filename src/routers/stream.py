@@ -15,20 +15,22 @@ logger = get_logger(__name__)
 HLS_DIR = settings.VIDEO_HLS_DIR
 
 
-@router.get("/{video_id}/playlist.m3u8")
+@router.get("/{upload_id}/playlist.m3u8")
 async def stream_hls_playlist(
-    video_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)
+    upload_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    video = crud.get_video(db, video_id)
+    video = crud.get_video_by_upload_id(db, upload_id)
     if not video or video.user_id != current_user.id or video.status != "ready":
         raise HTTPException(status_code=404, detail="Video not ready or not found")
 
-    hls_path = os.path.join(HLS_DIR, f"{video_id}.m3u8")
+    hls_path = os.path.join(HLS_DIR, f"{video.id}.m3u8")
     if not os.path.exists(hls_path):
         raise HTTPException(status_code=404, detail="HLS playlist not found")
 
     logger.info(
-        f"User '{current_user.username}' accessing HLS playlist for video ID {video_id}"
+        f"User '{current_user.username}' accessing HLS playlist for video upload_id {upload_id}"
     )
 
     def iterfile():
@@ -39,23 +41,23 @@ async def stream_hls_playlist(
     return StreamingResponse(iterfile(), media_type="application/vnd.apple.mpegurl")
 
 
-@router.get("/{video_id}/{segment}.ts")
+@router.get("/{upload_id}/{segment}.ts")
 async def stream_hls_segment(
-    video_id: int,
+    upload_id: str,
     segment: str,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    video = crud.get_video(db, video_id)
+    video = crud.get_video_by_upload_id(db, upload_id)
     if not video or video.user_id != current_user.id or video.status != "ready":
         raise HTTPException(status_code=404, detail="Video not ready or not found")
 
-    ts_path = os.path.join(HLS_DIR, f"{video_id}.{segment}.ts")
+    ts_path = os.path.join(HLS_DIR, f"{video.id}.m3u8.{segment}.ts")
     if not os.path.exists(ts_path):
         raise HTTPException(status_code=404, detail="Segment not found")
 
     logger.info(
-        f"User '{current_user.username}' accessing HLS segment {segment} for video ID {video_id}"
+        f"User '{current_user.username}' accessing HLS segment {segment} for video upload_id {upload_id}"
     )
 
     def iterfile():
