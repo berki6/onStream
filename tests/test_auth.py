@@ -1,12 +1,12 @@
-import pytest
 from fastapi.testclient import TestClient
+
 from src.main import app
 
 client = TestClient(app)
 
 
-def test_register_user(client, db_session):
-    response = client.post(
+def test_register_user(test_client, db_session):
+    response = test_client.post(
         "/auth/register",
         json={"username": "newuser", "email": "new@example.com", "password": "newpass"},
     )
@@ -15,8 +15,8 @@ def test_register_user(client, db_session):
     assert data["username"] == "newuser"
 
 
-def test_login(test_user, client):
-    response = client.post(
+def test_login(test_user, test_client):
+    response = test_client.post(
         "/auth/login",
         data={"username": "testuser", "password": "testpass"},
     )

@@ -1,3 +1,9 @@
+import os
+import shutil
+import subprocess
+from typing import List, Optional
+
+import redis
 from fastapi import (
     APIRouter,
     Depends,
@@ -7,17 +13,13 @@ from fastapi import (
     status,
 )
 from sqlalchemy.orm import Session
-from typing import List, Optional
-import os
-import subprocess
-import shutil
-import redis
-from src.schema import schemas, models
-from src.services import crud
-from src.core.database import get_db
+
 from src.core.auth import get_current_user
 from src.core.config import settings
+from src.core.database import get_db
 from src.core.logger import get_logger
+from src.schema import schemas
+from src.services import crud
 
 router = APIRouter()
 
@@ -89,7 +91,7 @@ async def upload_video(
     temp_path = os.path.join(UPLOAD_DIR, temp_filename)
     try:
         with open(temp_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+            shutil.copyfileobj(file.file, buffer)  # type: ignore[arg-type]
 
         # Probe to validate and get duration
         duration = probe_video_duration(temp_path)

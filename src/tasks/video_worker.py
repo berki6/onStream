@@ -69,7 +69,18 @@ def generate_thumbnail(video_path: str, video_id: int) -> Optional[str]:
 
 def process_video(session, job):
     """Process a video job: transcode to HLS and generate thumbnail."""
-    upload_file = os.path.join(UPLOAD_DIR, f"{job.video_id}_{job.upload_id}.mp4")
+    # Get video by upload_id since VideoJob uses upload_id as primary key
+    video = (
+        session.query(models.Video)
+        .filter(models.Video.upload_id == job.upload_id)
+        .first()
+    )
+    if not video:
+        logger.error(f"Video not found for upload_id: {job.upload_id}")
+        update_job_progress(session, job, 0, status="error", message="Video not found")
+        return
+
+    upload_file = os.path.join(UPLOAD_DIR, f"{video.id}_{job.upload_id}.mp4")
     output_dir = os.path.join(HLS_DIR, job.upload_id)
     os.makedirs(output_dir, exist_ok=True)
 
@@ -77,7 +88,7 @@ def process_video(session, job):
         update_job_progress(session, job, 10, message="Starting transcoding")
 
         # Generate thumbnail first
-        thumbnail_path = generate_thumbnail(upload_file, job.video_id)
+        thumbnail_path = generate_thumbnail(upload_file, video.id)
         if thumbnail_path:
             update_job_progress(session, job, 30, message="Thumbnail generated")
         else:
@@ -118,24 +129,20 @@ def process_video(session, job):
             "-hls_list_size",
             "0",
             "-hls_segment_filename",
-            os.path.join(output_dir, "segment_%03d.ts"),
+            os.path.join(str(output_dir), "segment_%03d.ts"),
             "-f",
             "hls",
-            os.path.join(output_dir, "index.m3u8"),
+            os.path.join(str(output_dir), "index.m3u8"),
             "-y",
         ]
         subprocess.run(hls_cmd, check=True, capture_output=True)
 
         # Update video status and job completion
-        video = (
-            session.query(models.Video).filter(models.Video.id == job.video_id).first()
-        )
-        if video:
-            video.status = "ready"
-            video.hls_path = os.path.join(output_dir, "index.m3u8")
-            if thumbnail_path:
-                video.thumbnail_path = thumbnail_path
-            session.commit()
+        video.status = "ready"
+        video.hls_path = os.path.join(str(output_dir), "index.m3u8")
+        if thumbnail_path:
+            video.thumbnail_path = thumbnail_path
+        session.commit()
 
         update_job_progress(
             session, job, 100, status="ready", message="Job completed successfully"
@@ -149,12 +156,8 @@ def process_video(session, job):
         )
 
         # Update video status to error
-        video = (
-            session.query(models.Video).filter(models.Video.id == job.video_id).first()
-        )
-        if video:
-            video.status = "error"
-            session.commit()
+        video.status = "error"
+        session.commit()
 
 
 def run_worker():

@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
-from src.schema import models, schemas
+
 from src.core.logger import get_logger
-from typing import Optional
+from src.schema import models, schemas
 
 logger = get_logger(__name__)
 
