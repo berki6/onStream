@@ -54,8 +54,7 @@ async def stream_hls_playlist(
                 detail="Video is not ready for streaming",
             )
 
-        hls_path = os.path.join(HLS_DIR, f"{video.id}.m3u8")
-        if not os.path.exists(hls_path):
+        if not video.hls_path or not os.path.exists(video.hls_path):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Stream playlist not available",
@@ -67,11 +66,11 @@ async def stream_hls_playlist(
 
         def iterfile():
             try:
-                with open(hls_path, mode="rb") as file_like:
+                with open(video.hls_path, mode="rb") as file_like:
                     for chunk in iter(lambda: file_like.read(4096), b""):
                         yield chunk
             except IOError as e:
-                logger.error(f"Error reading playlist file {hls_path}: {str(e)}")
+                logger.error(f"Error reading playlist file {video.hls_path}: {str(e)}")
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to read stream playlist",
@@ -133,7 +132,15 @@ async def stream_hls_segment(
                 detail="Video is not ready for streaming",
             )
 
-        ts_path = os.path.join(HLS_DIR, f"{video.id}.m3u8.{segment}.ts")
+        if not video.hls_path:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Stream playlist not found",
+            )
+
+        # Segments are in the same directory as the playlist
+        hls_dir = os.path.dirname(video.hls_path)
+        ts_path = os.path.join(hls_dir, f"{segment}.ts")
         if not os.path.exists(ts_path):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Stream segment not found"
