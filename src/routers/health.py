@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from src.core.database import get_db
 from src.core.logger import get_logger
+from datetime import datetime, timezone
 
 router = APIRouter()
 
@@ -26,7 +27,7 @@ def health_check(db: Session = Depends(get_db)):
     health_status = {
         "status": "healthy" if db_status == "healthy" else "unhealthy",
         "database": db_status,
-        "timestamp": "2025-01-10T00:00:00Z",  # Would use datetime.utcnow() in real implementation
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
     logger.info(
