@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional
 from enum import Enum
@@ -38,25 +38,52 @@ class VideoStatus(str, Enum):
 
 class VideoBase(BaseModel):
     title: str
+    description: Optional[str] = None
     duration: Optional[float] = None
 
 
 class VideoCreate(VideoBase):
-    pass
+    file_path: str
 
 
 class Video(VideoBase):
-    id: int
+    upload_id: str
     user_id: int
     file_path: str
     hls_path: Optional[str] = None
     thumbnail_path: Optional[str] = None
-    upload_date: datetime
+    created_at: datetime
+    updated_at: Optional[datetime] = None
     status: VideoStatus
+    is_public: bool = False
 
     class Config:
         from_attributes = True
 
 
 class VideoResponse(Video):
+    pass
+
+
+class VideoJobBase(BaseModel):
+    upload_id: str
+    status: str = "processing"
+    progress: int = 0
+    eta: int = 0
+    message: Optional[str] = None
+
+
+class VideoJobCreate(VideoJobBase):
+    pass
+
+
+class VideoJob(VideoJobBase):
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class VideoJobResponse(VideoJob):
     pass
