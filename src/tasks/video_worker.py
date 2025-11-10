@@ -43,6 +43,44 @@ def update_job_progress(session, job, progress, eta=0, message=None, status=None
 from typing import Optional
 
 
+def extract_concise_error(stderr_text: str, max_lines=3, max_length=250) -> str:
+    """Extract concise error message from FFmpeg stderr output."""
+    if not stderr_text:
+        return "Unknown error (stderr is empty)"
+
+    lines = stderr_text.strip().splitlines()
+    error_keywords = [
+        "error",
+        "invalid",
+        "fail",
+        "could not",
+        "no such",
+        "denied",
+        "unsupported",
+        "unable",
+        "can't open",
+        "conversion failed",
+    ]
+
+    # Look for error keywords in the last few lines
+    start = max(0, len(lines) - max_lines)
+    for i in range(len(lines) - 1, start - 1, -1):
+        line = lines[i].strip()
+        if not line:
+            continue
+        if any(keyword in line.lower() for keyword in error_keywords):
+            if i > 0 and lines[i - 1].strip():
+                return f"{lines[i-1].strip()}\n{line}"[:max_length]
+            return line[:max_length]
+
+    # Fallback: return the last non-empty line
+    for line in reversed(lines):
+        if line.strip():
+            return line[:max_length]
+
+    return "Unknown error (no specific issue found)"
+
+
 def generate_thumbnail(video_path: str, video_id: int) -> Optional[str]:
     """Generate thumbnail using FFmpeg."""
     thumbnail_path = os.path.join(THUMBNAIL_DIR, f"{video_id}.jpg")
@@ -60,10 +98,11 @@ def generate_thumbnail(video_path: str, video_id: int) -> Optional[str]:
             thumbnail_path,
             "-y",  # Overwrite output
         ]
-        subprocess.run(cmd, check=True, capture_output=True)
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
         return thumbnail_path
     except subprocess.CalledProcessError as e:
-        logger.error(f"Thumbnail generation failed for video {video_id}: {e}")
+        short_error = extract_concise_error(e.stderr)
+        logger.error(f"Thumbnail generation failed for video {video_id}: {short_error}")
         return None
 
 
@@ -80,8 +119,19 @@ def process_video(session, job):
         update_job_progress(session, job, 0, status="error", message="Video not found")
         return
 
-    upload_file = video.file_path  # Use the actual file path from database
-    output_dir = os.path.join(HLS_DIR, job.upload_id)
+    upload_file = os.path.normpath(
+        video.file_path
+    )  # Normalize path for cross-platform compatibility
+    if not os.path.exists(upload_file):
+        logger.error(f"Input video file not found: {upload_file}")
+        update_job_progress(
+            session, job, 0, status="error", message="Input video file not found"
+        )
+        video.status = models.VideoStatus.ERROR
+        session.commit()
+        return
+
+    output_dir = os.path.normpath(os.path.join(HLS_DIR, job.upload_id))
     os.makedirs(output_dir, exist_ok=True)
 
     try:
@@ -135,7 +185,7 @@ def process_video(session, job):
             os.path.join(str(output_dir), "index.m3u8"),
             "-y",
         ]
-        subprocess.run(hls_cmd, check=True, capture_output=True)
+        result = subprocess.run(hls_cmd, check=True, capture_output=True, text=True)
 
         # Update video status and job completion
         video.status = models.VideoStatus.READY
@@ -150,9 +200,12 @@ def process_video(session, job):
         logger.info(f"Video processing completed for upload_id {job.upload_id}")
 
     except subprocess.CalledProcessError as e:
-        logger.error(f"Video processing failed for upload_id {job.upload_id}: {e}")
+        short_error = extract_concise_error(e.stderr)
+        logger.error(
+            f"Video processing failed for upload_id {job.upload_id}: {short_error}"
+        )
         update_job_progress(
-            session, job, 0, status="error", message=f"Processing failed: {str(e)}"
+            session, job, 0, status="error", message=f"Processing failed: {short_error}"
         )
 
         # Update video status to error
