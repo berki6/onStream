@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from src.core.database import get_db
 from src.core.logger import get_logger
 from datetime import datetime, timezone
@@ -18,7 +19,7 @@ def health_check(db: Session = Depends(get_db)):
     """
     try:
         # Test database connection by making a simple query
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
         db_status = "healthy"
     except Exception as e:
         logger.error(f"Database health check failed: {str(e)}")
@@ -51,7 +52,7 @@ def readiness_check(db: Session = Depends(get_db)):
     """
     try:
         # Test database connection
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
         return {"status": "ready"}
     except Exception as e:
         logger.error(f"Readiness check failed: {str(e)}")

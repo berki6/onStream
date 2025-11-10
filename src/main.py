@@ -55,14 +55,14 @@ router_configs = [
     {"router": auth.router, "prefix": "/auth", "tags": ["auth"]},
     {"router": videos.router, "prefix": "/videos", "tags": ["videos"]},
     {"router": stream.router, "prefix": "/stream", "tags": ["stream"]},
-    {"router": health.router, "prefix": "/health", "tags": ["health"]}
+    {"router": health.router, "prefix": "", "tags": ["health"]},
 ]
 
 for config in router_configs:
     app.include_router(**config)
 
 loaded_routes = [
-    f"{config['tags'][0]}({config['prefix']})" for config in router_configs
+    f"{config['tags'][0]}({config['prefix'] or 'root'})" for config in router_configs
 ]
 logger.info(f"All routes loaded: {', '.join(loaded_routes)}")
 
