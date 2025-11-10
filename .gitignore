@@ -1,5 +1,10 @@
 .idea
 CHANGELOG
+alembic/__pycache__/
+alembic.ini
+onstream.db
+# Environment Variables
+.env
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
