@@ -46,7 +46,7 @@ def db_session(test_db):
         db.close()
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def test_user(db_session):
     hashed_password = get_password_hash("testpass")
     user = models.User(

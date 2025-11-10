@@ -58,7 +58,7 @@ username=testuser&password=testpass123
 # VIDEO MANAGEMENT (requires authentication)
 # ============================================================================
 
-### Upload Video (replace with actual video file path)
+### Upload Video (title auto-generated from filename if not provided)
 POST http://127.0.0.1:8000/videos/
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0dXNlciIsImV4cCI6MTc2Mjc5NTg5OH0.-qPjWmp0HhdnElYkwX2ZCur4DO59gMHT3MfHfa37PWQ
 Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
@@ -68,38 +68,52 @@ Content-Disposition: form-data; name="file"; filename="sample.mp4"
 Content-Type: video/mp4
 
 < ./sample.mp4
-------WebKitFormBoundary
-Content-Disposition: form-data; name="title"
-
-My Sample Video
 ------WebKitFormBoundary--
 
 ###
 
-### List User's Videos
+### Upload Video with Custom Title
+POST http://127.0.0.1:8000/videos/
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0dXNlciIsImV4cCI6MTc2Mjc5NTg5OH0.-qPjWmp0HhdnElYkwX2ZCur4DO59gMHT3MfHfa37PWQ
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
+
+------WebKitFormBoundary
+Content-Disposition: form-data; name="file"; filename="my-awesome-video.mp4"
+Content-Type: video/mp4
+
+< ./my-awesome-video.mp4
+------WebKitFormBoundary
+Content-Disposition: form-data; name="title"
+
+Custom Video Title
+------WebKitFormBoundary--
+
+###
+
+### List User's Videos (returns videos with upload_id field)
 GET http://127.0.0.1:8000/videos/
-Authorization: Bearer YOUR_JWT_TOKEN_HERE
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0dXNlciIsImV4cCI6MTc2Mjc5NTg5OH0.-qPjWmp0HhdnElYkwX2ZCur4DO59gMHT3MfHfa37PWQ
 Accept: application/json
 
 ###
 
 ### List Videos with Pagination
 GET http://127.0.0.1:8000/videos/?skip=0&limit=10
-Authorization: Bearer YOUR_JWT_TOKEN_HERE
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0dXNlciIsImV4cCI6MTc2Mjc5NTg5OH0.-qPjWmp0HhdnElYkwX2ZCur4DO59gMHT3MfHfa37PWQ
 Accept: application/json
 
 ###
 
-### Get Specific Video
-GET http://127.0.0.1:8000/videos/1
-Authorization: Bearer YOUR_JWT_TOKEN_HERE
+### Get Specific Video (use upload_id from response)
+GET http://127.0.0.1:8000/videos/NaLGESGB
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0dXNlciIsImV4cCI6MTc2Mjc5NTg5OH0.-qPjWmp0HhdnElYkwX2ZCur4DO59gMHT3MfHfa37PWQ
 Accept: application/json
 
 ###
 
-### Delete Video
-DELETE http://127.0.0.1:8000/videos/1
-Authorization: Bearer YOUR_JWT_TOKEN_HERE
+### Delete Video (use upload_id from response)
+DELETE http://127.0.0.1:8000/videos/NaLGESGB
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0dXNlciIsImV4cCI6MTc2Mjc5NTg5OH0.-qPjWmp0HhdnElYkwX2ZCur4DO59gMHT3MfHfa37PWQ
 
 ###
 
@@ -107,16 +121,16 @@ Authorization: Bearer YOUR_JWT_TOKEN_HERE
 # VIDEO STREAMING (requires authentication)
 # ============================================================================
 
-### Get HLS Playlist
-GET http://127.0.0.1:8000/stream/1/playlist.m3u8
-Authorization: Bearer YOUR_JWT_TOKEN_HERE
+### Get HLS Playlist (use upload_id from video response)
+GET http://127.0.0.1:8000/stream/NaLGESGB/playlist.m3u8
+Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0dXNlciIsImV4cCI6MTc2Mjc5NTg5OH0.-qPjWmp0HhdnElYkwX2ZCur4DO59gMHT3MfHfa37PWQ
 Accept: application/vnd.apple.mpegurl
 
 ###
 
-### Get HLS Segment (example segment)
-GET http://127.0.0.1:8000/stream/1/segment00001.ts
-Authorization: Bearer YOUR_JWT_TOKEN_HERE
+### Get HLS Segment (use upload_id from video response)
+GET http://127.0.0.1:8000/stream/NaLGESGB/segment00001.ts
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0dXNlciIsImV4cCI6MTc2Mjc5NTg5OH0.-qPjWmp0HhdnElYkwX2ZCur4DO59gMHT3MfHfa37PWQ
 Accept: video/MP2T
 
 ###
