@@ -5,6 +5,7 @@ alembic.ini
 *.db
 .devdbrc
 sample.mp4
+data/
 # Environment Variables
 .env
 
