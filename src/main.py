@@ -15,6 +15,8 @@ load_dotenv()
 # Get logger
 logger = get_logger(__name__)
 
+logger.info("Main application module loaded")
+
 # Models base
 models.Base.metadata.create_all(bind=engine)
 
@@ -36,6 +38,8 @@ async def lifespan(app: FastAPI):
 # App
 app = FastAPI(title="Custom Video Player Backend", version="0.1.0", lifespan=lifespan)
 
+logger.info("'Custom Video Player Backend' v0.1.0 Loaded 🎉")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Adjust for prod
@@ -44,9 +48,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router, prefix="/auth", tags=["auth"])
-app.include_router(videos.router, prefix="/videos", tags=["videos"])
-app.include_router(stream.router, prefix="/stream", tags=["stream"])
+logger.info("CORS middleware configured")
+
+# Include routers with organized logging
+router_configs = [
+    {"router": auth.router, "prefix": "/auth", "tags": ["auth"]},
+    {"router": videos.router, "prefix": "/videos", "tags": ["videos"]},
+    {"router": stream.router, "prefix": "/stream", "tags": ["stream"]},
+]
+
+for config in router_configs:
+    app.include_router(**config)
+
+loaded_routes = [
+    f"{config['tags'][0]}({config['prefix']})" for config in router_configs
+]
+logger.info(f"All routes loaded: {', '.join(loaded_routes)}")
 
 
 @app.get("/")
