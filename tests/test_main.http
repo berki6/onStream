@@ -132,7 +132,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0dXNlc
 # ============================================================================
 
 ### Get HLS Playlist (use upload_id from video response)
-GET http://127.0.0.1:8000/stream/NaLGESGB/index.m3u8
+GET http://127.0.0.1:8000/stream/NaLGESGB/playlist.m3u8
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0dXNlciIsImV4cCI6MTc2Mjc5NTg5OH0.-qPjWmp0HhdnElYkwX2ZCur4DO59gMHT3MfHfa37PWQ
 Accept: application/vnd.apple.mpegurl
 
