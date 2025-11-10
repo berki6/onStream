@@ -12,7 +12,8 @@ from typing import List, Optional
 import os
 import subprocess
 import shutil
-from src.schema import schemas
+import redis
+from src.schema import schemas, models
 from src.services import crud
 from src.core.database import get_db
 from src.core.auth import get_current_user
@@ -76,15 +77,41 @@ def generate_thumbnail(file_path: str, video_id: int) -> Optional[str]:
 def transcode_video(video_id: int, video_path: str, hls_path: str):
     """Background task to transcode video to HLS using FFmpeg, update status, and generate thumbnail."""
     from src.core.database import SessionLocal
-    from src.services.crud import update_video_status
+    from src.services.crud import update_video_status, update_video_job_status
 
     logger.info(f"Starting transcoding for video ID {video_id}")
     db = SessionLocal()
     try:
+        # Update job status to transcoding
+        video = db.query(models.Video).filter(models.Video.id == video_id).first()
+        if video:
+            update_video_job_status(
+                db,
+                video.upload_id,
+                "transcoding",
+                progress=10,
+                message="Starting transcoding...",
+            )
+
         # Generate thumbnail first
         thumbnail_path = generate_thumbnail(video_path, video_id)
+        if thumbnail_path and video:
+            update_video_job_status(
+                db,
+                video.upload_id,
+                "transcoding",
+                progress=30,
+                message="Thumbnail generated",
+            )
 
         # Transcode to HLS
+        update_video_job_status(
+            db,
+            video.upload_id,
+            "transcoding",
+            progress=50,
+            message="Transcoding to HLS...",
+        )
         cmd = [
             "ffmpeg",
             "-i",
@@ -107,16 +134,31 @@ def transcode_video(video_id: int, video_path: str, hls_path: str):
         subprocess.run(cmd, check=True, capture_output=True)
 
         # Update DB on success
-        video = crud.update_video_status(db, video_id, "ready")
+        video = update_video_status(db, video_id, "ready")
         if video:
             if thumbnail_path:
                 video.thumbnail_path = thumbnail_path
+            update_video_job_status(
+                db,
+                video.upload_id,
+                "ready",
+                progress=100,
+                message="Processing complete",
+            )
             db.commit()
             db.refresh(video)
         logger.info(f"Transcoding completed successfully for video ID {video_id}")
     except subprocess.CalledProcessError as e:
         logger.error(f"Transcoding failed for video ID {video_id}: {e}")
-        crud.update_video_status(db, video_id, "error")
+        update_video_status(db, video_id, "error")
+        if video:
+            update_video_job_status(
+                db,
+                video.upload_id,
+                "error",
+                progress=0,
+                message=f"Transcoding failed: {str(e)}",
+            )
     finally:
         db.close()
 
@@ -127,13 +169,25 @@ def transcode_video(video_id: int, video_path: str, hls_path: str):
 async def upload_video(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    title: str = "Untitled",
+    title: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     logger.info(
         f"User '{current_user.username}' starting video upload: {file.filename}"
     )
+
+    # Auto-generate title from filename if not provided
+    if not title and file.filename:
+        # Remove file extension and clean up filename
+        filename_without_ext = os.path.splitext(file.filename)[0]
+        # Replace underscores and hyphens with spaces, capitalize words
+        title = filename_without_ext.replace("_", " ").replace("-", " ").title()
+
+    # Ensure we have a title
+    if not title:
+        title = "Untitled Video"
+
     # Validate size (500MB)
     if file.size is None or file.size > 500 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="File too large. Max 500MB.")
@@ -142,7 +196,10 @@ async def upload_video(
         raise HTTPException(status_code=400, detail="File must be a video")
 
     # Validate with ffprobe (quick check)
-    temp_path = os.path.join(UPLOAD_DIR, f"temp_{file.filename}")
+    import uuid
+
+    temp_filename = f"temp_{uuid.uuid4().hex}_{file.filename}"
+    temp_path = os.path.join(UPLOAD_DIR, temp_filename)
     try:
         with open(temp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
@@ -153,24 +210,36 @@ async def upload_video(
             os.remove(temp_path)
             raise HTTPException(status_code=400, detail="Invalid or corrupt video file")
 
-        # Rename to video_id (create entry first)
-        video = crud.create_video(
-            db, schemas.VideoCreate(title=title, duration=duration), current_user.id
+        # Create video entry with temporary file_path (will be updated after getting ID)
+        temp_video = crud.create_video(
+            db,
+            schemas.VideoCreate(title=title, duration=duration, file_path="temp"),
+            current_user.id,
         )
-        file_path = os.path.join(UPLOAD_DIR, f"{video.id}_{file.filename}")
-        os.rename(temp_path, file_path)
-        video.file_path = file_path
-        db.commit()
-        db.refresh(video)
 
-        # Queue transcode
-        hls_path = os.path.join(HLS_DIR, f"{video.id}.m3u8")
-        background_tasks.add_task(transcode_video, video.id, file_path, hls_path)
+        # Create video job for tracking processing status
+        crud.create_video_job(
+            db, schemas.VideoJobCreate(upload_id=temp_video.upload_id)
+        )
+
+        # Now create the actual file_path with the video ID
+        final_filename = f"{temp_video.id}_{uuid.uuid4().hex}_{file.filename}"
+        file_path = os.path.join(UPLOAD_DIR, final_filename)
+        os.rename(temp_path, file_path)
+
+        # Update the video with the correct file_path
+        temp_video.file_path = file_path
+        db.commit()
+        db.refresh(temp_video)
+
+        # Push job to Redis queue for processing
+        redis_client = redis.from_url(settings.REDIS_URL)
+        redis_client.lpush("video_jobs_queue", temp_video.upload_id)
 
         logger.info(
-            f"Video upload successful for user '{current_user.username}': video ID {video.id}"
+            f"Video upload successful for user '{current_user.username}': video ID {temp_video.id}, queued for processing"
         )
-        return video
+        return temp_video
     except Exception as e:
         logger.error(
             f"Video upload failed for user '{current_user.username}': {str(e)}"
@@ -192,22 +261,46 @@ def list_videos(
     return videos
 
 
-@router.get("/{video_id}", response_model=schemas.VideoResponse)
+@router.get("/{upload_id}", response_model=schemas.VideoResponse)
 def get_video(
-    video_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)
+    upload_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    video = crud.get_video(db, video_id)
+    video = crud.get_video_by_upload_id(db, upload_id)
     if not video or video.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Video not found")
-    logger.info(f"User '{current_user.username}' accessed video ID {video_id}")
+    logger.info(f"User '{current_user.username}' accessed video upload_id {upload_id}")
     return video
 
 
-@router.delete("/{video_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_video(
-    video_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)
+@router.get("/{upload_id}/job", response_model=schemas.VideoJobResponse)
+def get_video_job(
+    upload_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    video = crud.delete_video(db, video_id)
+    video = crud.get_video_by_upload_id(db, upload_id)
+    if not video or video.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    job = crud.get_video_job_by_video(db, video)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    logger.info(
+        f"User '{current_user.username}' checked job status for video upload_id {upload_id}"
+    )
+    return job
+
+
+@router.delete("/{upload_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_video(
+    upload_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    video = crud.delete_video_by_upload_id(db, upload_id)
     if not video or video.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Video not found")
     # Clean up files
@@ -216,6 +309,6 @@ def delete_video(
     if video.hls_path and os.path.exists(video.hls_path):
         # Remove HLS files (playlist and segments)
         for f in os.listdir(HLS_DIR):
-            if f.startswith(f"{video_id}."):
+            if f.startswith(f"{video.id}."):
                 os.remove(os.path.join(HLS_DIR, f))
-    logger.info(f"User '{current_user.username}' deleted video ID {video_id}")
+    logger.info(f"User '{current_user.username}' deleted video upload_id {upload_id}")
