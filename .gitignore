@@ -3,6 +3,7 @@ CHANGELOG
 alembic/__pycache__/
 alembic.ini
 onstream.db
+.devdbrc
 # Environment Variables
 .env
 
