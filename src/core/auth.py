@@ -9,6 +9,7 @@ from src.core.config import settings
 from src.core.database import get_db
 from src.services.crud import get_user_by_username
 
+# Use bcrypt for password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 security = HTTPBearer()
