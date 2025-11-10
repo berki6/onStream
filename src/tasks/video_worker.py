@@ -80,7 +80,7 @@ def process_video(session, job):
         update_job_progress(session, job, 0, status="error", message="Video not found")
         return
 
-    upload_file = os.path.join(UPLOAD_DIR, f"{video.id}_{job.upload_id}.mp4")
+    upload_file = video.file_path  # Use the actual file path from database
     output_dir = os.path.join(HLS_DIR, job.upload_id)
     os.makedirs(output_dir, exist_ok=True)
 
