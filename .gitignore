@@ -2,8 +2,9 @@
 CHANGELOG
 alembic/__pycache__/
 alembic.ini
-onstream.db
+*.db
 .devdbrc
+sample.mp4
 # Environment Variables
 .env
 
