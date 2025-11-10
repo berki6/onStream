@@ -10,6 +10,10 @@ def get_user_by_username(db: Session, username: str):
     return db.query(models.User).filter(models.User.username == username).first()
 
 
+def get_user_by_email(db: Session, email: str):
+    return db.query(models.User).filter(models.User.email == email).first()
+
+
 def create_user(db: Session, user: schemas.UserCreate):
     from src.core.auth import get_password_hash
 

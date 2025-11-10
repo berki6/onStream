@@ -90,7 +90,7 @@ def test_get_video_job_not_found(db_session: Session, test_user):
     token = response.json()["access_token"]
 
     response = client.get(
-        "/videos/nonexistent123/job",
+        "/videos/abcdefgh/job",  # Valid 8-character format but non-existent
         headers={"Authorization": f"Bearer {token}"},
     )
 
@@ -150,8 +150,8 @@ def test_get_video_job_unauthorized(db_session: Session, test_user, mocker):
         headers={"Authorization": f"Bearer {token2}"},
     )
 
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Video not found"
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Access denied"
 
     # Clean up
     db_session.delete(user2)

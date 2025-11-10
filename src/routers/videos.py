@@ -78,11 +78,35 @@ async def upload_video(
         title = "Untitled Video"
 
     # Validate size (500MB)
-    if file.size is None or file.size > 500 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="File too large. Max 500MB.")
+    if file.size is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File size cannot be determined",
+        )
+    if file.size > 500 * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File too large. Maximum size is 500MB",
+        )
 
-    if file.content_type is None or not file.content_type.startswith("video/"):
-        raise HTTPException(status_code=400, detail="File must be a video")
+    if not file.content_type or not file.content_type.startswith("video/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file type. Only video files are allowed",
+        )
+
+    # Validate filename
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Filename is required"
+        )
+
+    # Validate title length if provided
+    if title and len(title.strip()) > 200:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Title must be 200 characters or less",
+        )
 
     # Validate with ffprobe (quick check)
     import uuid
@@ -97,45 +121,113 @@ async def upload_video(
         duration = probe_video_duration(temp_path)
         if duration is None:
             os.remove(temp_path)
-            raise HTTPException(status_code=400, detail="Invalid or corrupt video file")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or corrupt video file",
+            )
 
-        # Create video entry with temporary file_path (will be updated after getting ID)
-        temp_video = crud.create_video(
-            db,
-            schemas.VideoCreate(title=title, duration=duration, file_path="temp"),
-            current_user.id,
-        )
+        if duration < 1:
+            os.remove(temp_path)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Video is too short (minimum 1 second)",
+            )
+
+        if duration > 3600:  # 1 hour
+            os.remove(temp_path)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Video is too long (maximum 1 hour)",
+            )
+
+        # Create video entry with temporary file_path
+        try:
+            temp_video = crud.create_video(
+                db,
+                schemas.VideoCreate(title=title, duration=duration, file_path="temp"),
+                current_user.id,
+            )
+        except Exception as e:
+            os.remove(temp_path)
+            logger.error(f"Failed to create video record: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create video record",
+            )
 
         # Create video job for tracking processing status
-        crud.create_video_job(
-            db, schemas.VideoJobCreate(upload_id=temp_video.upload_id)
-        )
+        try:
+            crud.create_video_job(
+                db, schemas.VideoJobCreate(upload_id=temp_video.upload_id)
+            )
+        except Exception as e:
+            db.rollback()
+            os.remove(temp_path)
+            logger.error(f"Failed to create video job: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create processing job",
+            )
 
         # Now create the actual file_path with the video ID
         final_filename = f"{temp_video.id}_{uuid.uuid4().hex}_{file.filename}"
         file_path = os.path.join(UPLOAD_DIR, final_filename)
-        os.rename(temp_path, file_path)
+
+        try:
+            os.rename(temp_path, file_path)
+        except OSError as e:
+            db.rollback()
+            os.remove(temp_path)
+            logger.error(f"Failed to move video file: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to save video file",
+            )
 
         # Update the video with the correct file_path
-        temp_video.file_path = file_path
-        db.commit()
-        db.refresh(temp_video)
+        try:
+            temp_video.file_path = file_path
+            db.commit()
+            db.refresh(temp_video)
+        except Exception as e:
+            db.rollback()
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            logger.error(f"Failed to update video record: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update video record",
+            )
 
         # Push job to Redis queue for processing
-        redis_client = redis.from_url(settings.REDIS_URL)
-        redis_client.lpush("video_jobs_queue", temp_video.upload_id)
+        try:
+            redis_client = redis.from_url(settings.REDIS_URL)
+            redis_client.lpush("video_jobs_queue", temp_video.upload_id)
+        except Exception as e:
+            logger.warning(f"Failed to queue video for processing: {str(e)}")
+            # Don't fail the upload, just log the warning
 
         logger.info(
             f"Video upload successful for user '{current_user.username}': video ID {temp_video.id}, queued for processing"
         )
         return temp_video
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(
             f"Video upload failed for user '{current_user.username}': {str(e)}"
         )
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-        raise
+        # Clean up any temporary files
+        for path in [temp_path, file_path if "file_path" in locals() else None]:
+            if path and os.path.exists(path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Video upload failed",
+        )
 
 
 @router.get("/", response_model=List[schemas.VideoResponse])
@@ -145,9 +237,32 @@ def list_videos(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    videos = crud.get_videos_by_user(db, current_user.id, skip=skip, limit=limit)
-    logger.info(f"User '{current_user.username}' listed videos: {len(videos)} videos")
-    return videos
+    # Validate query parameters
+    if skip < 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Skip parameter must be non-negative",
+        )
+    if limit < 1 or limit > 100:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Limit must be between 1 and 100",
+        )
+
+    try:
+        videos = crud.get_videos_by_user(db, current_user.id, skip=skip, limit=limit)
+        logger.info(
+            f"User '{current_user.username}' listed videos: {len(videos)} videos"
+        )
+        return videos
+    except Exception as e:
+        logger.error(
+            f"Failed to list videos for user '{current_user.username}': {str(e)}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve videos",
+        )
 
 
 @router.get("/{upload_id}", response_model=schemas.VideoResponse)
@@ -156,11 +271,47 @@ def get_video(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    video = crud.get_video_by_upload_id(db, upload_id)
-    if not video or video.user_id != current_user.id:
-        raise HTTPException(status_code=404, detail="Video not found")
-    logger.info(f"User '{current_user.username}' accessed video upload_id {upload_id}")
-    return video
+    # Validate upload_id format (should be 8 characters, safe alphanumeric)
+    if not upload_id or len(upload_id) != 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid upload ID format"
+        )
+
+    # Check for valid characters (alphanumeric excluding ambiguous ones)
+    import string
+
+    safe_chars = string.ascii_letters + string.digits
+    safe_chars = "".join(c for c in safe_chars if c not in "0O1Il")
+    if not all(c in safe_chars for c in upload_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid upload ID format"
+        )
+
+    try:
+        video = crud.get_video_by_upload_id(db, upload_id)
+        if not video:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Video not found"
+            )
+        if video.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Access denied"
+            )
+
+        logger.info(
+            f"User '{current_user.username}' accessed video upload_id {upload_id}"
+        )
+        return video
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Failed to get video {upload_id} for user '{current_user.username}': {str(e)}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve video",
+        )
 
 
 @router.get("/{upload_id}/job", response_model=schemas.VideoJobResponse)
@@ -169,18 +320,53 @@ def get_video_job(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    video = crud.get_video_by_upload_id(db, upload_id)
-    if not video or video.user_id != current_user.id:
-        raise HTTPException(status_code=404, detail="Video not found")
+    # Validate upload_id format (should be 8 characters, safe alphanumeric)
+    if not upload_id or len(upload_id) != 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid upload ID format"
+        )
 
-    job = crud.get_job_for_video(db, video)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    # Check for valid characters (alphanumeric excluding ambiguous ones)
+    import string
 
-    logger.info(
-        f"User '{current_user.username}' checked job status for video upload_id {upload_id}"
-    )
-    return job
+    safe_chars = string.ascii_letters + string.digits
+    safe_chars = "".join(c for c in safe_chars if c not in "0O1Il")
+    if not all(c in safe_chars for c in upload_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid upload ID format"
+        )
+
+    try:
+        video = crud.get_video_by_upload_id(db, upload_id)
+        if not video:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Video not found"
+            )
+        if video.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Access denied"
+            )
+
+        job = crud.get_job_for_video(db, video)
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Job not found"
+            )
+
+        logger.info(
+            f"User '{current_user.username}' checked job status for video upload_id {upload_id}"
+        )
+        return job
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Failed to get job for video {upload_id} for user '{current_user.username}': {str(e)}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve job status",
+        )
 
 
 @router.delete("/{upload_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -189,15 +375,64 @@ def delete_video(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    video = crud.delete_video_by_upload_id(db, upload_id)
-    if not video or video.user_id != current_user.id:
-        raise HTTPException(status_code=404, detail="Video not found")
-    # Clean up files
-    if video.file_path and os.path.exists(video.file_path):
-        os.remove(video.file_path)
-    if video.hls_path and os.path.exists(video.hls_path):
-        # Remove HLS files (playlist and segments)
-        for f in os.listdir(HLS_DIR):
-            if f.startswith(f"{video.id}."):
-                os.remove(os.path.join(HLS_DIR, f))
-    logger.info(f"User '{current_user.username}' deleted video upload_id {upload_id}")
+    # Validate upload_id format (should be 8 characters, safe alphanumeric)
+    if not upload_id or len(upload_id) != 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid upload ID format"
+        )
+
+    # Check for valid characters (alphanumeric excluding ambiguous ones)
+    import string
+
+    safe_chars = string.ascii_letters + string.digits
+    safe_chars = "".join(c for c in safe_chars if c not in "0O1Il")
+    if not all(c in safe_chars for c in upload_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid upload ID format"
+        )
+
+    try:
+        video = crud.delete_video_by_upload_id(db, upload_id)
+        if not video:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Video not found"
+            )
+        if video.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Access denied"
+            )
+
+        # Clean up files with error handling
+        try:
+            if video.file_path and os.path.exists(video.file_path):
+                os.remove(video.file_path)
+        except OSError as e:
+            logger.warning(f"Failed to remove video file {video.file_path}: {str(e)}")
+
+        try:
+            if video.hls_path and os.path.exists(video.hls_path):
+                # Remove HLS files (playlist and segments)
+                for f in os.listdir(HLS_DIR):
+                    if f.startswith(f"{video.id}."):
+                        try:
+                            os.remove(os.path.join(HLS_DIR, f))
+                        except OSError as e:
+                            logger.warning(f"Failed to remove HLS file {f}: {str(e)}")
+        except OSError as e:
+            logger.warning(
+                f"Failed to clean up HLS directory for video {video.id}: {str(e)}"
+            )
+
+        logger.info(
+            f"User '{current_user.username}' deleted video upload_id {upload_id}"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Failed to delete video {upload_id} for user '{current_user.username}': {str(e)}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete video",
+        )
