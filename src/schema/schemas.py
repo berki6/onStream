@@ -33,6 +33,7 @@ class TokenData(BaseModel):
 
 class VideoStatus(str, Enum):
     PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
     READY = "READY"
     ERROR = "ERROR"
     DELETED = "DELETED"

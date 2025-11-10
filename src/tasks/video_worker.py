@@ -134,6 +134,11 @@ def process_video(session, job):
     output_dir = os.path.normpath(os.path.join(HLS_DIR, job.upload_id))
     os.makedirs(output_dir, exist_ok=True)
 
+    # Update video status to PROCESSING
+    video.status = models.VideoStatus.PROCESSING
+    session.commit()
+    logger.info(f"Video processing started for upload_id {job.upload_id}")
+
     try:
         update_job_progress(session, job, 10, message="Starting transcoding")
 
