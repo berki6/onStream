@@ -3,14 +3,17 @@ import logging
 from src.core.config import settings
 
 
+_logger_configured = False
+
 def get_logger(name=None):
     """
     Returns a logger with the specified name, configured for the project.
     Honors LOG_LEVEL from settings and initializes Sentry if SENTRY_DSN is set.
     """
 
+    global _logger_configured
     root_logger = logging.getLogger()
-    if hasattr(root_logger, "_configured"):
+    if _logger_configured:
         return logging.getLogger(name)
 
     # Configure root logger
@@ -52,7 +55,7 @@ def get_logger(name=None):
         # Do not fail startup if sentry isn't installed or fails to init
         pass  # nosec B110
 
-    root_logger._configured = True
+    _logger_configured = True
     return logging.getLogger(name)
 
 
