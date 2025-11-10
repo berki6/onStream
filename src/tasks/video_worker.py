@@ -138,7 +138,7 @@ def process_video(session, job):
         subprocess.run(hls_cmd, check=True, capture_output=True)
 
         # Update video status and job completion
-        video.status = "ready"
+        video.status = models.VideoStatus.READY
         video.hls_path = os.path.join(str(output_dir), "index.m3u8")
         if thumbnail_path:
             video.thumbnail_path = thumbnail_path
@@ -156,7 +156,7 @@ def process_video(session, job):
         )
 
         # Update video status to error
-        video.status = "error"
+        video.status = models.VideoStatus.ERROR
         session.commit()
 
 

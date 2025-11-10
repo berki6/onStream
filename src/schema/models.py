@@ -20,10 +20,10 @@ Base = declarative_base()
 
 
 class VideoStatus(PyEnum):
-    PENDING = "pending"
-    READY = "ready"
-    ERROR = "error"
-    DELETED = "deleted"  # Soft delete
+    PENDING = "PENDING"
+    READY = "READY"
+    ERROR = "ERROR"
+    DELETED = "DELETED"  # Soft delete
 
 
 class User(Base):

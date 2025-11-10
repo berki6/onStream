@@ -32,9 +32,9 @@ class TokenData(BaseModel):
 
 
 class VideoStatus(str, Enum):
-    PENDING = "pending"
-    READY = "ready"
-    ERROR = "error"
+    PENDING = "PENDING"
+    READY = "READY"
+    ERROR = "ERROR"
 
 
 class VideoBase(BaseModel):
