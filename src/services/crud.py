@@ -58,16 +58,6 @@ def get_video(db: Session, video_id: int):
     return db.query(models.Video).filter(models.Video.id == video_id).first()
 
 
-def update_video_status(db: Session, video_id: int, status: str):
-    video = db.query(models.Video).filter(models.Video.id == video_id).first()
-    if video:
-        video.status = status
-        db.commit()
-        db.refresh(video)
-        logger.info(f"Updated video ID {video_id} status to '{status}'")
-    return video
-
-
 def get_video_by_upload_id(db: Session, upload_id: str):
     return db.query(models.Video).filter(models.Video.upload_id == upload_id).first()
 
@@ -90,40 +80,7 @@ def create_video_job(db: Session, job: schemas.VideoJobCreate):
     return db_job
 
 
-def get_video_job(db: Session, upload_id: str):
-    return (
-        db.query(models.VideoJob).filter(models.VideoJob.upload_id == upload_id).first()
-    )
-
-
-def update_video_job_status(
-    db: Session,
-    upload_id: str,
-    status: str,
-    progress: Optional[int] = None,
-    eta: Optional[int] = None,
-    message: Optional[str] = None,
-):
-    job = (
-        db.query(models.VideoJob).filter(models.VideoJob.upload_id == upload_id).first()
-    )
-    if job:
-        job.status = status
-        if progress is not None:
-            job.progress = progress
-        if eta is not None:
-            job.eta = eta
-        if message is not None:
-            job.message = message
-        db.commit()
-        db.refresh(job)
-        logger.info(
-            f"Updated video job {upload_id}: status={status}, progress={progress}%"
-        )
-    return job
-
-
-def get_video_job_by_video(db: Session, video: models.Video):
+def get_job_for_video(db: Session, video: models.Video):
     return (
         db.query(models.VideoJob)
         .filter(models.VideoJob.upload_id == video.upload_id)

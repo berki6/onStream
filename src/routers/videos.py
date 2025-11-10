@@ -171,7 +171,7 @@ def get_video_job(
     if not video or video.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Video not found")
 
-    job = crud.get_video_job_by_video(db, video)
+    job = crud.get_job_for_video(db, video)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 

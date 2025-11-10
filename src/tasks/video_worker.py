@@ -12,7 +12,6 @@ import redis
 from sqlalchemy.orm import sessionmaker
 from src.schema import models
 from src.core.database import engine
-from src.services.crud import update_video_status, update_video_job_status
 from src.core.config import settings
 from src.core.logger import get_logger
 
