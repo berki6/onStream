@@ -35,6 +35,7 @@ class VideoStatus(str, Enum):
     PENDING = "PENDING"
     READY = "READY"
     ERROR = "ERROR"
+    DELETED = "DELETED"
 
 
 class VideoBase(BaseModel):

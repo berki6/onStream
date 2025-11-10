@@ -36,6 +36,7 @@ def get_videos_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 10
     return (
         db.query(models.Video)
         .filter(models.Video.user_id == user_id)
+        .filter(models.Video.status != models.VideoStatus.DELETED)
         .offset(skip)
         .limit(limit)
         .all()
@@ -63,15 +64,20 @@ def get_video(db: Session, video_id: int):
 
 
 def get_video_by_upload_id(db: Session, upload_id: str):
-    return db.query(models.Video).filter(models.Video.upload_id == upload_id).first()
+    return (
+        db.query(models.Video)
+        .filter(models.Video.upload_id == upload_id)
+        .filter(models.Video.status != models.VideoStatus.DELETED)
+        .first()
+    )
 
 
 def delete_video_by_upload_id(db: Session, upload_id: str):
     video = db.query(models.Video).filter(models.Video.upload_id == upload_id).first()
     if video:
-        db.delete(video)
+        video.status = models.VideoStatus.DELETED
         db.commit()
-        logger.info(f"Deleted video upload_id {upload_id}")
+        logger.info(f"Soft deleted video upload_id {upload_id}")
     return video
 
 

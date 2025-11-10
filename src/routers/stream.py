@@ -7,6 +7,7 @@ from src.core.auth import get_current_user
 from src.core.config import settings
 from src.core.logger import get_logger
 from sqlalchemy.orm import Session
+from src.schema import models
 
 router = APIRouter()
 
@@ -47,7 +48,7 @@ async def stream_hls_playlist(
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, detail="Access denied"
             )
-        if video.status != "ready":
+        if video.status != models.VideoStatus.READY:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Video is not ready for streaming",
@@ -126,7 +127,7 @@ async def stream_hls_segment(
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, detail="Access denied"
             )
-        if video.status != "ready":
+        if video.status != models.VideoStatus.READY:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Video is not ready for streaming",
