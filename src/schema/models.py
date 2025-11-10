@@ -1,4 +1,15 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Enum, Text, Boolean, Float, Index
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    ForeignKey,
+    DateTime,
+    Enum,
+    Text,
+    Boolean,
+    Float,
+    Index,
+)
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import func
@@ -6,11 +17,13 @@ from enum import Enum as PyEnum
 
 Base = declarative_base()
 
+
 class VideoStatus(PyEnum):
     PENDING = "pending"
     READY = "ready"
     ERROR = "error"
     DELETED = "deleted"  # Soft delete
+
 
 class User(Base):
     __tablename__ = "users"
@@ -25,16 +38,22 @@ class User(Base):
 
     # Relationships
     videos = relationship("Video", back_populates="owner", cascade="all, delete-orphan")
-    playlists = relationship("Playlist", back_populates="owner", cascade="all, delete-orphan")
+    playlists = relationship(
+        "Playlist", back_populates="owner", cascade="all, delete-orphan"
+    )
     video_views = relationship("VideoView", back_populates="viewer")
 
     def __repr__(self):
         return f"<User(username='{self.username}', id={self.id})>"
 
+
 class Video(Base):
     __tablename__ = "videos"
 
     id = Column(Integer, primary_key=True, index=True)
+    upload_id = Column(
+        String(12), unique=True, nullable=False, index=True
+    )  # Alphanumeric public ID
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
@@ -52,16 +71,19 @@ class Video(Base):
     views = relationship("VideoView", back_populates="video")
 
     # Indexes
-    __table_args__ = (Index('idx_videos_user_status', 'user_id', 'status'),)
+    __table_args__ = (Index("idx_videos_user_status", "user_id", "status"),)
 
     def __repr__(self):
         return f"<Video(title='{self.title}', id={self.id})>"
+
 
 class VideoView(Base):  # For analytics (nice-to-have)
     __tablename__ = "video_views"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)  # NULL for anonymous
+    user_id = Column(
+        Integer, ForeignKey("users.id"), nullable=True, index=True
+    )  # NULL for anonymous
     video_id = Column(Integer, ForeignKey("videos.id"), nullable=False, index=True)
     viewed_at = Column(DateTime(timezone=True), server_default=func.now())
     watch_time = Column(Float, nullable=True)  # Seconds watched
@@ -71,10 +93,11 @@ class VideoView(Base):  # For analytics (nice-to-have)
     viewer = relationship("User", back_populates="video_views")
     video = relationship("Video", back_populates="views")
 
-    __table_args__ = (Index('idx_views_video_date', 'video_id', 'viewed_at'),)
+    __table_args__ = (Index("idx_views_video_date", "video_id", "viewed_at"),)
 
     def __repr__(self):
         return f"<VideoView(video_id={self.video_id}, id={self.id})>"
+
 
 class Playlist(Base):  # Nice-to-have
     __tablename__ = "playlists"
@@ -87,16 +110,21 @@ class Playlist(Base):  # Nice-to-have
 
     # Relationships
     owner = relationship("User", back_populates="playlists")
-    videos = relationship("PlaylistVideo", back_populates="playlist", cascade="all, delete-orphan")
+    videos = relationship(
+        "PlaylistVideo", back_populates="playlist", cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<Playlist(name='{self.name}', id={self.id})>"
+
 
 class PlaylistVideo(Base):  # Junction table for many-to-many
     __tablename__ = "playlist_videos"
 
     id = Column(Integer, primary_key=True)
-    playlist_id = Column(Integer, ForeignKey("playlists.id"), nullable=False, index=True)
+    playlist_id = Column(
+        Integer, ForeignKey("playlists.id"), nullable=False, index=True
+    )
     video_id = Column(Integer, ForeignKey("videos.id"), nullable=False, index=True)
     position = Column(Integer, nullable=False, default=0)  # Order in playlist
 
@@ -105,8 +133,27 @@ class PlaylistVideo(Base):  # Junction table for many-to-many
     video = relationship("Video")
 
     __table_args__ = (
-        Index('uq_playlist_video', 'playlist_id', 'video_id', unique=True),
+        Index("uq_playlist_video", "playlist_id", "video_id", unique=True),
     )
 
     def __repr__(self):
-        return f"<PlaylistVideo(playlist_id={self.playlist_id}, video_id={self.video_id})>"
+        return (
+            f"<PlaylistVideo(playlist_id={self.playlist_id}, video_id={self.video_id})>"
+        )
+
+
+class VideoJob(Base):
+    __tablename__ = "video_jobs"
+
+    upload_id = Column(String(12), primary_key=True)  # Matches video upload ID
+    status = Column(
+        String, default="processing"
+    )  # statuses: uploading, transcoding, thumbnail, ready, error
+    progress = Column(Integer, default=0)  # percent complete (0-100)
+    eta = Column(Integer, default=0)  # estimated seconds remaining
+    message = Column(Text, nullable=True)  # logs or error messages
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    def __repr__(self):
+        return f"<VideoJob(upload_id='{self.upload_id}', status='{self.status}', progress={self.progress}%)>"
