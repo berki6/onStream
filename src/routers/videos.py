@@ -77,16 +77,17 @@ async def upload_video(
     if not title:
         title = "Untitled Video"
 
-    # Validate size (500MB)
+    # Validate size
     if file.size is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File size cannot be determined",
         )
-    if file.size > 500 * 1024 * 1024:
+    if file.size > settings.MAX_UPLOAD_SIZE:
+        max_size_mb = settings.MAX_UPLOAD_SIZE // (1024 * 1024)
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="File too large. Maximum size is 500MB",
+            detail=f"File too large. Maximum size is {max_size_mb}MB",
         )
 
     if not file.content_type or not file.content_type.startswith("video/"):
@@ -102,10 +103,10 @@ async def upload_video(
         )
 
     # Validate title length if provided
-    if title and len(title.strip()) > 200:
+    if title and len(title.strip()) > settings.MAX_TITLE_LENGTH:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Title must be 200 characters or less",
+            detail=f"Title must be {settings.MAX_TITLE_LENGTH} characters or less",
         )
 
     # Validate with ffprobe (quick check)
@@ -133,11 +134,12 @@ async def upload_video(
                 detail="Video is too short (minimum 1 second)",
             )
 
-        if duration > 3600:  # 1 hour
+        if duration > settings.MAX_VIDEO_DURATION_SECONDS:
+            max_duration_minutes = settings.MAX_VIDEO_DURATION_SECONDS // 60
             os.remove(temp_path)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Video is too long (maximum 1 hour)",
+                detail=f"Video is too long (maximum {max_duration_minutes} minutes)",
             )
 
         # Create video entry with temporary file_path
@@ -243,10 +245,10 @@ def list_videos(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Skip parameter must be non-negative",
         )
-    if limit < 1 or limit > 100:
+    if limit < 1 or limit > settings.MAX_LIST_LIMIT:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Limit must be between 1 and 100",
+            detail=f"Limit must be between 1 and {settings.MAX_LIST_LIMIT}",
         )
 
     try:

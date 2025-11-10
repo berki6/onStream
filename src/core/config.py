@@ -33,17 +33,22 @@ class Settings(BaseSettings):
     DEBUG: bool = os.environ.get("DEBUG", "false").lower() in ("true", "1", "yes")
     # Internal API key for protecting sensitive endpoints (analytics, RAG admin)
     INTERNAL_API_KEY: str = os.environ.get("INTERNAL_API_KEY", "")
-    BOT_INTERNAL_API_KEY: str = os.environ.get("BOT_INTERNAL_API_KEY", "")
-    # If set to false, the readiness check will skip Gemini network check (useful for offline CI)
-    CHECK_GEMINI: bool = os.environ.get("CHECK_GEMINI", "true").lower() in (
-        "true",
-        "1",
-        "yes",
-    )
+
     # Max upload size used by upload endpoints (bytes)
     MAX_UPLOAD_SIZE: int = int(
         os.environ.get("MAX_UPLOAD_SIZE", str(100 * 1024 * 1024))
     )
+    # Max video duration in seconds
+    MAX_VIDEO_DURATION_SECONDS: int = int(
+        os.environ.get("MAX_VIDEO_DURATION_SECONDS", "3600")
+    )
+    # Max title length for videos
+    MAX_TITLE_LENGTH: int = int(os.environ.get("MAX_TITLE_LENGTH", "200"))
+    # Max limit for list endpoints
+    MAX_LIST_LIMIT: int = int(os.environ.get("MAX_LIST_LIMIT", "100"))
+    # Thumbnail dimensions
+    THUMBNAIL_WIDTH: int = int(os.environ.get("THUMBNAIL_WIDTH", "320"))
+    THUMBNAIL_HEIGHT: int = int(os.environ.get("THUMBNAIL_HEIGHT", "180"))
     VIDEO_STORAGE_DIR: str = os.environ.get("VIDEO_STORAGE_DIR", "data/videos")
     VIDEO_UPLOAD_DIR: str = os.environ.get("VIDEO_UPLOAD_DIR", "data/uploads")
     VIDEO_HLS_DIR: str = os.environ.get("VIDEO_HLS_DIR", "data/hls")

@@ -90,7 +90,7 @@ def generate_thumbnail(video_path: str, video_id: int) -> Optional[str]:
             "-i",
             video_path,
             "-vf",
-            "thumbnail,scale=320:180:force_original_aspect_ratio=decrease,pad=320:180:(ow-iw)/2:(oh-ih)/2",
+            f"thumbnail,scale={settings.THUMBNAIL_WIDTH}:{settings.THUMBNAIL_HEIGHT}:force_original_aspect_ratio=decrease,pad={settings.THUMBNAIL_WIDTH}:{settings.THUMBNAIL_HEIGHT}:(ow-iw)/2:(oh-ih)/2",
             "-frames:v",
             "1",
             "-q:v",
