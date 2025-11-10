@@ -1,11 +1,165 @@
-# Test your FastAPI endpoints
+# Test your FastAPI Video Player Backend
+# Run with: uvicorn src.main:app --reload
+# Base URL: http://127.0.0.1:8000
 
+### Root Endpoint
 GET http://127.0.0.1:8000/
 Accept: application/json
 
 ###
 
-GET http://127.0.0.1:8000/hello/User
+# ============================================================================
+# HEALTH CHECKS
+# ============================================================================
+
+### Health Check (comprehensive)
+GET http://127.0.0.1:8000/health
 Accept: application/json
+
+###
+
+### Liveness Probe
+GET http://127.0.0.1:8000/health/live
+Accept: application/json
+
+###
+
+### Readiness Probe
+GET http://127.0.0.1:8000/health/ready
+Accept: application/json
+
+###
+
+# ============================================================================
+# AUTHENTICATION
+# ============================================================================
+
+### Register New User
+POST http://127.0.0.1:8000/auth/register
+Content-Type: application/json
+
+{
+  "username": "testuser",
+  "email": "test@example.com",
+  "password": "testpass123"
+}
+
+###
+
+### Login
+POST http://127.0.0.1:8000/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=testuser&password=testpass123
+
+###
+
+# ============================================================================
+# VIDEO MANAGEMENT (requires authentication)
+# ============================================================================
+
+### Upload Video (replace with actual video file path)
+POST http://127.0.0.1:8000/videos/
+Authorization: Bearer YOUR_JWT_TOKEN_HERE
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
+
+------WebKitFormBoundary
+Content-Disposition: form-data; name="file"; filename="sample.mp4"
+Content-Type: video/mp4
+
+< ./sample.mp4
+------WebKitFormBoundary
+Content-Disposition: form-data; name="title"
+
+My Sample Video
+------WebKitFormBoundary--
+
+###
+
+### List User's Videos
+GET http://127.0.0.1:8000/videos/
+Authorization: Bearer YOUR_JWT_TOKEN_HERE
+Accept: application/json
+
+###
+
+### List Videos with Pagination
+GET http://127.0.0.1:8000/videos/?skip=0&limit=10
+Authorization: Bearer YOUR_JWT_TOKEN_HERE
+Accept: application/json
+
+###
+
+### Get Specific Video
+GET http://127.0.0.1:8000/videos/1
+Authorization: Bearer YOUR_JWT_TOKEN_HERE
+Accept: application/json
+
+###
+
+### Delete Video
+DELETE http://127.0.0.1:8000/videos/1
+Authorization: Bearer YOUR_JWT_TOKEN_HERE
+
+###
+
+# ============================================================================
+# VIDEO STREAMING (requires authentication)
+# ============================================================================
+
+### Get HLS Playlist
+GET http://127.0.0.1:8000/stream/1/playlist.m3u8
+Authorization: Bearer YOUR_JWT_TOKEN_HERE
+Accept: application/vnd.apple.mpegurl
+
+###
+
+### Get HLS Segment (example segment)
+GET http://127.0.0.1:8000/stream/1/segment00001.ts
+Authorization: Bearer YOUR_JWT_TOKEN_HERE
+Accept: video/MP2T
+
+###
+
+# ============================================================================
+# ERROR TESTING
+# ============================================================================
+
+### Unauthorized Access (no token)
+GET http://127.0.0.1:8000/videos/
+Accept: application/json
+
+###
+
+### Invalid Login
+POST http://127.0.0.1:8000/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=wronguser&password=wrongpass
+
+###
+
+### Access Non-existent Video
+GET http://127.0.0.1:8000/videos/999
+Authorization: Bearer YOUR_JWT_TOKEN_HERE
+Accept: application/json
+
+###
+
+### Upload Invalid File Type
+POST http://127.0.0.1:8000/videos/
+Authorization: Bearer YOUR_JWT_TOKEN_HERE
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
+
+------WebKitFormBoundary
+Content-Disposition: form-data; name="file"; filename="notavideo.txt"
+Content-Type: text/plain
+
+This is not a video file
+------WebKitFormBoundary
+Content-Disposition: form-data; name="title"
+
+Invalid File
+------WebKitFormBoundary--
 
 ###
