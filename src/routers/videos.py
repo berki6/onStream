@@ -5,7 +5,6 @@ from fastapi import (
     UploadFile,
     File,
     status,
-    BackgroundTasks,
 )
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -18,7 +17,7 @@ from src.services import crud
 from src.core.database import get_db
 from src.core.auth import get_current_user
 from src.core.config import settings
-from src.core.logger import get_logger, log_timing
+from src.core.logger import get_logger
 
 router = APIRouter()
 
@@ -52,122 +51,10 @@ def probe_video_duration(file_path: str) -> Optional[float]:
         return None
 
 
-def generate_thumbnail(file_path: str, video_id: int) -> Optional[str]:
-    """Generate thumbnail using FFmpeg."""
-    thumbnail_path = os.path.join(THUMBNAIL_DIR, f"{video_id}.jpg")
-    try:
-        cmd = [
-            "ffmpeg",
-            "-i",
-            file_path,
-            "-vf",
-            "thumbnail,scale=320:180",
-            "-frames:v",
-            "1",
-            thumbnail_path,
-            "-y",  # Overwrite output
-        ]
-        subprocess.run(cmd, check=True, capture_output=True)
-        return thumbnail_path
-    except subprocess.CalledProcessError:
-        return None
-
-
-@log_timing
-def transcode_video(video_id: int, video_path: str, hls_path: str):
-    """Background task to transcode video to HLS using FFmpeg, update status, and generate thumbnail."""
-    from src.core.database import SessionLocal
-    from src.services.crud import update_video_status, update_video_job_status
-
-    logger.info(f"Starting transcoding for video ID {video_id}")
-    db = SessionLocal()
-    try:
-        # Update job status to transcoding
-        video = db.query(models.Video).filter(models.Video.id == video_id).first()
-        if video:
-            update_video_job_status(
-                db,
-                video.upload_id,
-                "transcoding",
-                progress=10,
-                message="Starting transcoding...",
-            )
-
-        # Generate thumbnail first
-        thumbnail_path = generate_thumbnail(video_path, video_id)
-        if thumbnail_path and video:
-            update_video_job_status(
-                db,
-                video.upload_id,
-                "transcoding",
-                progress=30,
-                message="Thumbnail generated",
-            )
-
-        # Transcode to HLS
-        update_video_job_status(
-            db,
-            video.upload_id,
-            "transcoding",
-            progress=50,
-            message="Transcoding to HLS...",
-        )
-        cmd = [
-            "ffmpeg",
-            "-i",
-            video_path,
-            "-profile:v",
-            "baseline",
-            "-level",
-            "3.0",
-            "-start_number",
-            "0",
-            "-hls_time",
-            "10",
-            "-hls_list_size",
-            "0",
-            "-f",
-            "hls",
-            hls_path,
-            "-y",
-        ]
-        subprocess.run(cmd, check=True, capture_output=True)
-
-        # Update DB on success
-        video = update_video_status(db, video_id, "ready")
-        if video:
-            if thumbnail_path:
-                video.thumbnail_path = thumbnail_path
-            update_video_job_status(
-                db,
-                video.upload_id,
-                "ready",
-                progress=100,
-                message="Processing complete",
-            )
-            db.commit()
-            db.refresh(video)
-        logger.info(f"Transcoding completed successfully for video ID {video_id}")
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Transcoding failed for video ID {video_id}: {e}")
-        update_video_status(db, video_id, "error")
-        if video:
-            update_video_job_status(
-                db,
-                video.upload_id,
-                "error",
-                progress=0,
-                message=f"Transcoding failed: {str(e)}",
-            )
-    finally:
-        db.close()
-
-
 @router.post(
     "/", response_model=schemas.VideoResponse, status_code=status.HTTP_201_CREATED
 )
 async def upload_video(
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     title: Optional[str] = None,
     db: Session = Depends(get_db),
