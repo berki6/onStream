@@ -7,8 +7,8 @@ import re
 
 
 class UserBase(BaseModel):
-    username: str = Field(min_length=1, max_length=50)
-    email: str = Field(min_length=1, max_length=100)
+    username: str = Field(min_length=4, max_length=50)
+    email: str = Field(min_length=5, max_length=100)
 
     @field_validator("username")
     @classmethod
@@ -80,7 +80,7 @@ class VideoStatus(str, Enum):
 
 
 class VideoBase(BaseModel):
-    title: str = Field(min_length=1, max_length=200)
+    title: str = Field(min_length=2, max_length=200)
     description: Optional[str] = Field(None, max_length=2000)
     duration: Optional[float] = Field(None, gt=0, le=43200)  # Max 12 hours
 
