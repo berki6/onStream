@@ -10,6 +10,7 @@ from fastapi import (
     HTTPException,
     UploadFile,
     File,
+    Form,
     status,
 )
 from sqlalchemy.orm import Session
@@ -58,7 +59,7 @@ def probe_video_duration(file_path: str) -> Optional[float]:
 )
 async def upload_video(
     file: UploadFile = File(...),
-    title: Optional[str] = None,
+    title: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
