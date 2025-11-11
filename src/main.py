@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from src.schema import models
 from src.core.database import engine
 from src.core.logger import get_logger
-from src.routers import auth, videos, stream, health
+from src.routers import auth, videos, stream, health, playlists
 
 # Load environment variables
 load_dotenv()
@@ -56,6 +56,7 @@ router_configs = [
     {"router": videos.router, "prefix": "/videos", "tags": ["videos"]},
     {"router": stream.router, "prefix": "/stream", "tags": ["stream"]},
     {"router": health.router, "prefix": "", "tags": ["health"]},
+    {"router": playlists.router, "prefix": "/playlists", "tags": ["playlists"]},
 ]
 
 for config in router_configs:
