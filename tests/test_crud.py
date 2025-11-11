@@ -14,7 +14,7 @@ class TestCRUDOperations:
         hashed_password = get_password_hash("testpass")
         user = models.User(
             username="testuser_crud",
-            email="test@example.com",
+            email="testuser_crud@example.com",
             hashed_password=hashed_password,
         )
         db_session.add(user)
@@ -24,7 +24,7 @@ class TestCRUDOperations:
         found_user = crud.get_user_by_username(db_session, "testuser_crud")
         assert found_user is not None
         assert found_user.username == "testuser_crud"
-        assert found_user.email == "test@example.com"
+        assert found_user.email == "testuser_crud@example.com"
 
         # Test non-existent user
         not_found = crud.get_user_by_username(db_session, "nonexistent")

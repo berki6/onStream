@@ -50,7 +50,7 @@ def db_session(test_db):
 def test_user(db_session):
     hashed_password = get_password_hash("testpass")
     user = models.User(
-        username="testuser", email="test@example.com", hashed_password=hashed_password
+        username="testuser", email="testuser@example.com", hashed_password=hashed_password
     )
     db_session.add(user)
     db_session.commit()
