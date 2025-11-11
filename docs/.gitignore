@@ -1,0 +1,9 @@
+*
+
+# But not these files...
+!.gitignore
+!SCHEMA.md
+# etc...
+
+# ...even if they are in subdirectories
+!*/
