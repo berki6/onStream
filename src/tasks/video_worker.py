@@ -83,6 +83,10 @@ def extract_concise_error(stderr_text: str, max_lines=3, max_length=250) -> str:
 
 def generate_thumbnail(video_path: str, video_id: int) -> Optional[str]:
     """Generate thumbnail using FFmpeg."""
+    if not os.path.exists(video_path):
+        logger.warning(f"Input video file not found for thumbnail: {video_path}")
+        return None
+
     thumbnail_path = os.path.join(THUMBNAIL_DIR, f"{video_id}.jpg")
     try:
         cmd = [
@@ -100,8 +104,11 @@ def generate_thumbnail(video_path: str, video_id: int) -> Optional[str]:
         ]
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
         return thumbnail_path
-    except subprocess.CalledProcessError as e:
-        short_error = extract_concise_error(e.stderr)
+    except (subprocess.CalledProcessError, Exception) as e:
+        if isinstance(e, subprocess.CalledProcessError):
+            short_error = extract_concise_error(e.stderr)
+        else:
+            short_error = str(e)
         logger.error(f"Thumbnail generation failed for video {video_id}: {short_error}")
         return None
 
@@ -204,8 +211,11 @@ def process_video(session, job):
         )
         logger.info(f"Video processing completed for upload_id {job.upload_id}")
 
-    except subprocess.CalledProcessError as e:
-        short_error = extract_concise_error(e.stderr)
+    except (subprocess.CalledProcessError, Exception) as e:
+        if isinstance(e, subprocess.CalledProcessError):
+            short_error = extract_concise_error(e.stderr)
+        else:
+            short_error = str(e)
         logger.error(
             f"Video processing failed for upload_id {job.upload_id}: {short_error}"
         )
@@ -225,11 +235,7 @@ def process_job(upload_id: str):
     session = Session()
     try:
         # Get job from database
-        job = (
-            session.query(models.VideoJob)
-            .filter_by(upload_id=upload_id)
-            .first()
-        )
+        job = session.query(models.VideoJob).filter_by(upload_id=upload_id).first()
         if job:
             process_video(session, job)
         else:
