@@ -218,6 +218,26 @@ def process_video(session, job):
         session.commit()
 
 
+def process_job(upload_id: str):
+    """Process a single job from the queue."""
+    logger.info(f"Processing job for upload_id: {upload_id}")
+
+    session = Session()
+    try:
+        # Get job from database
+        job = (
+            session.query(models.VideoJob)
+            .filter_by(upload_id=upload_id)
+            .first()
+        )
+        if job:
+            process_video(session, job)
+        else:
+            logger.error(f"Job not found for upload_id: {upload_id}")
+    finally:
+        session.close()
+
+
 def run_worker():
     """Main worker loop that consumes jobs from Redis queue."""
     logger.info("Video processing worker started")
@@ -225,26 +245,18 @@ def run_worker():
     while True:
         try:
             # BLPOP blocks until an element is available
-            _, upload_id_bytes = redis_client.blpop("video_jobs_queue")
+            result = redis_client.blpop("video_jobs_queue")
+            if result is None:
+                # Queue is empty, continue waiting
+                continue
+            _, upload_id_bytes = result
             upload_id = upload_id_bytes.decode("utf-8")
 
-            logger.info(f"Processing job for upload_id: {upload_id}")
+            process_job(upload_id)
 
-            session = Session()
-            try:
-                # Get job from database
-                job = (
-                    session.query(models.VideoJob)
-                    .filter_by(upload_id=upload_id)
-                    .first()
-                )
-                if job:
-                    process_video(session, job)
-                else:
-                    logger.error(f"Job not found for upload_id: {upload_id}")
-            finally:
-                session.close()
-
+        except KeyboardInterrupt:
+            logger.info("Worker received shutdown signal")
+            break
         except Exception as e:
             logger.error(f"Worker error: {e}")
             # Continue processing other jobs even if one fails
