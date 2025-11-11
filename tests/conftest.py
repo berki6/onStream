@@ -7,7 +7,7 @@ from src.core.auth import get_password_hash
 from src.schema import models
 from src.core.database import get_db
 
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
+SQLALCHEMY_DATABASE_URL = "sqlite:///./tests/test.db"
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
 )
@@ -50,7 +50,9 @@ def db_session(test_db):
 def test_user(db_session):
     hashed_password = get_password_hash("testpass")
     user = models.User(
-        username="testuser", email="testuser@example.com", hashed_password=hashed_password
+        username="testuser",
+        email="testuser@example.com",
+        hashed_password=hashed_password,
     )
     db_session.add(user)
     db_session.commit()
