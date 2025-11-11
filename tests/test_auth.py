@@ -23,14 +23,14 @@ def test_register_user(db_session: Session):
     response = client.post(
         "/auth/register",
         json={
-            "username": "test@#$%",
+            "username": "testuser123",
             "email": "test@example.com",
-            "password": "password123",
+            "password": "Password123!",
         },
     )
     assert response.status_code == 201
     data = response.json()
-    assert data["username"] == "test@#$%"
+    assert data["username"] == "testuser123"
     assert data["email"] == "test@example.com"
 
 
@@ -42,7 +42,7 @@ def test_register_duplicate_username(db_session: Session):
         json={
             "username": "dupuser",
             "email": "dup1@example.com",
-            "password": "password123",
+            "password": "Password123!",
         },
     )
 
@@ -52,7 +52,7 @@ def test_register_duplicate_username(db_session: Session):
         json={
             "username": "dupuser",
             "email": "dup2@example.com",
-            "password": "password123",
+            "password": "Password123!",
         },
     )
     assert response.status_code == 400
@@ -67,7 +67,7 @@ def test_register_duplicate_email(db_session: Session):
         json={
             "username": "user1",
             "email": "dup@example.com",
-            "password": "password123",
+            "password": "Password123!",
         },
     )
 
@@ -77,7 +77,7 @@ def test_register_duplicate_email(db_session: Session):
         json={
             "username": "user2",
             "email": "dup@example.com",
-            "password": "password123",
+            "password": "Password123!",
         },
     )
     assert response.status_code == 400
@@ -111,14 +111,14 @@ def test_register_empty_fields(db_session: Session):
     # Test empty username
     response = client.post(
         "/auth/register",
-        json={"username": "", "email": "test1@example.com", "password": "password123"},
+        json={"username": "", "email": "test1@example.com", "password": "Password123!"},
     )
     assert response.status_code == 422  # Validation error
 
     # Test empty email
     response = client.post(
         "/auth/register",
-        json={"username": "testuser1", "email": "", "password": "password123"},
+        json={"username": "testuser1", "email": "", "password": "Password123!"},
     )
     assert response.status_code == 422
 
@@ -134,7 +134,11 @@ def test_register_invalid_email_format(db_session: Session):
     """Test registration with invalid email format"""
     response = client.post(
         "/auth/register",
-        json={"username": "testuser3", "email": "invalid-email", "password": "pass"},
+        json={
+            "username": "testuser3",
+            "email": "invalid-email",
+            "password": "Password123!",
+        },
     )
     assert response.status_code == 422  # Pydantic validation
 
@@ -147,7 +151,7 @@ def test_register_username_too_long(db_session: Session):
         json={
             "username": long_username,
             "email": "test4@example.com",
-            "password": "password123",
+            "password": "Password123!",
         },
     )
     assert response.status_code == 422  # Validation error
@@ -158,7 +162,7 @@ def test_register_email_too_long(db_session: Session):
     long_email = "a" * 90 + "@example.com"  # Assuming max length is 100
     response = client.post(
         "/auth/register",
-        json={"username": "testuser5", "email": long_email, "password": "password123"},
+        json={"username": "testuser5", "email": long_email, "password": "Password123!"},
     )
     assert response.status_code == 422
 
@@ -197,7 +201,7 @@ def test_register_special_characters_in_username(db_session: Session):
         json={
             "username": "test_user-123",
             "email": "special@example.com",
-            "password": "password123",
+            "password": "Password123!",
         },
     )
     assert response.status_code == 201
@@ -214,7 +218,7 @@ def test_register_case_sensitive_username(db_session: Session):
         json={
             "username": "TestUser6",
             "email": "case1@example.com",
-            "password": "password123",
+            "password": "Password123!",
         },
     )
 
@@ -224,7 +228,7 @@ def test_register_case_sensitive_username(db_session: Session):
         json={
             "username": "testuser6",
             "email": "case2@example.com",
-            "password": "password123",
+            "password": "Password123!",
         },
     )
     assert response.status_code == 201  # Should succeed (case sensitive)
@@ -248,7 +252,7 @@ def test_register_sql_injection_attempt(db_session: Session):
         json={
             "username": malicious_username,
             "email": "sql@example.com",
-            "password": "password123",
+            "password": "Password123!",
         },
     )
     # Should either succeed (escaped) or fail validation, but not execute SQL
@@ -273,15 +277,11 @@ def test_register_xss_attempt(db_session: Session):
         json={
             "username": xss_username,
             "email": "xss@example.com",
-            "password": "password123",
+            "password": "Password123!",
         },
     )
-    # Should succeed (XSS protection is handled by frontend/output encoding)
-    assert response.status_code == 201
-
-    # Verify the data is stored as-is (no execution)
-    data = response.json()
-    assert "<script>" in data["username"]  # Stored as plain text
+    # Should fail validation due to invalid username characters
+    assert response.status_code == 422
 
 
 def test_multiple_concurrent_registrations(db_session: Session):
@@ -297,7 +297,7 @@ def test_multiple_concurrent_registrations(db_session: Session):
             json={
                 "username": f"concurrent{index}",
                 "email": f"concurrent{index}@example.com",
-                "password": "password123",
+                "password": "Password123!",
             },
         )
         results.append((index, response.status_code))

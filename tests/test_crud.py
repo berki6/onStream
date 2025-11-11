@@ -65,7 +65,7 @@ class TestCRUDOperations:
         user_data = schemas.UserCreate(
             username="newuser_crud",
             email="newuser@example.com",
-            password="securepass123",
+            password="SecurePass123!",
         )
 
         created_user = crud.create_user(db_session, user_data)
@@ -129,7 +129,7 @@ class TestCRUDOperations:
             title="Test Video CRUD",
             description="A test video for CRUD operations",
             duration=120.5,
-            file_path="/test/path.mp4",
+            file_path="test_path.mp4",
         )
 
         created_video = crud.create_video(db_session, video_data, user.id)
@@ -169,7 +169,7 @@ class TestCRUDOperations:
             upload_id="testget12",
             user_id=user.id,
             title="Get Test Video",
-            file_path="/test/path.mp4",
+            file_path="test_path.mp4",
         )
         db_session.add(video)
         db_session.commit()
@@ -207,7 +207,7 @@ class TestCRUDOperations:
             upload_id="testupload",
             user_id=user.id,
             title="Upload ID Test Video",
-            file_path="/test/path.mp4",
+            file_path="test_path.mp4",
         )
         db_session.add(video)
         db_session.commit()
@@ -247,7 +247,7 @@ class TestCRUDOperations:
                 upload_id=f"testvid{i:02d}",
                 user_id=user.id,
                 title=f"Test Video {i}",
-                file_path=f"/test/path{i}.mp4",
+                file_path=f"test_path{i}.mp4",
             )
             db_session.add(video)
             videos.append(video)
@@ -304,7 +304,7 @@ class TestCRUDOperations:
             upload_id="testdelete",
             user_id=user.id,
             title="Delete Test Video",
-            file_path="/test/path.mp4",
+            file_path="test_path.mp4",
         )
         db_session.add(video)
         db_session.commit()
@@ -353,7 +353,7 @@ class TestCRUDOperations:
         db_job = crud.get_job_for_video(
             db_session,
             models.Video(
-                upload_id="testjob123", user_id=1, title="dummy", file_path="dummy"
+                upload_id="testjob123", user_id=1, title="dummy", file_path="dummy.mp4"
             ),
         )
         assert db_job is not None
@@ -372,7 +372,7 @@ class TestCRUDOperations:
 
         # Create a dummy video object for testing
         video = models.Video(
-            upload_id="testjobget", user_id=1, title="Test Video", file_path="/test.mp4"
+            upload_id="testjobget", user_id=1, title="Test Video", file_path="test.mp4"
         )
 
         # Test retrieval
@@ -382,7 +382,7 @@ class TestCRUDOperations:
 
         # Test with non-existent job
         video_no_job = models.Video(
-            upload_id="nojob", user_id=1, title="No Job Video", file_path="/test.mp4"
+            upload_id="nojob", user_id=1, title="No Job Video", file_path="test.mp4"
         )
         not_found = crud.get_job_for_video(db_session, video_no_job)
         assert not_found is None

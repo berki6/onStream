@@ -41,7 +41,7 @@ class TestEndToEndVideoWorkflow:
             json={
                 "username": "e2e_user",
                 "email": "e2e@example.com",
-                "password": "securepass123",
+                "password": "SecurePass123!",
             },
         )
         assert register_response.status_code == 201
@@ -51,7 +51,7 @@ class TestEndToEndVideoWorkflow:
 
         # Step 2: User Login
         login_response = client.post(
-            "/auth/login", data={"username": "e2e_user", "password": "securepass123"}
+            "/auth/login", data={"username": "e2e_user", "password": "SecurePass123!"}
         )
         assert login_response.status_code == 200
         tokens = login_response.json()
