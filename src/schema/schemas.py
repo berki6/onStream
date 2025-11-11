@@ -90,3 +90,42 @@ class VideoJob(VideoJobBase):
 
 class VideoJobResponse(VideoJob):
     pass
+
+
+class PlaylistBase(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class PlaylistCreate(PlaylistBase):
+    pass
+
+
+class Playlist(PlaylistBase):
+    id: int
+    user_id: int
+    is_public: bool = False
+    created_at: datetime
+
+    class ConfigDict:
+        from_attributes = True
+
+
+class PlaylistResponse(Playlist):
+    videos: Optional[list] = []
+
+
+class PlaylistVideoBase(BaseModel):
+    position: int = Field(ge=0)
+
+
+class PlaylistVideoCreate(PlaylistVideoBase):
+    pass
+
+
+class PlaylistVideo(PlaylistVideoBase):
+    id: int
+    playlist_id: int
+    video_id: int
+
+    class ConfigDict:
+        from_attributes = True
