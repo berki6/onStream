@@ -576,3 +576,230 @@ class TestVideoRouterExtended:
         # The video is already soft deleted, just remove the user
         db_session.delete(user)
         db_session.commit()
+
+    def test_upload_video_database_transaction_failure(self, mocker, db_session):
+        """Test video upload when database transaction fails during video creation."""
+        # Mock video duration probe
+        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe.return_value = 120.0
+
+        # Create and login test user
+        from src.core.auth import get_password_hash
+
+        hashed_password = get_password_hash("Testpass123!")
+        user = models.User(
+            username="dbtransfail",
+            email="dbtransfail@example.com",
+            hashed_password=hashed_password,
+        )
+        db_session.add(user)
+        db_session.commit()
+        db_session.refresh(user)
+
+        response = client.post(
+            "/auth/login", data={"username": "dbtransfail", "password": "Testpass123!"}
+        )
+        token = response.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Mock database commit to fail only after user creation
+        mock_commit = mocker.patch("sqlalchemy.orm.Session.commit")
+        mock_commit.side_effect = Exception("Database transaction failed")
+
+        response = client.post(
+            "/videos/",
+            data={"title": "DB Transaction Fail"},
+            files={"file": ("db_fail.mp4", b"content", "video/mp4")},
+            headers=headers,
+        )
+        assert response.status_code == 500
+        assert "Failed to create video record" in response.json()["detail"]
+
+        # Cleanup - don't use commit since it's mocked
+        try:
+            db_session.delete(user)
+            # Don't commit during cleanup in this test
+        except:
+            pass  # Ignore cleanup errors in this test
+
+    def test_upload_video_job_creation_failure(self, mocker, db_session):
+        """Test video upload when video job creation fails."""
+        # Mock video duration probe
+        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe.return_value = 120.0
+
+        # Mock job creation to fail
+        mock_create_job = mocker.patch("src.services.crud.create_video_job")
+        mock_create_job.side_effect = Exception("Job creation failed")
+
+        # Create and login test user
+        from src.core.auth import get_password_hash
+
+        hashed_password = get_password_hash("Testpass123!")
+        user = models.User(
+            username="jobfail",
+            email="jobfail@example.com",
+            hashed_password=hashed_password,
+        )
+        db_session.add(user)
+        db_session.commit()
+        db_session.refresh(user)
+
+        response = client.post(
+            "/auth/login", data={"username": "jobfail", "password": "Testpass123!"}
+        )
+        token = response.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        response = client.post(
+            "/videos/",
+            data={"title": "Job Creation Fail"},
+            files={"file": ("job_fail.mp4", b"content", "video/mp4")},
+            headers=headers,
+        )
+        assert response.status_code == 500
+        assert "Failed to create processing job" in response.json()["detail"]
+
+        # Cleanup
+        db_session.delete(user)
+        db_session.commit()
+
+    def test_upload_video_file_move_failure(self, mocker, db_session):
+        """Test video upload when file move operation fails."""
+        # Mock video duration probe
+        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe.return_value = 120.0
+
+        # Mock os.rename to fail
+        mock_rename = mocker.patch("os.rename")
+        mock_rename.side_effect = OSError("File move failed")
+
+        # Create and login test user
+        from src.core.auth import get_password_hash
+
+        hashed_password = get_password_hash("Testpass123!")
+        user = models.User(
+            username="movefail",
+            email="movefail@example.com",
+            hashed_password=hashed_password,
+        )
+        db_session.add(user)
+        db_session.commit()
+        db_session.refresh(user)
+
+        response = client.post(
+            "/auth/login", data={"username": "movefail", "password": "Testpass123!"}
+        )
+        token = response.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        response = client.post(
+            "/videos/",
+            data={"title": "File Move Fail"},
+            files={"file": ("move_fail.mp4", b"content", "video/mp4")},
+            headers=headers,
+        )
+        assert response.status_code == 500
+        assert "Failed to save video file" in response.json()["detail"]
+
+        # Cleanup
+        db_session.delete(user)
+        db_session.commit()
+
+    def test_upload_video_redis_failure(self, mocker, db_session):
+        """Test video upload when Redis queue push fails."""
+        # Mock video duration probe
+        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe.return_value = 120.0
+
+        # Mock Redis lpush to fail
+        mock_redis = mocker.patch("redis.Redis.lpush")
+        mock_redis.side_effect = Exception("Redis connection failed")
+
+        # Create and login test user
+        from src.core.auth import get_password_hash
+
+        hashed_password = get_password_hash("Testpass123!")
+        user = models.User(
+            username="redisfail",
+            email="redisfail@example.com",
+            hashed_password=hashed_password,
+        )
+        db_session.add(user)
+        db_session.commit()
+        db_session.refresh(user)
+
+        response = client.post(
+            "/auth/login", data={"username": "redisfail", "password": "Testpass123!"}
+        )
+        token = response.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        response = client.post(
+            "/videos/",
+            data={"title": "Redis Fail"},
+            files={"file": ("redis_fail.mp4", b"content", "video/mp4")},
+            headers=headers,
+        )
+        # Should still succeed since Redis failure is non-critical
+        assert response.status_code == 201
+        data = response.json()
+        assert "upload_id" in data
+
+        upload_id = data["upload_id"]
+
+        # Cleanup
+        video = (
+            db_session.query(models.Video)
+            .filter(models.Video.upload_id == upload_id)
+            .first()
+        )
+        if video:
+            db_session.delete(video)
+        db_session.delete(user)
+        db_session.commit()
+
+    def test_upload_video_final_commit_failure(self, mocker, db_session):
+        """Test video upload when final database commit fails."""
+        # Mock video duration probe
+        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe.return_value = 120.0
+
+        # Create and login test user
+        from src.core.auth import get_password_hash
+
+        hashed_password = get_password_hash("Testpass123!")
+        user = models.User(
+            username="commitfail",
+            email="commitfail@example.com",
+            hashed_password=hashed_password,
+        )
+        db_session.add(user)
+        db_session.commit()
+        db_session.refresh(user)
+
+        response = client.post(
+            "/auth/login", data={"username": "commitfail", "password": "Testpass123!"}
+        )
+        token = response.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Mock the final commit in the crud service to fail
+        mock_crud_commit = mocker.patch("src.services.crud.Session.commit")
+        mock_crud_commit.side_effect = Exception("Final commit failed")
+
+        response = client.post(
+            "/videos/",
+            data={"title": "Final Commit Fail"},
+            files={"file": ("commit_fail.mp4", b"content", "video/mp4")},
+            headers=headers,
+        )
+        assert response.status_code == 500
+        assert "Failed to create video record" in response.json()["detail"]
+
+        # Cleanup - don't use commit since it's mocked
+        try:
+            db_session.delete(user)
+            # Don't commit during cleanup in this test
+        except:
+            pass  # Ignore cleanup errors in this test

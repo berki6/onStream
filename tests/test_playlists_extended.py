@@ -20,7 +20,7 @@ class TestPlaylistRouterExtended:
         # Create and login test user
         from src.core.auth import get_password_hash
 
-        hashed_password = get_password_hash("testpass")
+        hashed_password = get_password_hash("Testpass123!")
         user = models.User(
             username="missingtitle",
             email="missingtitle@example.com",
@@ -31,7 +31,7 @@ class TestPlaylistRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "missingtitle", "password": "testpass"}
+            "/auth/login", data={"username": "missingtitle", "password": "Testpass123!"}
         )
         token = response.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
@@ -48,7 +48,7 @@ class TestPlaylistRouterExtended:
         # Create and login test user
         from src.core.auth import get_password_hash
 
-        hashed_password = get_password_hash("testpass")
+        hashed_password = get_password_hash("Testpass123!")
         user = models.User(
             username="longplaylist",
             email="longplaylist@example.com",
@@ -59,7 +59,7 @@ class TestPlaylistRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "longplaylist", "password": "testpass"}
+            "/auth/login", data={"username": "longplaylist", "password": "Testpass123!"}
         )
         token = response.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
@@ -68,7 +68,9 @@ class TestPlaylistRouterExtended:
         response = client.post(
             "/playlists/", json={"name": long_title}, headers=headers
         )
-        assert response.status_code == 422  # Pydantic validation error for exceeding max length
+        assert (
+            response.status_code == 422
+        )  # Pydantic validation error for exceeding max length
         errors = response.json()
         assert len(errors) > 0
         assert "String should have at most 100 characters" in str(errors)
@@ -758,6 +760,135 @@ class TestPlaylistRouterExtended:
             .first()
         )
         if playlist:
+            db_session.delete(playlist)
+        db_session.delete(user)
+        db_session.commit()
+
+    def test_add_video_to_playlist_cross_user_playlist(self, mocker, db_session):
+        """Test adding video to playlist owned by another user."""
+        # Mock video duration probe
+        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe.return_value = 120.0
+
+        # Create two users
+        from src.core.auth import get_password_hash
+
+        hashed_password = get_password_hash("Testpass123!")
+
+        user1 = models.User(
+            username="playlistowner",
+            email="playlistowner@example.com",
+            hashed_password=hashed_password,
+        )
+        user2 = models.User(
+            username="videouploader",
+            email="videouploader@example.com",
+            hashed_password=hashed_password,
+        )
+        db_session.add(user1)
+        db_session.add(user2)
+        db_session.commit()
+        db_session.refresh(user1)
+        db_session.refresh(user2)
+
+        # Login as user1 and create playlist
+        response = client.post(
+            "/auth/login",
+            data={"username": "playlistowner", "password": "Testpass123!"},
+        )
+        token1 = response.json()["access_token"]
+        headers1 = {"Authorization": f"Bearer {token1}"}
+
+        response = client.post(
+            "/playlists/", json={"name": "Cross User Playlist"}, headers=headers1
+        )
+        playlist_id = response.json()["id"]
+
+        # Login as user2 and create video
+        response = client.post(
+            "/auth/login",
+            data={"username": "videouploader", "password": "Testpass123!"},
+        )
+        token2 = response.json()["access_token"]
+        headers2 = {"Authorization": f"Bearer {token2}"}
+
+        response = client.post(
+            "/videos/",
+            data={"title": "Cross User Video"},
+            files={"file": ("cross.mp4", b"content", "video/mp4")},
+            headers=headers2,
+        )
+        upload_id = response.json()["upload_id"]
+
+        # Try to add user2's video to user1's playlist (should fail)
+        response = client.post(
+            f"/playlists/{playlist_id}/videos/{upload_id}/",
+            json={"position": 1},
+            headers=headers2,
+        )
+        assert response.status_code == 403
+        assert "Access denied" in response.json()["detail"]
+
+        # Cleanup
+        video = (
+            db_session.query(models.Video)
+            .filter(models.Video.upload_id == upload_id)
+            .first()
+        )
+        if video:
+            db_session.delete(video)
+        playlist = (
+            db_session.query(models.Playlist)
+            .filter(models.Playlist.id == playlist_id)
+            .first()
+        )
+        if playlist:
+            db_session.delete(playlist)
+        db_session.delete(user1)
+        db_session.delete(user2)
+        db_session.commit()
+
+    def test_playlist_duplicate_name_creation(self, db_session):
+        """Test creating playlist with duplicate name for same user."""
+        # Create and login test user
+        from src.core.auth import get_password_hash
+
+        hashed_password = get_password_hash("Testpass123!")
+        user = models.User(
+            username="dupname",
+            email="dupname@example.com",
+            hashed_password=hashed_password,
+        )
+        db_session.add(user)
+        db_session.commit()
+        db_session.refresh(user)
+
+        response = client.post(
+            "/auth/login", data={"username": "dupname", "password": "Testpass123!"}
+        )
+        token = response.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Create first playlist
+        response = client.post(
+            "/playlists/", json={"name": "Duplicate Name"}, headers=headers
+        )
+        assert response.status_code == 201
+
+        # Try to create second playlist with same name
+        response = client.post(
+            "/playlists/", json={"name": "Duplicate Name"}, headers=headers
+        )
+        assert response.status_code == 400
+        assert "already exists" in response.json()["detail"]
+
+        # Cleanup
+        playlists = (
+            db_session.query(models.Playlist)
+            .filter(models.Playlist.user_id == user.id)
+            .all()
+        )
+        for playlist in playlists:
             db_session.delete(playlist)
         db_session.delete(user)
         db_session.commit()
