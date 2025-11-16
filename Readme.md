@@ -170,13 +170,32 @@ The application uses environment variables for configuration. Copy `.env.example
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SECRET_KEY` | - | JWT signing key (required for production) |
+| `ENV` | `development` | Environment mode (`development` or `production`) |
 | `DATABASE_URL` | `sqlite:///./onstream.db` | Database connection string |
 | `REDIS_URL` | `redis://localhost:6379/1` | Redis connection for job queue |
 | `MAX_UPLOAD_SIZE` | `104857600` | Maximum video upload size (bytes) |
 | `MAX_VIDEO_DURATION_SECONDS` | `3600` | Maximum video duration (seconds) |
-| `VIDEO_UPLOAD_DIR` | `data/uploads` | Upload directory path |
-| `VIDEO_HLS_DIR` | `data/hls` | HLS segments directory |
+| `VIDEO_STORAGE_BASE` | `data` | Base directory for video storage |
+| `VIDEO_UPLOAD_SUBDIR` | `uploads` | Upload subdirectory (relative to base) |
+| `VIDEO_HLS_SUBDIR` | `hls` | HLS segments subdirectory (relative to base) |
+| `VIDEO_THUMBNAIL_SUBDIR` | `thumbnails` | Thumbnails subdirectory (relative to base) |
 | `LOG_LEVEL` | `INFO` | Logging level |
+
+### Environment-Specific Path Configuration
+
+The application automatically configures file paths based on the environment:
+
+**Development Mode** (`ENV=development`):
+
+- Base paths are resolved relative to the project root
+- Example: `data/uploads` → `/full/path/to/project/data/uploads`
+
+**Production Mode** (`ENV=production`):
+
+- Base paths are treated as absolute (container-friendly)
+- Example: `data` → `/app/data` (when running in Docker)
+
+This ensures consistent file handling across development and production environments without manual path manipulation.
 
 ## 📚 API Endpoints
 

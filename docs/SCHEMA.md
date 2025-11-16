@@ -504,6 +504,27 @@ flowchart TD
 - Only specific video extensions allowed
 - Special case for "temp" during upload
 
+#### File Path Storage & Environment Configuration
+
+- **Environment-Specific Configuration**: Paths are configured per environment (development/production/container)
+- **Base Path**: `VIDEO_STORAGE_BASE` defaults to `"data"` (relative in dev, absolute in production)
+- **Computed Properties**: `VIDEO_UPLOAD_DIR`, `VIDEO_HLS_DIR`, `VIDEO_THUMBNAIL_DIR` are computed from base path
+- **Storage Format**: Full filesystem paths are stored directly (no normalization)
+- **Cross-Platform**: Automatic path resolution using `pathlib.Path`
+- **Container-Ready**: Supports absolute paths for Docker/Kubernetes deployments
+
+**Configuration Variables**:
+
+- `VIDEO_STORAGE_BASE`: Base directory for all video storage (default: `"data"`)
+- `VIDEO_UPLOAD_SUBDIR`: Upload subdirectory (default: `"uploads"`)
+- `VIDEO_HLS_SUBDIR`: HLS subdirectory (default: `"hls"`)
+- `VIDEO_THUMBNAIL_SUBDIR`: Thumbnail subdirectory (default: `"thumbnails"`)
+
+**Environment Behavior**:
+
+- **Development**: Relative paths resolved to absolute from project root
+- **Production**: Absolute paths (e.g., `/app/data`) for container compatibility
+
 ## 🔗 Database Indexes
 
 ### Primary Keys
