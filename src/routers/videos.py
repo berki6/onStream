@@ -60,6 +60,7 @@ def probe_video_duration(file_path: str) -> Optional[float]:
 async def upload_video(
     file: UploadFile = File(...),
     title: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -147,7 +148,12 @@ async def upload_video(
         try:
             temp_video = crud.create_video(
                 db,
-                schemas.VideoCreate(title=title, duration=duration, file_path="temp"),
+                schemas.VideoCreate(
+                    title=title,
+                    description=description,
+                    duration=duration,
+                    file_path="temp",
+                ),
                 current_user.id,
             )
         except Exception as e:
