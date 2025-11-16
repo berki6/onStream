@@ -132,10 +132,10 @@ class VideoCreate(VideoBase):
         if v == "temp":
             return v
         # Prevent directory traversal
-        if '..' in v or v.startswith('/'):
+        if ".." in v or v.startswith("/"):
             raise ValueError("Invalid file path")
         # Allow only specific extensions
-        allowed_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.webm'}
+        allowed_extensions = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
         if not any(v.lower().endswith(ext) for ext in allowed_extensions):
             raise ValueError("Unsupported video file format")
         return v
