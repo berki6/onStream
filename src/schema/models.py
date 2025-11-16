@@ -60,9 +60,9 @@ class Video(Base):
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     duration = Column(Float, nullable=True)  # In seconds, from ffprobe
-    file_path = Column(String(500), nullable=False)  # e.g., /storage/originals/{id}.mp4
-    hls_path = Column(String(500), nullable=True)  # e.g., /streams/{id}/playlist.m3u8
-    thumbnail_path = Column(String(500), nullable=True)  # e.g., /thumbs/{id}.jpg
+    file_path = Column(String(500), nullable=False)  # data/uploads/{id}.mp4
+    hls_path = Column(String(500), nullable=True)  # data/hls/{upload_id}/index.m3u8
+    thumbnail_path = Column(String(500), nullable=True)  # data/thumbnails/{id}.jpg
     status = Column(Enum(VideoStatus), default=VideoStatus.PENDING, index=True)
     is_public = Column(Boolean, default=False)  # For sharing
     created_at = Column(DateTime(timezone=True), server_default=func.now())
