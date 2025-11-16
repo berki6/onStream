@@ -130,7 +130,7 @@ Error while opening encoder for output stream #0:0 - maybe incorrect parameters 
         mock_normpath.return_value = "/normalized/path.mp4"
         mock_exists.return_value = True
         mock_run.return_value = MagicMock(returncode=0, stderr="")
-        mock_thumbnail.return_value = "/thumbnail/path.jpg"
+        mock_thumbnail.return_value = "data/thumbnails/1.jpg"
 
         # Create test video and job
         video = models.Video(
@@ -155,7 +155,7 @@ Error while opening encoder for output stream #0:0 - maybe incorrect parameters 
 
         assert video.status == models.VideoStatus.READY
         assert video.hls_path is not None
-        assert video.thumbnail_path == "/thumbnail/path.jpg"
+        assert video.thumbnail_path == "data/thumbnails/1.jpg"
         assert job.status == "ready"
         assert job.progress == 100
         assert "Job completed successfully" in job.message

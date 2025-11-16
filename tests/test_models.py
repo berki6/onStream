@@ -103,9 +103,9 @@ class TestDatabaseModels:
             title="Test Video",
             description="A test video",
             duration=120.5,
-            file_path="/videos/test.mp4",
-            hls_path="/hls/test/index.m3u8",
-            thumbnail_path="/thumbs/test.jpg",
+            file_path="data/uploads/test.mp4",
+            hls_path="data/hls/testvid12/index.m3u8",
+            thumbnail_path="data/thumbnails/1.jpg",
             status=models.VideoStatus.PENDING,
             is_public=False,
         )
@@ -119,9 +119,9 @@ class TestDatabaseModels:
         assert video.title == "Test Video"
         assert video.description == "A test video"
         assert video.duration == 120.5
-        assert video.file_path == "/videos/test.mp4"
-        assert video.hls_path == "/hls/test/index.m3u8"
-        assert video.thumbnail_path == "/thumbs/test.jpg"
+        assert video.file_path == "data/uploads/test.mp4"
+        assert video.hls_path == "data/hls/testvid12/index.m3u8"
+        assert video.thumbnail_path == "data/thumbnails/1.jpg"
         assert video.status == models.VideoStatus.PENDING
         assert video.is_public is False
         assert video.created_at is not None
