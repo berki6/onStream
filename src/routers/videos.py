@@ -2,6 +2,8 @@ import os
 import shutil
 import subprocess
 from typing import List, Optional
+from pathlib import Path
+import uuid
 
 import redis
 from fastapi import (
@@ -21,17 +23,11 @@ from src.core.database import get_db
 from src.core.logger import get_logger
 from src.schema import schemas
 from src.services import crud
+from src.utils.paths import to_relative_path, to_absolute_path, ensure_dir
 
 router = APIRouter()
 
 logger = get_logger(__name__)
-
-UPLOAD_DIR = settings.VIDEO_UPLOAD_DIR
-HLS_DIR = settings.VIDEO_HLS_DIR
-THUMBNAIL_DIR = settings.VIDEO_THUMBNAIL_DIR
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-os.makedirs(HLS_DIR, exist_ok=True)
-os.makedirs(THUMBNAIL_DIR, exist_ok=True)
 
 
 def probe_video_duration(file_path: str) -> Optional[float]:
@@ -115,22 +111,23 @@ async def upload_video(
     import uuid
 
     temp_filename = f"temp_{uuid.uuid4().hex}_{file.filename}"
-    temp_path = os.path.join(UPLOAD_DIR, temp_filename)
+    temp_path = settings.VIDEO_UPLOAD_DIR / temp_filename
+    ensure_dir(temp_path)
     try:
         with open(temp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)  # type: ignore[arg-type]
 
         # Probe to validate and get duration
-        duration = probe_video_duration(temp_path)
+        duration = probe_video_duration(str(temp_path))
         if duration is None:
-            os.remove(temp_path)
+            temp_path.unlink(missing_ok=True)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid or corrupt video file",
             )
 
         if duration < 1:
-            os.remove(temp_path)
+            temp_path.unlink(missing_ok=True)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Video is too short (minimum 1 second)",
@@ -138,7 +135,7 @@ async def upload_video(
 
         if duration > settings.MAX_VIDEO_DURATION_SECONDS:
             max_duration_minutes = settings.MAX_VIDEO_DURATION_SECONDS // 60
-            os.remove(temp_path)
+            temp_path.unlink(missing_ok=True)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Video is too long (maximum {max_duration_minutes} minutes)",
@@ -157,7 +154,7 @@ async def upload_video(
                 current_user.id,
             )
         except Exception as e:
-            os.remove(temp_path)
+            temp_path.unlink(missing_ok=True)
             logger.error(f"Failed to create video record: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -171,7 +168,7 @@ async def upload_video(
             )
         except Exception as e:
             db.rollback()
-            os.remove(temp_path)
+            temp_path.unlink(missing_ok=True)
             logger.error(f"Failed to create video job: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -180,13 +177,13 @@ async def upload_video(
 
         # Now create the actual file_path with the video ID
         final_filename = f"{temp_video.id}_{uuid.uuid4().hex}_{file.filename}"
-        file_path = os.path.join(UPLOAD_DIR, final_filename)
+        file_path = settings.VIDEO_UPLOAD_DIR / final_filename
 
         try:
-            os.rename(temp_path, file_path)
+            temp_path.rename(file_path)
         except OSError as e:
             db.rollback()
-            os.remove(temp_path)
+            temp_path.unlink(missing_ok=True)
             logger.error(f"Failed to move video file: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -195,13 +192,12 @@ async def upload_video(
 
         # Update the video with the correct file_path
         try:
-            temp_video.file_path = file_path
+            temp_video.file_path = to_relative_path(file_path)
             db.commit()
             db.refresh(temp_video)
         except Exception as e:
             db.rollback()
-            if os.path.exists(file_path):
-                os.remove(file_path)
+            file_path.unlink(missing_ok=True)
             logger.error(f"Failed to update video record: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -228,9 +224,9 @@ async def upload_video(
         )
         # Clean up any temporary files
         for path in [temp_path, file_path if "file_path" in locals() else None]:
-            if path and os.path.exists(path):
+            if path and path.exists():
                 try:
-                    os.remove(path)
+                    path.unlink()
                 except OSError:
                     pass
         raise HTTPException(
@@ -413,23 +409,32 @@ def delete_video(
 
         # Clean up files with error handling
         try:
-            if video.file_path and os.path.exists(video.file_path):
-                os.remove(video.file_path)
+            if video.file_path:
+                file_path = to_absolute_path(video.file_path)
+                if file_path.exists():
+                    file_path.unlink()
         except OSError as e:
             logger.warning(f"Failed to remove video file {video.file_path}: {str(e)}")
 
         try:
-            if video.hls_path and os.path.exists(video.hls_path):
-                # Remove HLS files (playlist and segments)
-                for f in os.listdir(HLS_DIR):
-                    if f.startswith(f"{video.id}."):
-                        try:
-                            os.remove(os.path.join(HLS_DIR, f))
-                        except OSError as e:
-                            logger.warning(f"Failed to remove HLS file {f}: {str(e)}")
+            if video.hls_path:
+                hls_path = to_absolute_path(video.hls_path)
+                hls_dir = hls_path.parent
+                if hls_dir.exists():
+                    shutil.rmtree(hls_dir)  # Remove entire HLS directory
         except OSError as e:
             logger.warning(
                 f"Failed to clean up HLS directory for video {video.id}: {str(e)}"
+            )
+
+        try:
+            if video.thumbnail_path:
+                thumb_path = to_absolute_path(video.thumbnail_path)
+                if thumb_path.exists():
+                    thumb_path.unlink()
+        except OSError as e:
+            logger.warning(
+                f"Failed to remove thumbnail {video.thumbnail_path}: {str(e)}"
             )
 
         logger.info(
