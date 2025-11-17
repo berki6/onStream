@@ -38,10 +38,12 @@ def register_user(
 
     # Create user
     new_user = crud.create_user(db, user)
-    logger.info(f"User '{user.username}' registered successfully with request_id={request.state.request_id}")
+    logger.info(
+        f"User '{user.username}' registered successfully with request_id={request.state.request_id}"
+    )
 
     return schemas.APIResponse(
-        data=new_user,
+        data=schemas.User.model_validate(new_user),
         request_id=request.state.request_id,
         timestamp=datetime.now(timezone.utc),
         message="User registered successfully",
@@ -66,7 +68,9 @@ def login_for_access_token(
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
-    logger.info(f"User '{form_data.username}' logged in successfully with request_id={request.state.request_id}")
+    logger.info(
+        f"User '{form_data.username}' logged in successfully with request_id={request.state.request_id}"
+    )
 
     return schemas.APIResponse(
         data={"access_token": access_token, "token_type": "bearer"},
