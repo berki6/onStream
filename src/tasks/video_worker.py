@@ -9,11 +9,16 @@ using FFmpeg to transcode videos to HLS format and generate thumbnails.
 import os
 import subprocess
 import redis
+import signal
+import sys
+import threading
+from pathlib import Path
 from sqlalchemy.orm import sessionmaker
 from src.schema import models
 from src.core.database import engine
 from src.core.config import settings
 from src.core.logger import get_logger
+from src.utils.paths import to_relative_path, to_absolute_path, ensure_dir
 
 logger = get_logger(__name__)
 
@@ -23,10 +28,14 @@ Session = sessionmaker(bind=engine)
 # Redis setup
 redis_client = redis.from_url(settings.REDIS_URL)
 
-# Directory paths
-UPLOAD_DIR = settings.VIDEO_UPLOAD_DIR
-HLS_DIR = settings.VIDEO_HLS_DIR
-THUMBNAIL_DIR = settings.VIDEO_THUMBNAIL_DIR
+# Shutdown event for graceful termination
+shutdown_event = threading.Event()
+
+
+def signal_handler(signum, frame):
+    """Handle shutdown signals gracefully."""
+    logger.info("Worker received shutdown signal")
+    shutdown_event.set()
 
 
 def update_job_progress(session, job, progress, eta=0, message=None, status=None):
@@ -83,12 +92,16 @@ def extract_concise_error(stderr_text: str, max_lines=3, max_length=250) -> str:
 
 def generate_thumbnail(video_path: str, video_id: int) -> Optional[str]:
     """Generate thumbnail using FFmpeg."""
-    if not os.path.exists(video_path):
+    video_path_obj = Path(video_path)
+    if not video_path_obj.exists():
         logger.warning(f"Input video file not found for thumbnail: {video_path}")
         return None
 
-    thumbnail_path = os.path.join(THUMBNAIL_DIR, f"{video_id}.jpg")
+    thumbnail_path = settings.VIDEO_THUMBNAIL_DIR / f"{video_id}.jpg"
     try:
+        # Ensure thumbnail directory exists
+        ensure_dir(thumbnail_path)
+
         cmd = [
             "ffmpeg",
             "-i",
@@ -99,11 +112,11 @@ def generate_thumbnail(video_path: str, video_id: int) -> Optional[str]:
             "1",
             "-q:v",
             "3",
-            thumbnail_path,
+            str(thumbnail_path),
             "-y",  # Overwrite output
         ]
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-        return thumbnail_path
+        return to_relative_path(thumbnail_path)
     except (subprocess.CalledProcessError, Exception) as e:
         if isinstance(e, subprocess.CalledProcessError):
             short_error = extract_concise_error(e.stderr)
@@ -115,6 +128,11 @@ def generate_thumbnail(video_path: str, video_id: int) -> Optional[str]:
 
 def process_video(session, job):
     """Process a video job: transcode to HLS and generate thumbnail."""
+    # Check if shutdown was requested before starting
+    if shutdown_event.is_set():
+        logger.info("Shutdown requested, skipping video processing")
+        return
+
     # Get video by upload_id since VideoJob uses upload_id as primary key
     video = (
         session.query(models.Video)
@@ -126,10 +144,8 @@ def process_video(session, job):
         update_job_progress(session, job, 0, status="error", message="Video not found")
         return
 
-    upload_file = os.path.normpath(
-        video.file_path
-    )  # Normalize path for cross-platform compatibility
-    if not os.path.exists(upload_file):
+    upload_file = to_absolute_path(video.file_path)
+    if not upload_file.exists():
         logger.error(f"Input video file not found: {upload_file}")
         update_job_progress(
             session, job, 0, status="error", message="Input video file not found"
@@ -138,8 +154,8 @@ def process_video(session, job):
         session.commit()
         return
 
-    output_dir = os.path.normpath(os.path.join(HLS_DIR, job.upload_id))
-    os.makedirs(output_dir, exist_ok=True)
+    output_dir = settings.VIDEO_HLS_DIR / job.upload_id
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # Update video status to PROCESSING
     video.status = models.VideoStatus.PROCESSING
@@ -150,7 +166,10 @@ def process_video(session, job):
         update_job_progress(session, job, 10, message="Starting transcoding")
 
         # Generate thumbnail first
-        thumbnail_path = generate_thumbnail(upload_file, video.id)
+        if shutdown_event.is_set():
+            logger.info("Shutdown requested, skipping thumbnail generation")
+            return
+        thumbnail_path = generate_thumbnail(str(upload_file), video.id)
         if thumbnail_path:
             update_job_progress(session, job, 30, message="Thumbnail generated")
         else:
@@ -159,11 +178,14 @@ def process_video(session, job):
             )
 
         # Transcode to HLS
+        if shutdown_event.is_set():
+            logger.info("Shutdown requested, skipping HLS transcoding")
+            return
         update_job_progress(session, job, 50, message="Transcoding to HLS...")
         hls_cmd = [
             "ffmpeg",
             "-i",
-            upload_file,
+            str(upload_file),
             "-c:v",
             "libx264",
             "-preset",
@@ -191,17 +213,17 @@ def process_video(session, job):
             "-hls_list_size",
             "0",
             "-hls_segment_filename",
-            os.path.join(str(output_dir), "segment_%03d.ts"),
+            str(output_dir / "segment_%03d.ts"),
             "-f",
             "hls",
-            os.path.join(str(output_dir), "index.m3u8"),
+            str(output_dir / "index.m3u8"),
             "-y",
         ]
         result = subprocess.run(hls_cmd, check=True, capture_output=True, text=True)
 
         # Update video status and job completion
         video.status = models.VideoStatus.READY
-        video.hls_path = os.path.join(str(output_dir), "index.m3u8")
+        video.hls_path = to_relative_path(output_dir / "index.m3u8")
         if thumbnail_path:
             video.thumbnail_path = thumbnail_path
         session.commit()
@@ -246,12 +268,26 @@ def process_job(upload_id: str):
 
 def run_worker():
     """Main worker loop that consumes jobs from Redis queue."""
+    # Set up signal handlers only in development environment
+    is_development = settings.ENV == "development"
+    if is_development:
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+        logger.info("Signal handlers enabled for development environment")
+    else:
+        # In production, completely ignore keyboard interrupts
+        # Process lifecycle is managed by supervisor/systemd
+        signal.signal(signal.SIGINT, signal.SIG_IGN)  # Ignore Ctrl+C
+        logger.info(
+            "Signal handlers disabled for production environment (using supervisor)"
+        )
+
     logger.info("Video processing worker started")
 
-    while True:
+    while not shutdown_event.is_set():
         try:
-            # BLPOP blocks until an element is available
-            result = redis_client.blpop("video_jobs_queue")
+            # BLPOP blocks until an element is available or timeout
+            result = redis_client.blpop("video_jobs_queue", timeout=1.0)
             if result is None:
                 # Queue is empty, continue waiting
                 continue
@@ -261,11 +297,17 @@ def run_worker():
             process_job(upload_id)
 
         except KeyboardInterrupt:
-            logger.info("Worker received shutdown signal")
-            break
+            if is_development:
+                logger.info("Worker received shutdown signal")
+                break
+            # In production, KeyboardInterrupt is ignored (signal.SIG_IGN)
+            # This should never be reached due to signal.SIG_IGN, but just in case
+            continue
         except Exception as e:
             logger.error(f"Worker error: {e}")
             # Continue processing other jobs even if one fails
+
+    logger.info("Worker shutdown complete")
 
 
 if __name__ == "__main__":
