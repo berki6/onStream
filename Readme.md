@@ -28,6 +28,42 @@ A modern, scalable video streaming platform built with FastAPI, featuring asynch
 - **Logging**: Structured logging with configurable levels
 - **Health Checks**: Comprehensive health monitoring endpoints
 - **CORS Support**: Cross-origin resource sharing configuration
+- **Environment-Aware Signal Handling**: Intelligent process lifecycle management based on environment
+
+### Environment-Aware Signal Handling
+
+The video processing worker implements sophisticated signal handling that adapts to the deployment environment:
+
+**Development Environment** (`ENV=development`):
+
+- **Ctrl+C Support**: Graceful shutdown triggered by keyboard interrupt
+- **Signal Handlers**: SIGINT and SIGTERM signals are caught and processed
+- **Clean Termination**: Worker completes current tasks before shutting down
+- **Developer-Friendly**: Easy stopping during development and debugging
+
+**Production Environment** (`ENV=production`):
+
+- **Process Manager Control**: Lifecycle managed exclusively by supervisor/systemd
+- **Keyboard Interrupt Immunity**: Ctrl+C is completely ignored (signal.SIG_IGN)
+- **Robust Operation**: Prevents accidental termination from keyboard input
+- **Enterprise-Grade**: Follows production service best practices
+
+**Key Benefits**:
+
+- **Safety**: Prevents accidental service disruption in production
+- **Control**: Proper shutdown procedures through management tools only
+- **Flexibility**: Easy development workflow vs. robust production operation
+- **Thread-Safe**: Uses `threading.Event()` for race-condition-free shutdown coordination
+
+**Usage**:
+
+```bash
+# Development - Ctrl+C works
+ENV=development python start_worker.py
+
+# Production - Ctrl+C ignored, use supervisor commands
+ENV=production python start_worker.py
+```
 
 ## 📁 Project Structure
 
@@ -176,9 +212,9 @@ The application uses environment variables for configuration. Copy `.env.example
 | `MAX_UPLOAD_SIZE` | `104857600` | Maximum video upload size (bytes) |
 | `MAX_VIDEO_DURATION_SECONDS` | `3600` | Maximum video duration (seconds) |
 | `VIDEO_STORAGE_BASE` | `data` | Base directory for video storage |
-| `VIDEO_UPLOAD_SUBDIR` | `uploads` | Upload subdirectory (relative to base) |
-| `VIDEO_HLS_SUBDIR` | `hls` | HLS segments subdirectory (relative to base) |
-| `VIDEO_THUMBNAIL_SUBDIR` | `thumbnails` | Thumbnails subdirectory (relative to base) |
+| `VIDEO_UPLOAD_DIR` | `uploads` | Upload subdirectory (relative to base) |
+| `VIDEO_HLS_DIR` | `hls` | HLS segments subdirectory (relative to base) |
+| `VIDEO_THUMBNAIL_DIR` | `thumbnails` | Thumbnails subdirectory (relative to base) |
 | `LOG_LEVEL` | `INFO` | Logging level |
 
 ### Environment-Specific Path Configuration
@@ -462,6 +498,57 @@ RUN alembic upgrade head
 EXPOSE 8000
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
+
+### Supervisor Configuration
+
+For production deployment with process management, use Supervisor to manage the video worker processes. Create the configuration file `/etc/supervisor/conf.d/onstream-worker.conf`:
+
+```ini
+[program:onstream-worker]
+command=/path/to/venv/bin/python /path/to/onstream/start_worker.py
+directory=/path/to/onstream
+user=your-user
+environment=ENV=production
+autostart=true
+autorestart=true
+redirect_stderr=true
+stdout_logfile=/var/log/onstream/worker.log
+stdout_logfile_maxbytes=50MB
+stdout_logfile_backups=3
+stopwaitsecs=30
+stopsignal=TERM
+```
+
+**Supervisor Commands:**
+
+```bash
+# Reload configuration
+sudo supervisorctl reread
+sudo supervisorctl update
+
+# Start the worker
+sudo supervisorctl start onstream-worker
+
+# Check status
+sudo supervisorctl status onstream-worker
+
+# Stop the worker
+sudo supervisorctl stop onstream-worker
+
+# Restart the worker
+sudo supervisorctl restart onstream-worker
+
+# View logs
+sudo supervisorctl tail onstream-worker
+```
+
+**Key Configuration Options:**
+
+- `stopsignal=TERM`: Sends SIGTERM for graceful shutdown
+- `stopwaitsecs=30`: Waits up to 30 seconds for clean shutdown
+- `environment=ENV=production`: Ensures production signal handling (Ctrl+C ignored)
+- `autorestart=true`: Automatically restarts worker if it crashes
+- `redirect_stderr=true`: Combines stdout and stderr in log file
 
 ## 📝 License
 

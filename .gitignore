@@ -6,6 +6,7 @@ alembic.ini
 .devdbrc
 sample.mp4
 data/
+.vscode
 # Environment Variables
 .env
 
