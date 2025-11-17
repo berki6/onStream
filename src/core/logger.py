@@ -1,14 +1,34 @@
 import logging
+import contextvars
 
 from src.core.config import settings
 
 
 _logger_configured = False
 
+# Context variable to store request ID across async calls
+request_id_context: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "request_id", default=""
+)
+
+
+class RequestIdFilter(logging.Filter):
+    """Logging filter to add request ID to log records."""
+
+    def filter(self, record):
+        # Try to get request ID from context variable
+        try:
+            record.request_id = request_id_context.get()
+        except LookupError:
+            record.request_id = ""
+        return True
+
+
 def get_logger(name=None):
     """
     Returns a logger with the specified name, configured for the project.
     Honors LOG_LEVEL from settings and initializes Sentry if SENTRY_DSN is set.
+    Includes request ID in log format for request tracking.
     """
 
     global _logger_configured
@@ -24,7 +44,9 @@ def get_logger(name=None):
         "LOG_FILE",
         numeric_level >= logging.WARNING and "log/error.log" or "log/flask_app.log",
     )
-    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    log_format = (
+        "%(asctime)s - %(name)s - %(levelname)s - [%(request_id)s] - %(message)s"
+    )
 
     # Remove any existing handlers to avoid duplicates
     for handler in root_logger.handlers[:]:
@@ -33,16 +55,21 @@ def get_logger(name=None):
     # Set level
     root_logger.setLevel(numeric_level)
 
+    # Create filter for request ID
+    request_id_filter = RequestIdFilter()
+
     # File handler
     file_handler = logging.FileHandler(log_filename, mode="w", encoding="utf-8")
     file_handler.setLevel(numeric_level)
     file_handler.setFormatter(logging.Formatter(log_format))
+    file_handler.addFilter(request_id_filter)
     root_logger.addHandler(file_handler)
 
     # Console handler
     console_handler = logging.StreamHandler()
     console_handler.setLevel(numeric_level)
     console_handler.setFormatter(logging.Formatter(log_format))
+    console_handler.addFilter(request_id_filter)
     root_logger.addHandler(console_handler)
 
     # Optional Sentry integration
