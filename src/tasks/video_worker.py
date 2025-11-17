@@ -6,11 +6,8 @@ This worker consumes video processing jobs from a Redis queue and processes them
 using FFmpeg to transcode videos to HLS format and generate thumbnails.
 """
 
-import os
 import subprocess
-import redis
 import signal
-import sys
 import threading
 import time
 import re
@@ -21,14 +18,12 @@ from src.core.database import engine
 from src.core.config import settings
 from src.core.logger import get_logger
 from src.utils.paths import to_relative_path, to_absolute_path, ensure_dir
+from src.services.job_queue import job_queue
 
 logger = get_logger(__name__)
 
 # Database setup
 Session = sessionmaker(bind=engine)
-
-# Redis setup
-redis_client = redis.from_url(settings.REDIS_URL)
 
 # Shutdown event for graceful termination
 shutdown_event = threading.Event()
@@ -375,6 +370,9 @@ def process_video(session, job):
         )
         logger.info(f"Video processing completed for upload_id {job.upload_id}")
 
+        # Mark job as completed in database queue
+        job_queue.mark_job_completed(job.upload_id)
+
     except (subprocess.CalledProcessError, Exception) as e:
         if isinstance(e, subprocess.CalledProcessError):
             short_error = extract_concise_error(e.stderr)
@@ -390,6 +388,9 @@ def process_video(session, job):
         # Update video status to error
         video.status = models.VideoStatus.ERROR
         session.commit()
+
+        # Mark job as failed in database queue
+        job_queue.mark_job_failed(job.upload_id, short_error)
 
 
 def process_job(upload_id: str):
@@ -428,13 +429,14 @@ def run_worker():
 
     while not shutdown_event.is_set():
         try:
-            # BLPOP blocks until an element is available or timeout
-            result = redis_client.blpop("video_jobs_queue", timeout=1.0)
-            if result is None:
+            # Try to recover jobs to Redis if it's available
+            job_queue.recover_jobs_to_redis()
+
+            # Dequeue job (from Redis or database fallback)
+            upload_id = job_queue.dequeue_job(timeout=1)
+            if upload_id is None:
                 # Queue is empty, continue waiting
                 continue
-            _, upload_id_bytes = result
-            upload_id = upload_id_bytes.decode("utf-8")
 
             process_job(upload_id)
 
