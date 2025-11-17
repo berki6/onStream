@@ -32,6 +32,66 @@ A modern, scalable video streaming platform built with FastAPI, featuring asynch
 - **Standardized API Responses**: Consistent response format across all endpoints
 - **Request ID Tracking**: End-to-end request tracing for debugging and monitoring
 
+### Reliability & Resilience Features
+
+- **Connection Pooling**: Redis connection pool with configurable limits and automatic cleanup
+- **Retry Logic**: Exponential backoff retry mechanism for Redis operations with configurable attempts
+- **Circuit Breaker Pattern**: Automatic failure detection and recovery for Redis connections
+- **Job Persistence Fallback**: Database-backed job queue that persists jobs when Redis is unavailable
+- **Automatic Recovery**: Jobs automatically recovered from database to Redis when service is restored
+- **Graceful Degradation**: System continues operating with reduced functionality during outages
+
+## 🔧 Reliability Architecture
+
+### Connection Pooling & Retry Logic
+
+The platform implements robust Redis connection management with:
+
+- **Connection Pool**: Configurable pool size (default: 10 connections) with automatic cleanup
+- **Socket Timeouts**: 5-second connection and read timeouts to prevent hanging operations
+- **Retry Mechanism**: Up to 3 retry attempts with exponential backoff (1s, 2s, 4s delays)
+- **Error Handling**: Graceful handling of `ConnectionError`, `TimeoutError`, and `OSError`
+
+### Circuit Breaker Pattern
+
+Implements a three-state circuit breaker for Redis operations:
+
+- **CLOSED State**: Normal operation, all requests pass through
+- **OPEN State**: Failure threshold exceeded (5 failures), requests fail fast
+- **HALF_OPEN State**: Testing recovery after timeout period (60 seconds)
+
+**Benefits**:
+
+- Prevents cascading failures during Redis outages
+- Reduces system load during service degradation
+- Enables faster recovery when services are restored
+- Provides monitoring and alerting capabilities
+
+### Job Persistence Fallback
+
+When Redis is unavailable, the system automatically falls back to database storage:
+
+- **Primary Storage**: Redis queue for optimal performance
+- **Fallback Storage**: Database `QueuedJob` table for persistence
+- **Recovery Process**: Automatic migration of jobs from database to Redis when service restores
+- **Status Tracking**: Complete job lifecycle tracking (pending → processing → completed/failed)
+
+**Key Features**:
+
+- Zero job loss during Redis outages
+- Automatic recovery with configurable batch sizes (max 100 jobs)
+- Retry limits to prevent infinite processing loops
+- Comprehensive monitoring and statistics
+
+### Monitoring & Health Checks
+
+Enhanced health monitoring includes:
+
+- **Circuit Breaker Status**: Current state and failure counts
+- **Queue Statistics**: Redis and database queue lengths
+- **Recovery Metrics**: Jobs recovered and pending counts
+- **Service Dependencies**: Database, Redis, and FFmpeg availability
+
 ### Environment-Aware Signal Handling
 
 The video processing worker implements sophisticated signal handling that adapts to the deployment environment:
@@ -69,7 +129,7 @@ ENV=production python start_worker.py
 
 ## 📁 Project Structure
 
-```
+```text
 onstream/
 ├── src/
 │   ├── core/                 # Core application components
@@ -320,7 +380,7 @@ Every API request is assigned a unique UUID for complete request lifecycle track
 2025-11-17 13:24:05 - src.tasks.worker - INFO - [550e8400-e29b-41d4-a716-446655440000] - Processing video job
 ```
 
-### Benefits
+### Key Features
 
 - **Distributed Tracing**: Track requests across microservices
 - **Debugging**: Correlate logs from different components
@@ -570,7 +630,8 @@ Structured logging with configurable levels and comprehensive request tracking:
 - End-to-end request tracing across all components
 
 **Log Format with Request IDs:**
-```
+
+```log
 2025-11-17 13:24:03 - src.routers.auth - INFO - [550e8400-e29b-41d4-a716-446655440000] - User 'john' logged in successfully
 2025-11-17 13:24:04 - src.routers.videos - INFO - [550e8400-e29b-41d4-a716-446655440000] - Video upload started
 2025-11-17 13:24:05 - src.tasks.worker - INFO - [550e8400-e29b-41d4-a716-446655440000] - Processing video job

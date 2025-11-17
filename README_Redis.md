@@ -1,24 +1,69 @@
-# Video Processing with Redis Job Queue
+# Video Processing with Redis Job Queue & Reliability Features
 
-This FastAPI application uses Redis for asynchronous video processing job queuing, enabling scalable and reliable video transcoding with HLS streaming and thumbnail generation.
+This FastAPI application uses Redis for asynchronous video processing job queuing with advanced reliability features, enabling scalable and fault-tolerant video transcoding with HLS streaming and thumbnail generation.
 
 ## Architecture
 
 ### Components
 
 1. **FastAPI Web Server**: Handles video uploads and API requests
-2. **Redis Queue**: Stores video processing jobs using a simple list structure
-3. **Video Worker**: Consumes jobs from Redis and processes videos using FFmpeg
+2. **Redis Queue with Reliability Layer**: Stores video processing jobs with connection pooling, retry logic, and circuit breaker protection
+3. **Database Fallback System**: Persists jobs when Redis is unavailable with automatic recovery
+4. **Video Worker**: Consumes jobs from Redis/database and processes videos using FFmpeg
 
 ### Workflow
 
-1. User uploads video via `POST /videos/upload` endpoint
+1. User uploads video via `POST /videos/` endpoint
 2. Video metadata is saved to database with a unique `upload_id`
 3. `VideoJob` record is created in database for tracking processing status
-4. `upload_id` is pushed to Redis queue `video_jobs_queue` using `LPUSH`
-5. Worker consumes job from Redis using `BLPOP` (blocking pop) and processes video
-6. Progress is updated in database via `VideoJob` status fields
-7. Processed video (HLS segments + thumbnail) becomes available for streaming
+4. `upload_id` is pushed to Redis queue `video_jobs_queue` using `LPUSH` (with retry logic)
+5. If Redis is unavailable, job is stored in database `QueuedJob` table
+6. Worker consumes job from Redis using `BLPOP` (blocking pop) and processes video
+7. If Redis recovers, jobs are automatically migrated from database to Redis
+8. Progress is updated in database via `VideoJob` status fields
+9. Processed video (HLS segments + thumbnail) becomes available for streaming
+
+## 🔧 Reliability & Resilience Features
+
+### Connection Pooling & Retry Logic
+
+The platform implements robust Redis connection management:
+
+- **Connection Pool**: Configurable pool size (default: 10 connections) with automatic cleanup
+- **Socket Timeouts**: 5-second connection and read timeouts to prevent hanging operations
+- **Retry Mechanism**: Up to 3 retry attempts with exponential backoff (1s, 2s, 4s delays)
+- **Error Handling**: Graceful handling of `ConnectionError`, `TimeoutError`, and `OSError`
+
+### Circuit Breaker Pattern
+
+Implements a three-state circuit breaker for Redis operations:
+
+- **CLOSED State**: Normal operation, all requests pass through
+- **OPEN State**: Failure threshold exceeded (5 failures), requests fail fast
+- **HALF_OPEN State**: Testing recovery after timeout period (60 seconds)
+
+**Benefits**:
+
+- Prevents cascading failures during Redis outages
+- Reduces system load during service degradation
+- Enables faster recovery when services are restored
+- Provides monitoring and alerting capabilities
+
+### Job Persistence Fallback
+
+When Redis is unavailable, the system automatically falls back to database storage:
+
+- **Primary Storage**: Redis queue for optimal performance
+- **Fallback Storage**: Database `QueuedJob` table for persistence
+- **Recovery Process**: Automatic migration of jobs from database to Redis when service restores
+- **Status Tracking**: Complete job lifecycle tracking (pending → processing → completed/failed)
+
+**Key Features**:
+
+- Zero job loss during Redis outages
+- Automatic recovery with configurable batch sizes (max 100 jobs)
+- Retry limits to prevent infinite processing loops
+- Comprehensive monitoring and statistics
 
 ## Setup
 
@@ -78,7 +123,7 @@ python start_worker.py &
 ### Upload Video
 
 ```http
-POST /videos/upload
+POST /videos/
 Authorization: Bearer <token>
 Content-Type: multipart/form-data
 
@@ -92,7 +137,8 @@ title: <optional_title>
 
 - Validates file type, size, and duration using FFmpeg
 - Creates database records for video and job tracking
-- Pushes `upload_id` to Redis queue for processing
+- Pushes `upload_id` to Redis queue for processing (with retry logic and fallback)
+- If Redis is unavailable, job is stored in database for later recovery
 - Returns immediately (processing happens asynchronously)
 
 ### Check Job Status
@@ -194,15 +240,39 @@ next_job = r.lindex('video_jobs_queue', -1)  # Redis lists are last-in-first-out
 print(f"Next job: {next_job}")
 ```
 
+### Circuit Breaker & Reliability Monitoring
+
+Monitor the health of Redis connections and reliability features:
+
+```python
+from src.core.redis_client import get_redis_client
+
+# Get Redis client with circuit breaker
+redis_client = get_redis_client()
+
+# Check circuit breaker status
+circuit_status = redis_client.get_circuit_breaker_status()
+print(f"Circuit Breaker State: {circuit_status['state']}")
+print(f"Failure Count: {circuit_status['failure_count']}")
+print(f"Last Failure Time: {circuit_status['last_failure_time']}")
+
+# Check queue statistics (Redis + Database fallback)
+queue_stats = redis_client.get_queue_statistics()
+print(f"Redis Queue Length: {queue_stats['redis_queue_length']}")
+print(f"Database Queue Length: {queue_stats['db_queue_length']}")
+print(f"Jobs Recovered: {queue_stats['jobs_recovered']}")
+```
+
 ### Database Job Status
 
 Query job status directly from database:
 
 ```python
 from sqlalchemy.orm import Session
-from src.schema.models import VideoJob
+from src.schema.models import VideoJob, QueuedJob
 
 def get_job_status(db: Session, upload_id: str):
+    # Check active job status
     job = db.query(VideoJob).filter(VideoJob.upload_id == upload_id).first()
     if job:
         return {
@@ -211,6 +281,16 @@ def get_job_status(db: Session, upload_id: str):
             "eta": job.eta,
             "message": job.message
         }
+    
+    # Check if job is in fallback queue
+    fallback_job = db.query(QueuedJob).filter(QueuedJob.upload_id == upload_id).first()
+    if fallback_job:
+        return {
+            "status": "queued_fallback",
+            "message": "Job queued in database (Redis unavailable)"
+        }
+    
+    return None
 ```
 
 ### Worker Logs
@@ -222,15 +302,20 @@ Workers log progress using the application logger. Monitor logs for:
 - Progress updates: `"Job {upload_id}: {progress}% complete"`
 - Completion: `"Job {upload_id} completed successfully"`
 - Errors: `"Job {upload_id} failed: {error_message}"`
+- Reliability events: `"Circuit breaker opened"`, `"Redis recovered, migrating jobs"`, `"Job recovered from database"`
 
 ## Benefits
 
 1. **Decoupling**: Upload and processing are separate concerns
 2. **Scalability**: Multiple workers can process jobs concurrently
 3. **Reliability**: Jobs persist in Redis even if workers restart
-4. **Efficiency**: Workers block on Redis BLPOP, no polling overhead
-5. **Monitoring**: Real-time job status tracking via database
-6. **Fault Tolerance**: Failed jobs don't block the queue
+4. **Fault Tolerance**: Failed jobs don't block the queue
+5. **Resilience**: Connection pooling and retry logic handle temporary Redis issues
+6. **High Availability**: Circuit breaker prevents cascade failures during outages
+7. **Data Integrity**: Job persistence fallback ensures zero job loss
+8. **Automatic Recovery**: System recovers automatically when Redis service is restored
+9. **Monitoring**: Real-time job status tracking and reliability metrics
+10. **Efficiency**: Workers block on Redis BLPOP, no polling overhead
 
 ## Troubleshooting
 
@@ -238,8 +323,18 @@ Workers log progress using the application logger. Monitor logs for:
 
 1. **Worker not processing jobs**: Check Redis connection and queue name
 2. **Jobs stuck in pending**: Ensure workers are running and can connect to Redis
-3. **FFmpeg errors**: Verify FFmpeg installation and video file integrity
-4. **Database connection issues**: Check database URL and connectivity
+3. **Circuit breaker opened**: Redis is experiencing connectivity issues, check Redis service
+4. **Jobs in database fallback**: Redis is unavailable, jobs are safely stored in database
+5. **FFmpeg errors**: Verify FFmpeg installation and video file integrity
+6. **Database connection issues**: Check database URL and connectivity
+7. **High retry counts**: Network issues or Redis performance problems
+
+### Reliability-Specific Issues
+
+1. **Circuit Breaker Frequently Opening**: Check Redis stability and network connectivity
+2. **Jobs Accumulating in Database**: Redis service is down, monitor for automatic recovery
+3. **Connection Pool Exhausted**: Increase pool size or reduce connection timeout
+4. **Recovery Process Slow**: Large number of jobs migrating, monitor progress logs
 
 ### Debug Commands
 
@@ -252,4 +347,13 @@ redis-cli -u redis://localhost:6379/1 monitor
 
 # Check worker logs
 tail -f python.log | grep -i video
+
+# Check circuit breaker status
+curl http://localhost:8000/health | jq '.circuit_breaker'
+
+# Check queue statistics
+curl http://localhost:8000/health | jq '.queue_stats'
+
+# Monitor database fallback jobs
+python -c "from src.core.database import get_db; from src.schema.models import QueuedJob; db = next(get_db()); print(f'Fallback jobs: {db.query(QueuedJob).count()}')"
 ```
