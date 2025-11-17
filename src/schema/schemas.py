@@ -1,9 +1,42 @@
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Optional, Any, List
 
 from pydantic import BaseModel, Field, field_validator
 import re
+import uuid
+
+
+# Base API Response Classes
+class APIResponse(BaseModel):
+    success: bool = True
+    data: Any
+    message: Optional[str] = None
+    request_id: str
+    timestamp: datetime
+    api_version: str = "v1"
+
+
+class PaginatedResponse(APIResponse):
+    data: List[Any]
+    pagination: dict = Field(
+        default_factory=lambda: {
+            "total_count": 0,
+            "page": 1,
+            "per_page": 100,
+            "has_more": False,
+        }
+    )
+
+
+class ErrorResponse(BaseModel):
+    success: bool = False
+    error: str
+    message: Optional[str] = None
+    request_id: str
+    timestamp: datetime
+    api_version: str = "v1"
+    details: Optional[List[dict]] = None
 
 
 class UserBase(BaseModel):
@@ -232,7 +265,7 @@ class Playlist(PlaylistBase):
 
 
 class PlaylistResponse(Playlist):
-    videos: Optional[list] = []
+    videos: List[dict] = []
 
 
 class PlaylistVideoBase(BaseModel):
