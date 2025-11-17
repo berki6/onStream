@@ -29,6 +29,8 @@ A modern, scalable video streaming platform built with FastAPI, featuring asynch
 - **Health Checks**: Comprehensive health monitoring endpoints
 - **CORS Support**: Cross-origin resource sharing configuration
 - **Environment-Aware Signal Handling**: Intelligent process lifecycle management based on environment
+- **Standardized API Responses**: Consistent response format across all endpoints
+- **Request ID Tracking**: End-to-end request tracing for debugging and monitoring
 
 ### Environment-Aware Signal Handling
 
@@ -233,17 +235,128 @@ The application automatically configures file paths based on the environment:
 
 This ensures consistent file handling across development and production environments without manual path manipulation.
 
+## 📋 API Response Structure
+
+All API endpoints return standardized responses following industry best practices (inspired by GitHub, Stripe, and AWS APIs).
+
+### Standard Response Format
+
+**Successful Response:**
+
+```json
+{
+  "success": true,
+  "data": { /* endpoint-specific data */ },
+  "message": "Operation completed successfully",
+  "request_id": "550e8400-e29b-41d4-a716-446655440000",
+  "timestamp": "2025-11-17T13:24:03.123456Z"
+}
+```
+
+**Error Response:**
+
+```json
+{
+  "success": false,
+  "data": null,
+  "message": "Error description",
+  "request_id": "550e8400-e29b-41d4-a716-446655440000",
+  "timestamp": "2025-11-17T13:24:03.123456Z"
+}
+```
+
+**Paginated Response:**
+
+```json
+{
+  "success": true,
+  "data": [ /* array of items */ ],
+  "message": "Items retrieved successfully",
+  "request_id": "550e8400-e29b-41d4-a716-446655440000",
+  "timestamp": "2025-11-17T13:24:03.123456Z",
+  "pagination": {
+    "total_count": 150,
+    "page": 2,
+    "per_page": 10,
+    "has_more": true
+  }
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `success` | boolean | Operation success status |
+| `data` | any | Response payload (null for errors) |
+| `message` | string | Human-readable status message |
+| `request_id` | string | Unique request identifier for tracing |
+| `timestamp` | string | ISO 8601 UTC timestamp |
+| `pagination` | object | Pagination metadata (list endpoints only) |
+
+### Benefits
+
+- **Consistency**: Uniform response format across all endpoints
+- **Debugging**: Request IDs enable end-to-end tracing
+- **Client Integration**: Predictable response structure
+- **Monitoring**: Standardized error reporting and success metrics
+
+## 🔍 Request ID Tracking
+
+Every API request is assigned a unique UUID for complete request lifecycle tracking.
+
+### How It Works
+
+1. **Request Arrival**: Middleware generates UUID and sets in request context
+2. **Response Header**: `X-Request-ID` header included in all responses
+3. **Log Correlation**: All log entries include request ID in format
+4. **Error Tracing**: Failed requests traceable across all components
+
+### Log Format with Request IDs
+
+```log
+2025-11-17 13:24:03 - src.routers.auth - INFO - [550e8400-e29b-41d4-a716-446655440000] - User 'john' logged in successfully
+2025-11-17 13:24:04 - src.routers.videos - INFO - [550e8400-e29b-41d4-a716-446655440000] - Video upload started
+2025-11-17 13:24:05 - src.tasks.worker - INFO - [550e8400-e29b-41d4-a716-446655440000] - Processing video job
+```
+
+### Benefits
+
+- **Distributed Tracing**: Track requests across microservices
+- **Debugging**: Correlate logs from different components
+- **Performance Monitoring**: Measure end-to-end request latency
+- **Error Correlation**: Link errors to specific user requests
+- **Production Support**: Easier incident investigation
+
+### Request ID in Headers
+
+All API responses include the `X-Request-ID` header:
+
+```log
+HTTP/1.1 200 OK
+Content-Type: application/json
+X-Request-ID: 550e8400-e29b-41d4-a716-446655440000
+...
+
+{
+  "success": true,
+  "data": {...},
+  "request_id": "550e8400-e29b-41d4-a716-446655440000",
+  ...
+}
+```
+
 ## 📚 API Endpoints
 
 ### Authentication
 
 - `POST /auth/register` - Register new user
   - **Body**: `{"username": "string", "email": "string", "password": "string"}`
-  - **Response**: `201 Created` - User object
+  - **Response**: `201 Created` - Standardized APIResponse with user data
   - **Errors**: `400 Bad Request` - Username/email already exists, invalid data
 - `POST /auth/login` - User login
   - **Body**: `{"username": "string", "password": "string"}`
-  - **Response**: `200 OK` - `{"access_token": "string", "token_type": "bearer"}`
+  - **Response**: `200 OK` - Standardized APIResponse with access token
   - **Errors**: `401 Unauthorized` - Invalid credentials
 
 ### Videos
@@ -252,21 +365,21 @@ This ensures consistent file handling across development and production environm
   - **Auth**: Bearer token required
   - **Content-Type**: `multipart/form-data`
   - **Body**: `file` (video file), `title` (optional)
-  - **Response**: `201 Created` - Video object with `upload_id`
+  - **Response**: `201 Created` - Standardized APIResponse with video object and `upload_id`
   - **Errors**: `400 Bad Request` - Invalid file type/size, `413 Payload Too Large` - File too large
 - `GET /videos/` - List user videos
   - **Auth**: Bearer token required
   - **Query**: `skip` (int, default 0), `limit` (int, default 100, max 100)
-  - **Response**: `200 OK` - Array of video objects
+  - **Response**: `200 OK` - Paginated APIResponse with array of video objects
 - `GET /videos/{upload_id}` - Get video details
   - **Auth**: Bearer token required
   - **Path**: `upload_id` (8-character string)
-  - **Response**: `200 OK` - Video object
+  - **Response**: `200 OK` - Standardized APIResponse with video object
   - **Errors**: `404 Not Found` - Video not found, `403 Forbidden` - Access denied
 - `GET /videos/{upload_id}/job` - Get processing status
   - **Auth**: Bearer token required
   - **Path**: `upload_id` (8-character string)
-  - **Response**: `200 OK` - Job status with progress
+  - **Response**: `200 OK` - Standardized APIResponse with job status and progress
   - **Errors**: `404 Not Found` - Job not found
 - `DELETE /videos/{upload_id}` - Delete video
   - **Auth**: Bearer token required
@@ -292,16 +405,16 @@ This ensures consistent file handling across development and production environm
 - `POST /playlists/` - Create playlist
   - **Auth**: Bearer token required
   - **Body**: `{"name": "string"}`
-  - **Response**: `201 Created` - Playlist object
+  - **Response**: `201 Created` - Standardized APIResponse with playlist object
   - **Errors**: `400 Bad Request` - Invalid name or duplicate name
 - `GET /playlists/` - List user's playlists
   - **Auth**: Bearer token required
   - **Query**: `skip` (int, default 0), `limit` (int, default 100, max 100)
-  - **Response**: `200 OK` - Array of playlist objects
+  - **Response**: `200 OK` - Paginated APIResponse with array of playlist objects
 - `GET /playlists/{playlist_id}` - Get specific playlist
   - **Auth**: Bearer token required
   - **Path**: `playlist_id` (integer)
-  - **Response**: `200 OK` - Playlist object with videos
+  - **Response**: `200 OK` - Standardized APIResponse with playlist object and videos
   - **Errors**: `404 Not Found` - Playlist not found, `403 Forbidden` - Access denied
 - `DELETE /playlists/{playlist_id}` - Delete playlist
   - **Auth**: Bearer token required
@@ -312,7 +425,7 @@ This ensures consistent file handling across development and production environm
   - **Auth**: Bearer token required
   - **Path**: `playlist_id` (integer), `upload_id` (8-character string)
   - **Body**: `{"position": int}` (optional, defaults to end)
-  - **Response**: `201 Created`
+  - **Response**: `201 Created` - Standardized APIResponse with operation details
   - **Errors**: `404 Not Found` - Playlist/video not found, `403 Forbidden` - Access denied
 - `DELETE /playlists/{playlist_id}/videos/{upload_id}` - Remove video from playlist
   - **Auth**: Bearer token required
@@ -322,25 +435,25 @@ This ensures consistent file handling across development and production environm
 - `GET /playlists/{playlist_id}/videos` - List videos in playlist
   - **Auth**: Bearer token required
   - **Path**: `playlist_id` (integer)
-  - **Response**: `200 OK` - Array of video objects with positions
+  - **Response**: `200 OK` - Standardized APIResponse with array of video objects with positions
   - **Errors**: `404 Not Found` - Playlist not found, `403 Forbidden` - Access denied
 - `PUT /playlists/{playlist_id}/videos/{upload_id}` - Update video position
   - **Auth**: Bearer token required
   - **Path**: `playlist_id` (integer), `upload_id` (8-character string)
   - **Body**: `{"position": int}` (required)
-  - **Response**: `200 OK`
+  - **Response**: `200 OK` - Standardized APIResponse with updated position
   - **Errors**: `404 Not Found` - Playlist/video not found, `403 Forbidden` - Access denied
 
 ### Health
 
 - `GET /health` - Comprehensive application health check
-  - **Response**: `200 OK` - `{"status": "healthy", "database": "healthy", "redis": "healthy", "ffmpeg": "healthy", "timestamp": "ISO datetime"}`
+  - **Response**: `200 OK` - Standardized APIResponse with health status details
   - **Checks**: Database connectivity, Redis connectivity, FFmpeg availability
   - **Errors**: `503 Service Unavailable` - Any critical service unhealthy
 - `GET /health/live` - Liveness probe
-  - **Response**: `200 OK` - `{"status": "alive"}`
+  - **Response**: `200 OK` - Standardized APIResponse with liveness status and metrics
 - `GET /health/ready` - Readiness probe
-  - **Response**: `200 OK` - `{"status": "ready"}`
+  - **Response**: `200 OK` - Standardized APIResponse with readiness status
   - **Checks**: Database, Redis, and FFmpeg availability
   - **Errors**: `503 Service Unavailable` - Any dependency unavailable
 
@@ -448,11 +561,20 @@ alembic downgrade -1
 
 ### Logging
 
-Structured logging with configurable levels:
+Structured logging with configurable levels and comprehensive request tracking:
 
-- Console and file output
-- Request/response logging
-- Error tracking with stack traces
+- Console and file output with request ID correlation
+- Request/response logging with unique identifiers
+- Error tracking with stack traces and request context
+- Request ID format: `[uuid]` in all log entries
+- End-to-end request tracing across all components
+
+**Log Format with Request IDs:**
+```
+2025-11-17 13:24:03 - src.routers.auth - INFO - [550e8400-e29b-41d4-a716-446655440000] - User 'john' logged in successfully
+2025-11-17 13:24:04 - src.routers.videos - INFO - [550e8400-e29b-41d4-a716-446655440000] - Video upload started
+2025-11-17 13:24:05 - src.tasks.worker - INFO - [550e8400-e29b-41d4-a716-446655440000] - Processing video job
+```
 
 ### Health Checks
 
