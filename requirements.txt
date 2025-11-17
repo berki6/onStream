@@ -18,3 +18,4 @@ black==25.11.0
 isort==7.0.0
 python-dotenv==1.2.1
 redis==7.0.1
+psutil==7.1.3
