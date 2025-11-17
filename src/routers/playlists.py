@@ -1,7 +1,8 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
+from datetime import datetime, timezone
 
 from src.core.auth import get_current_user
 from src.core.config import settings
@@ -18,9 +19,10 @@ MAX_TITLE_LENGTH = 100
 
 
 @router.post(
-    "/", response_model=schemas.PlaylistResponse, status_code=status.HTTP_201_CREATED
+    "/", response_model=schemas.APIResponse, status_code=status.HTTP_201_CREATED
 )
 def create_playlist(
+    request: Request,
     playlist: schemas.PlaylistCreate,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
@@ -46,7 +48,12 @@ def create_playlist(
         logger.info(
             f"User '{current_user.username}' created playlist '{playlist.name}'"
         )
-        return db_playlist
+        return schemas.APIResponse(
+            data=db_playlist,
+            request_id=request.state.request_id,
+            timestamp=datetime.now(timezone.utc),
+            message="Playlist created successfully",
+        )
     except Exception as e:
         logger.error(
             f"Failed to create playlist for user '{current_user.username}': {str(e)}"
@@ -57,8 +64,9 @@ def create_playlist(
         )
 
 
-@router.get("/", response_model=List[schemas.PlaylistResponse])
+@router.get("/", response_model=schemas.PaginatedResponse)
 def list_playlists(
+    request: Request,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
@@ -78,13 +86,24 @@ def list_playlists(
         )
 
     try:
-        playlists = crud.get_playlists_by_user(
+        playlists, total_count = crud.get_playlists_by_user(
             db, current_user.id, skip=skip, limit=limit
         )
         logger.info(
             f"User '{current_user.username}' listed playlists: {len(playlists)} playlists"
         )
-        return playlists
+        return schemas.PaginatedResponse(
+            data=playlists,
+            request_id=request.state.request_id,
+            timestamp=datetime.now(timezone.utc),
+            message=f"Retrieved {len(playlists)} playlists",
+            pagination={
+                "total_count": total_count,
+                "page": (skip // limit) + 1,
+                "per_page": limit,
+                "has_more": skip + limit < total_count,
+            },
+        )
     except Exception as e:
         logger.error(
             f"Failed to list playlists for user '{current_user.username}': {str(e)}"
@@ -95,8 +114,9 @@ def list_playlists(
         )
 
 
-@router.get("/{playlist_id}", response_model=schemas.PlaylistResponse)
+@router.get("/{playlist_id}", response_model=schemas.APIResponse)
 def get_playlist(
+    request: Request,
     playlist_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
@@ -116,7 +136,12 @@ def get_playlist(
         logger.info(
             f"User '{current_user.username}' accessed playlist ID {playlist_id}"
         )
-        return playlist
+        return schemas.APIResponse(
+            data=playlist,
+            request_id=request.state.request_id,
+            timestamp=datetime.now(timezone.utc),
+            message="Playlist retrieved successfully",
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -161,8 +186,13 @@ def delete_playlist(
         )
 
 
-@router.post("/{playlist_id}/videos/{upload_id}", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{playlist_id}/videos/{upload_id}",
+    response_model=schemas.APIResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def add_video_to_playlist(
+    request: Request,
     playlist_id: int,
     upload_id: str,
     video_data: schemas.PlaylistVideoCreate,
@@ -212,7 +242,16 @@ def add_video_to_playlist(
         logger.info(
             f"User '{current_user.username}' added video {upload_id} to playlist {playlist_id}"
         )
-        return {"message": "Video added to playlist"}
+        return schemas.APIResponse(
+            data={
+                "playlist_id": playlist_id,
+                "video_upload_id": upload_id,
+                "position": video_data.position,
+            },
+            request_id=request.state.request_id,
+            timestamp=datetime.now(timezone.utc),
+            message="Video added to playlist successfully",
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -287,8 +326,9 @@ def remove_video_from_playlist(
         )
 
 
-@router.get("/{playlist_id}/videos")
+@router.get("/{playlist_id}/videos", response_model=schemas.APIResponse)
 def get_playlist_videos(
+    request: Request,
     playlist_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
@@ -322,7 +362,12 @@ def get_playlist_videos(
         logger.info(
             f"User '{current_user.username}' listed videos in playlist {playlist_id}: {len(videos)} videos"
         )
-        return videos
+        return schemas.APIResponse(
+            data=videos,
+            request_id=request.state.request_id,
+            timestamp=datetime.now(timezone.utc),
+            message=f"Retrieved {len(videos)} videos from playlist",
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -335,8 +380,9 @@ def get_playlist_videos(
         )
 
 
-@router.put("/{playlist_id}/videos/{upload_id}")
+@router.put("/{playlist_id}/videos/{upload_id}", response_model=schemas.APIResponse)
 def update_video_position(
+    request: Request,
     playlist_id: int,
     upload_id: str,
     video_data: schemas.PlaylistVideoCreate,
@@ -386,7 +432,16 @@ def update_video_position(
         logger.info(
             f"User '{current_user.username}' updated position of video {upload_id} in playlist {playlist_id} to {video_data.position}"
         )
-        return {"message": "Video position updated"}
+        return schemas.APIResponse(
+            data={
+                "playlist_id": playlist_id,
+                "video_upload_id": upload_id,
+                "position": video_data.position,
+            },
+            request_id=request.state.request_id,
+            timestamp=datetime.now(timezone.utc),
+            message="Video position updated successfully",
+        )
     except HTTPException:
         raise
     except Exception as e:

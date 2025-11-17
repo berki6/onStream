@@ -14,8 +14,10 @@ from fastapi import (
     File,
     Form,
     status,
+    Request,
 )
 from sqlalchemy.orm import Session
+from datetime import datetime, timezone
 
 from src.core.auth import get_current_user
 from src.core.config import settings
@@ -51,9 +53,10 @@ def probe_video_duration(file_path: str) -> Optional[float]:
 
 
 @router.post(
-    "/", response_model=schemas.VideoResponse, status_code=status.HTTP_201_CREATED
+    "/", response_model=schemas.APIResponse, status_code=status.HTTP_201_CREATED
 )
 async def upload_video(
+    request: Request,
     file: UploadFile = File(...),
     title: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
@@ -61,7 +64,7 @@ async def upload_video(
     current_user=Depends(get_current_user),
 ):
     logger.info(
-        f"User '{current_user.username}' starting video upload: {file.filename}"
+        f"User '{current_user.username}' starting video upload: {file.filename} with request_id={request.state.request_id}"
     )
 
     # Auto-generate title from filename if not provided
@@ -213,9 +216,14 @@ async def upload_video(
             # Don't fail the upload, just log the warning
 
         logger.info(
-            f"Video upload successful for user '{current_user.username}': video ID {temp_video.id}, queued for processing"
+            f"Video upload successful for user '{current_user.username}': video ID {temp_video.id}, queued for processing with request_id={request.state.request_id}"
         )
-        return temp_video
+        return schemas.APIResponse(
+            data=temp_video,
+            request_id=request.state.request_id,
+            timestamp=datetime.now(timezone.utc),
+            message="Video uploaded successfully and queued for processing",
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -235,8 +243,9 @@ async def upload_video(
         )
 
 
-@router.get("/", response_model=List[schemas.VideoResponse])
+@router.get("/", response_model=schemas.PaginatedResponse)
 def list_videos(
+    request: Request,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
@@ -255,11 +264,25 @@ def list_videos(
         )
 
     try:
-        videos = crud.get_videos_by_user(db, current_user.id, skip=skip, limit=limit)
-        logger.info(
-            f"User '{current_user.username}' listed videos: {len(videos)} videos"
+        videos, total_count = crud.get_videos_by_user(
+            db, current_user.id, skip=skip, limit=limit
         )
-        return videos
+        logger.info(
+            f"User '{current_user.username}' listed videos: {len(videos)} videos with request_id={request.state.request_id}"
+        )
+
+        return schemas.PaginatedResponse(
+            data=videos,
+            request_id=request.state.request_id,
+            timestamp=datetime.now(timezone.utc),
+            message=f"Retrieved {len(videos)} videos",
+            pagination={
+                "total_count": total_count,
+                "page": (skip // limit) + 1,
+                "per_page": limit,
+                "has_more": skip + limit < total_count,
+            },
+        )
     except Exception as e:
         logger.error(
             f"Failed to list videos for user '{current_user.username}': {str(e)}"
@@ -270,8 +293,9 @@ def list_videos(
         )
 
 
-@router.get("/{upload_id}", response_model=schemas.VideoResponse)
+@router.get("/{upload_id}", response_model=schemas.APIResponse)
 def get_video(
+    request: Request,
     upload_id: str,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
@@ -306,7 +330,12 @@ def get_video(
         logger.info(
             f"User '{current_user.username}' accessed video upload_id {upload_id}"
         )
-        return video
+        return schemas.APIResponse(
+            data=video,
+            request_id=request.state.request_id,
+            timestamp=datetime.now(timezone.utc),
+            message="Video retrieved successfully",
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -319,8 +348,9 @@ def get_video(
         )
 
 
-@router.get("/{upload_id}/job", response_model=schemas.VideoJobResponse)
+@router.get("/{upload_id}/job", response_model=schemas.APIResponse)
 def get_video_job(
+    request: Request,
     upload_id: str,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
@@ -361,7 +391,12 @@ def get_video_job(
         logger.info(
             f"User '{current_user.username}' checked job status for video upload_id {upload_id}"
         )
-        return job
+        return schemas.APIResponse(
+            data=job,
+            request_id=request.state.request_id,
+            timestamp=datetime.now(timezone.utc),
+            message="Job status retrieved successfully",
+        )
     except HTTPException:
         raise
     except Exception as e:

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from src.core.database import get_db
@@ -8,14 +8,38 @@ from datetime import datetime, timezone
 import redis
 import subprocess
 import shutil
+from src.schema.schemas import APIResponse
+import time
+import psutil
 
 router = APIRouter()
 
 logger = get_logger(__name__)
 
+# Track application start time for uptime calculation
+health_start_time = time.time()
 
-@router.get("/health")
-def health_check(db: Session = Depends(get_db)):
+
+def format_uptime(seconds: int) -> str:
+    """Format seconds into human readable time (e.g., '1D 2H 30M 45S')"""
+    days, remainder = divmod(seconds, 86400)  # 86400 seconds in a day
+    hours, remainder = divmod(remainder, 3600)  # 3600 seconds in an hour
+    minutes, seconds = divmod(remainder, 60)  # 60 seconds in a minute
+
+    parts = []
+    if days > 0:
+        parts.append(f"{days}D")
+    if hours > 0 or days > 0:  # Show hours if there are days or hours
+        parts.append(f"{hours}H")
+    if minutes > 0 or hours > 0 or days > 0:  # Show minutes if there are larger units
+        parts.append(f"{minutes}M")
+    parts.append(f"{seconds}S")
+
+    return " ".join(parts)
+
+
+@router.get("/health", response_model=APIResponse)
+def health_check(request: Request, db: Session = Depends(get_db)):
     """
     Comprehensive health check endpoint that verifies:
     - Application is running
@@ -81,19 +105,40 @@ def health_check(db: Session = Depends(get_db)):
         f"Health check performed: status={health_status['status']}, "
         f"database={db_status}, redis={redis_status}, ffmpeg={ffmpeg_status}"
     )
-    return health_status
+
+    return APIResponse(
+        data=health_status,
+        request_id=request.state.request_id,
+        timestamp=datetime.now(timezone.utc),
+        message="Health check completed",
+    )
 
 
-@router.get("/health/live")
-def liveness_check():
+@router.get("/health/live", response_model=APIResponse)
+def liveness_check(request: Request):
     """
     Liveness probe - checks if the application is running
+    Includes uptime and basic system metrics
     """
-    return {"status": "alive"}
+    uptime_seconds = int(time.time() - health_start_time)
+    uptime_formatted = format_uptime(uptime_seconds)
+
+    return APIResponse(
+        data={
+            "status": "alive",
+            # "uptime_seconds": uptime_seconds,
+            "uptime": uptime_formatted,
+            "memory_mb": round(psutil.virtual_memory().used / 1024**2, 2),
+            "cpu_percent": psutil.cpu_percent(interval=None),
+        },
+        request_id=request.state.request_id,
+        timestamp=datetime.now(timezone.utc),
+        message="Application is alive",
+    )
 
 
-@router.get("/health/ready")
-def readiness_check(db: Session = Depends(get_db)):
+@router.get("/health/ready", response_model=APIResponse)
+def readiness_check(request: Request, db: Session = Depends(get_db)):
     """
     Readiness probe - checks if the application is ready to serve requests
     Verifies all critical dependencies: database, Redis, and FFmpeg
@@ -116,7 +161,18 @@ def readiness_check(db: Session = Depends(get_db)):
         if result.returncode != 0:
             raise Exception("FFmpeg version check failed")
 
-        return {"status": "ready"}
+        return APIResponse(
+            data={"status": "ready"},
+            request_id=request.state.request_id,
+            timestamp=datetime.now(timezone.utc),
+            message="Application is ready to serve requests",
+        )
     except Exception as e:
         logger.error(f"Readiness check failed: {str(e)}")
-        return {"status": "not ready", "error": str(e)}
+        return APIResponse(
+            success=False,
+            data={"status": "not ready", "error": str(e)},
+            request_id=request.state.request_id,
+            timestamp=datetime.now(timezone.utc),
+            message="Application is not ready",
+        )
