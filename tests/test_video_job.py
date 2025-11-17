@@ -8,6 +8,7 @@ from src.schema import schemas, models
 from tests.conftest import override_get_db
 import redis
 from src.core.config import settings
+from unittest.mock import patch, MagicMock, call
 
 
 app.dependency_overrides[get_db] = override_get_db
@@ -166,3 +167,335 @@ def test_get_video_job_unauthorized(db_session: Session, test_user, mocker):
     # Clean up
     db_session.delete(user2)
     db_session.commit()
+
+
+class TestJobQueueReliability:
+    """Test job queue service reliability features."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        from src.services.job_queue import JobQueueService
+
+        self.job_queue = JobQueueService()
+        # Mock the redis_client on the instance for testing
+        self.mock_redis_client = MagicMock()
+        self.job_queue.redis_client = self.mock_redis_client
+
+    def test_enqueue_job_redis_success(self, db_session):
+        """Test successful job enqueue to Redis."""
+        self.mock_redis_client.lpush.return_value = 1
+
+        result = self.job_queue.enqueue_job("testupload123", db_session)
+
+        assert result is True
+        self.mock_redis_client.lpush.assert_called_once_with(
+            "video_jobs_queue", "testupload123"
+        )
+
+    def test_enqueue_job_redis_failure_fallback_to_db(self, db_session):
+        """Test job enqueue falls back to database when Redis fails."""
+        from src.core.redis_client import CircuitBreakerOpenException
+
+        self.mock_redis_client.lpush.side_effect = CircuitBreakerOpenException(
+            "Circuit open"
+        )
+
+        result = self.job_queue.enqueue_job("testupload123", db_session)
+
+        assert result is True
+        # Check that job was stored in database
+        queued_job = (
+            db_session.query(models.QueuedJob)
+            .filter_by(upload_id="testupload123")
+            .first()
+        )
+        assert queued_job is not None
+        assert queued_job.status == "pending"
+        assert queued_job.queue_name == "video_jobs_queue"
+
+        # Clean up
+        db_session.delete(queued_job)
+        db_session.commit()
+
+    def test_enqueue_job_redis_and_db_failure(self, db_session):
+        """Test job enqueue fails when both Redis and database fail."""
+        from src.core.redis_client import CircuitBreakerOpenException
+
+        self.mock_redis_client.lpush.side_effect = CircuitBreakerOpenException(
+            "Circuit open"
+        )
+
+        # Mock database failure
+        with patch.object(db_session, "add", side_effect=Exception("DB error")):
+            result = self.job_queue.enqueue_job("testupload123", db_session)
+
+        assert result is False
+
+    def test_enqueue_job_duplicate_prevention(self, db_session):
+        """Test duplicate jobs are not created in database fallback."""
+        from src.core.redis_client import CircuitBreakerOpenException
+
+        self.mock_redis_client.lpush.side_effect = CircuitBreakerOpenException(
+            "Circuit open"
+        )
+
+        # First enqueue
+        result1 = self.job_queue.enqueue_job("testupload123", db_session)
+        assert result1 is True
+
+        # Second enqueue with same upload_id
+        result2 = self.job_queue.enqueue_job("testupload123", db_session)
+        assert result2 is True
+
+        # Should only have one job in database
+        jobs = (
+            db_session.query(models.QueuedJob)
+            .filter_by(upload_id="testupload123")
+            .all()
+        )
+        assert len(jobs) == 1
+
+        # Clean up
+        db_session.delete(jobs[0])
+        db_session.commit()
+
+    def test_dequeue_job_redis_success(self):
+        """Test successful job dequeue from Redis."""
+        self.mock_redis_client.blpop.return_value = (
+            "video_jobs_queue",
+            b"testupload123",
+        )
+
+        result = self.job_queue.dequeue_job()
+
+        assert result == "testupload123"
+        self.mock_redis_client.blpop.assert_called_once_with(
+            "video_jobs_queue", timeout=1
+        )
+
+    @patch("src.services.job_queue.get_db")
+    def test_dequeue_job_redis_failure_fallback_to_db(self, mock_get_db):
+        """Test job dequeue falls back to database when Redis fails."""
+        from src.core.redis_client import CircuitBreakerOpenException
+
+        self.mock_redis_client.blpop.side_effect = CircuitBreakerOpenException(
+            "Circuit open"
+        )
+
+        # Mock database session
+        mock_session = MagicMock()
+        mock_get_db.return_value = iter(
+            [mock_session]
+        )  # Return iterator yielding session
+
+        # Mock queued job in database
+        mock_job = MagicMock()
+        mock_job.upload_id = "testupload123"
+        mock_job.status = "pending"
+        mock_job.retry_count = 0
+        mock_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            mock_job
+        )
+
+        result = self.job_queue.dequeue_job()
+
+        # Check that a job was returned and database was committed
+        assert result is not None
+        assert mock_session.commit.called
+        assert mock_job.status == "processing"
+        assert mock_job.retry_count == 1
+        mock_session.commit.assert_called_once()
+
+    @patch("src.services.job_queue.get_db")
+    def test_dequeue_job_no_jobs_in_db(self, mock_get_db):
+        """Test dequeue returns None when no jobs in database."""
+        from src.core.redis_client import CircuitBreakerOpenException
+
+        self.mock_redis_client.blpop.side_effect = CircuitBreakerOpenException(
+            "Circuit open"
+        )
+
+        # Mock database session
+        mock_session = MagicMock()
+        mock_get_db.return_value = iter([mock_session])
+
+        # Mock no jobs found
+        mock_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            None
+        )
+
+        result = self.job_queue.dequeue_job()
+
+        assert result is None
+
+    @patch("src.services.job_queue.get_db")
+    def test_mark_job_completed(self, mock_get_db):
+        """Test marking job as completed."""
+        # Mock database session
+        mock_session = MagicMock()
+        mock_get_db.return_value = iter([mock_session])
+
+        # Mock finding the job
+        mock_job = MagicMock()
+        mock_session.query.return_value.filter_by.return_value.first.return_value = (
+            mock_job
+        )
+
+        self.job_queue.mark_job_completed("testupload123")
+
+        # Check that database was committed
+        assert mock_session.commit.called
+        mock_session.commit.assert_called_once()
+
+    @patch("src.services.job_queue.get_db")
+    def test_mark_job_failed(self, mock_get_db):
+        """Test marking job as failed."""
+        # Mock database session
+        mock_session = MagicMock()
+        mock_get_db.return_value = iter([mock_session])
+
+        # Mock finding the job
+        mock_job = MagicMock()
+        mock_job.retry_count = 1
+        mock_session.query.return_value.filter_by.return_value.first.return_value = (
+            mock_job
+        )
+
+        self.job_queue.mark_job_failed("testupload123", "Processing error")
+
+        # Check that database was committed
+        assert mock_session.commit.called
+        assert mock_job.error_message == "Processing error"
+        assert mock_job.retry_count == 2
+        mock_session.commit.assert_called_once()
+
+    @patch("src.services.job_queue.get_db")
+    def test_recover_jobs_to_redis(self, mock_get_db):
+        """Test recovering jobs from database to Redis."""
+        # Mock database session
+        mock_session = MagicMock()
+        mock_get_db.return_value = iter([mock_session])
+
+        # Mock finding jobs
+        mock_job1 = MagicMock()
+        mock_job1.upload_id = "upload1"
+        mock_job2 = MagicMock()
+        mock_job2.upload_id = "upload2"
+        mock_session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
+            mock_job1,
+            mock_job2,
+        ]
+
+        # Mock successful Redis push
+        self.mock_redis_client.lpush.return_value = 1
+
+        recovered_count = self.job_queue.recover_jobs_to_redis()
+
+        # Check that Redis was called for both jobs and database was committed
+        assert self.mock_redis_client.lpush.call_count == 2
+        assert mock_session.commit.called
+
+    @patch("src.services.job_queue.get_db")
+    def test_recover_jobs_to_redis_partial_failure(self, mock_get_db):
+        """Test partial failure during job recovery."""
+        from src.core.redis_client import CircuitBreakerOpenException
+
+        # Mock database session
+        mock_session = MagicMock()
+        mock_get_db.return_value = iter([mock_session])
+
+        # Mock finding jobs
+        mock_job1 = MagicMock()
+        mock_job1.upload_id = "upload1"
+        mock_job2 = MagicMock()
+        mock_job2.upload_id = "upload2"
+        mock_session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
+            mock_job1,
+            mock_job2,
+        ]
+
+        # Mock Redis failure on second job
+        self.mock_redis_client.lpush.side_effect = [
+            1,
+            CircuitBreakerOpenException("Circuit open"),
+        ]
+
+        recovered_count = self.job_queue.recover_jobs_to_redis()
+
+        # Check that Redis was attempted for both jobs but only first succeeded
+        assert self.mock_redis_client.lpush.call_count == 2
+        assert mock_session.commit.called
+
+    @patch("src.services.job_queue.get_db")
+    def test_get_queue_stats_complete(self, mock_get_db):
+        """Test getting complete queue statistics."""
+        # Mock Redis stats
+        self.mock_redis_client.ping.return_value = True
+        self.mock_redis_client.llen.return_value = 5
+        self.mock_redis_client.get_circuit_breaker_status.return_value = {
+            "state": "CLOSED",
+            "failure_count": 0,
+            "last_failure_time": None,
+        }
+
+        # Mock database session
+        mock_session = MagicMock()
+        mock_get_db.return_value.__iter__.return_value = [mock_session]
+
+        # Mock count returns
+        mock_session.query.return_value.filter.return_value.count.side_effect = [3, 2]
+
+        stats = self.job_queue.get_queue_stats()
+
+        # Check that stats dict has expected keys
+        assert "redis_available" in stats
+        assert "redis_queue_length" in stats
+        assert "database_pending_jobs" in stats
+        assert "database_failed_jobs" in stats
+        assert "circuit_breaker_status" in stats
+
+    @patch("src.services.job_queue.get_db")
+    def test_get_queue_stats_redis_unavailable(self, mock_get_db):
+        """Test queue stats when Redis is unavailable."""
+        # Mock Redis failure
+        self.mock_redis_client.ping.return_value = False
+        self.mock_redis_client.llen.side_effect = Exception("Redis down")
+        self.mock_redis_client.get_circuit_breaker_status.return_value = {
+            "state": "OPEN",
+            "failure_count": 5,
+            "last_failure_time": 1234567890,
+        }
+
+        # Mock database session
+        mock_session = MagicMock()
+        mock_get_db.return_value.__iter__.return_value = [mock_session]
+
+        # Mock count returns
+        mock_session.query.return_value.filter.return_value.count.side_effect = [1, 0]
+
+        stats = self.job_queue.get_queue_stats()
+
+        # Check that stats dict has expected keys
+        assert "redis_available" in stats
+        assert "redis_queue_length" in stats
+        assert "database_pending_jobs" in stats
+        assert "database_failed_jobs" in stats
+        assert "circuit_breaker_status" in stats
+
+    @patch("src.services.job_queue.get_db")
+    def test_cleanup_old_jobs(self, mock_get_db):
+        """Test cleanup of old completed jobs."""
+        from datetime import datetime, timedelta, timezone
+
+        # Mock database session
+        mock_session = MagicMock()
+        mock_get_db.return_value = iter([mock_session])
+
+        # Mock the delete operation
+        mock_session.query.return_value.filter.return_value.delete.return_value = 5
+
+        deleted_count = self.job_queue.cleanup_old_jobs(days_old=30)
+
+        # Check that database was committed
+        assert mock_session.commit.called
+        mock_session.commit.assert_called_once()

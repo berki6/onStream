@@ -303,9 +303,11 @@ class JobQueueService:
 
             db.commit()
             logger.info(f"Cleaned up {deleted_count} old jobs from database")
+            return deleted_count
 
         except Exception as e:
             logger.error(f"Failed to cleanup old jobs: {e}")
+            return 0
         finally:
             db.close()
 
