@@ -33,7 +33,16 @@ def get_user(db: Session, user_id: int):
 
 
 def get_videos_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 100):
-    return (
+    # Get total count
+    total_count = (
+        db.query(models.Video)
+        .filter(models.Video.user_id == user_id)
+        .filter(models.Video.status != models.VideoStatus.DELETED)
+        .count()
+    )
+
+    # Get videos
+    videos = (
         db.query(models.Video)
         .filter(models.Video.user_id == user_id)
         .filter(models.Video.status != models.VideoStatus.DELETED)
@@ -41,6 +50,8 @@ def get_videos_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 10
         .limit(limit)
         .all()
     )
+
+    return videos, total_count
 
 
 def create_video(db: Session, video: schemas.VideoCreate, user_id: int):
@@ -109,13 +120,21 @@ def create_playlist(db: Session, playlist: schemas.PlaylistCreate, user_id: int)
 
 
 def get_playlists_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 100):
-    return (
+    # Get total count
+    total_count = (
+        db.query(models.Playlist).filter(models.Playlist.user_id == user_id).count()
+    )
+
+    # Get playlists
+    playlists = (
         db.query(models.Playlist)
         .filter(models.Playlist.user_id == user_id)
         .offset(skip)
         .limit(limit)
         .all()
     )
+
+    return playlists, total_count
 
 
 def get_playlist(db: Session, playlist_id: int):
