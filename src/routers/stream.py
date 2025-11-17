@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 import os
+from pathlib import Path
 from src.services import crud
 from src.core.database import get_db
 from src.core.auth import get_current_user
@@ -8,12 +9,11 @@ from src.core.config import settings
 from src.core.logger import get_logger
 from sqlalchemy.orm import Session
 from src.schema import models
+from src.utils.paths import to_absolute_path
 
 router = APIRouter()
 
 logger = get_logger(__name__)
-
-HLS_DIR = settings.VIDEO_HLS_DIR
 
 
 @router.get("/{upload_id}/playlist.m3u8")
@@ -54,7 +54,7 @@ async def stream_hls_playlist(
                 detail="Video is not ready for streaming",
             )
 
-        if not video.hls_path or not os.path.exists(video.hls_path):
+        if not video.hls_path or not to_absolute_path(video.hls_path).exists():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Stream playlist not available",
@@ -64,13 +64,15 @@ async def stream_hls_playlist(
             f"User '{current_user.username}' accessing HLS playlist for video upload_id {upload_id}"
         )
 
+        hls_path = to_absolute_path(video.hls_path)
+
         def iterfile():
             try:
-                with open(video.hls_path, mode="rb") as file_like:
+                with open(hls_path, mode="rb") as file_like:
                     for chunk in iter(lambda: file_like.read(4096), b""):
                         yield chunk
             except IOError as e:
-                logger.error(f"Error reading playlist file {video.hls_path}: {str(e)}")
+                logger.error(f"Error reading playlist file {hls_path}: {str(e)}")
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to read stream playlist",
@@ -139,9 +141,10 @@ async def stream_hls_segment(
             )
 
         # Segments are in the same directory as the playlist
-        hls_dir = os.path.dirname(video.hls_path)
-        ts_path = os.path.join(hls_dir, f"{segment}.ts")
-        if not os.path.exists(ts_path):
+        hls_path = to_absolute_path(video.hls_path)
+        hls_dir = hls_path.parent
+        ts_path = hls_dir / f"{segment}.ts"
+        if not ts_path.exists():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Stream segment not found"
             )
