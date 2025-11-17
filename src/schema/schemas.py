@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional, Any, List
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 import re
 import uuid
 
@@ -91,8 +91,7 @@ class User(UserBase):
     id: int
     created_at: datetime
 
-    class ConfigDict:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Token(BaseModel):
@@ -200,8 +199,7 @@ class Video(VideoBase):
             return v.replace("\\", "/")
         return v
 
-    class ConfigDict:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class VideoResponse(Video):
@@ -224,8 +222,7 @@ class VideoJob(VideoJobBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
-    class ConfigDict:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class VideoJobResponse(VideoJob):
@@ -260,8 +257,7 @@ class Playlist(PlaylistBase):
     is_public: bool = False
     created_at: datetime
 
-    class ConfigDict:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PlaylistResponse(Playlist):
@@ -281,5 +277,4 @@ class PlaylistVideo(PlaylistVideoBase):
     playlist_id: int
     video_id: int
 
-    class ConfigDict:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
