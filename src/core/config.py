@@ -2,6 +2,9 @@ import os
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
+
+from src.utils.paths import PROJECT_ROOT
 
 
 class Settings(BaseSettings):
@@ -50,9 +53,13 @@ class Settings(BaseSettings):
     THUMBNAIL_WIDTH: int = int(os.environ.get("THUMBNAIL_WIDTH", "320"))
     THUMBNAIL_HEIGHT: int = int(os.environ.get("THUMBNAIL_HEIGHT", "180"))
     VIDEO_STORAGE_DIR: str = os.environ.get("VIDEO_STORAGE_DIR", "data/videos")
-    VIDEO_UPLOAD_DIR: str = os.environ.get("VIDEO_UPLOAD_DIR", "data/uploads")
-    VIDEO_HLS_DIR: str = os.environ.get("VIDEO_HLS_DIR", "data/hls")
-    VIDEO_THUMBNAIL_DIR: str = os.environ.get("VIDEO_THUMBNAIL_DIR", "data/thumbnails")
+    VIDEO_UPLOAD_DIR: Path = PROJECT_ROOT / os.environ.get(
+        "VIDEO_UPLOAD_DIR", "data/uploads"
+    )
+    VIDEO_HLS_DIR: Path = PROJECT_ROOT / os.environ.get("VIDEO_HLS_DIR", "data/hls")
+    VIDEO_THUMBNAIL_DIR: Path = PROJECT_ROOT / os.environ.get(
+        "VIDEO_THUMBNAIL_DIR", "data/thumbnails"
+    )
 
     # Optional Sentry DSN for error monitoring
     SENTRY_DSN: str = os.environ.get("SENTRY_DSN", "")
