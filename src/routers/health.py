@@ -66,8 +66,9 @@ def health_check(request: Request, db: Session = Depends(get_db)):
 
     # Check Redis connection
     try:
-        redis_client = redis.from_url(settings.REDIS_URL)
-        redis_client.ping()  # Simple ping to test connectivity
+        from src.core.redis_client import redis_client
+
+        redis_client.ping()
         redis_status = "healthy"
     except Exception as e:
         logger.error(f"Redis health check failed: {str(e)}")
@@ -148,7 +149,8 @@ def readiness_check(request: Request, db: Session = Depends(get_db)):
         db.execute(text("SELECT 1"))
 
         # Test Redis connection
-        redis_client = redis.from_url(settings.REDIS_URL)
+        from src.core.redis_client import redis_client
+
         redis_client.ping()
 
         # Test FFmpeg availability
