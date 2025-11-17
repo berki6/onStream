@@ -333,14 +333,16 @@ This ensures consistent file handling across development and production environm
 
 ### Health
 
-- `GET /health` - Application health check
-  - **Response**: `200 OK` - `{"status": "healthy", "database": "healthy", "timestamp": "ISO datetime"}`
-  - **Errors**: `503 Service Unavailable` - Database unhealthy
+- `GET /health` - Comprehensive application health check
+  - **Response**: `200 OK` - `{"status": "healthy", "database": "healthy", "redis": "healthy", "ffmpeg": "healthy", "timestamp": "ISO datetime"}`
+  - **Checks**: Database connectivity, Redis connectivity, FFmpeg availability
+  - **Errors**: `503 Service Unavailable` - Any critical service unhealthy
 - `GET /health/live` - Liveness probe
   - **Response**: `200 OK` - `{"status": "alive"}`
 - `GET /health/ready` - Readiness probe
   - **Response**: `200 OK` - `{"status": "ready"}`
-  - **Errors**: `503 Service Unavailable` - Database connection failed
+  - **Checks**: Database, Redis, and FFmpeg availability
+  - **Errors**: `503 Service Unavailable` - Any dependency unavailable
 
 ## 🧪 Testing
 
