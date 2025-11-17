@@ -121,23 +121,54 @@ Error while opening encoder for output stream #0:0 - maybe incorrect parameters 
         self.session.commit()
 
     @patch("src.tasks.video_worker.generate_thumbnail")
-    @patch("subprocess.run")
+    @patch("subprocess.Popen")
     @patch.object(Path, "exists")
     @patch("os.makedirs")
     @patch("os.path.normpath")
+    @patch.object(Path, "stat")
     def test_process_video_success(
-        self, mock_normpath, mock_makedirs, mock_exists, mock_run, mock_thumbnail
+        self,
+        mock_stat,
+        mock_normpath,
+        mock_makedirs,
+        mock_exists,
+        mock_popen,
+        mock_thumbnail,
     ):
         """Test successful video processing."""
         # Setup mocks
         mock_normpath.return_value = "/normalized/path.mp4"
         mock_exists.return_value = True
-        mock_run.return_value = MagicMock(returncode=0, stderr="")
+        mock_stat.return_value = MagicMock(st_size=10485760)  # 10MB file
         mock_thumbnail.return_value = "data/thumbnails/1.jpg"
+
+        # Mock FFmpeg process
+        mock_process = MagicMock()
+        mock_process.poll.side_effect = [
+            None,
+            None,
+            None,
+            0,
+        ]  # Not finished for first 3 calls, then finished
+        mock_process.returncode = 0
+        mock_process.stderr.readline.side_effect = [
+            b"time=00:00:30.00",
+            b"time=00:01:00.00",
+            b"",
+            b"",  # Extra empty reads for when poll returns 0
+        ]  # Progress output
+        mock_process.stderr.read.return_value = b""
+        mock_popen.return_value = mock_process
+
+        # Create test video and job with unique IDs
+        import uuid
+
+        unique_id = str(uuid.uuid4())[:8]
+        upload_id = f"testprocess{unique_id}"
 
         # Create test video and job
         video = models.Video(
-            upload_id="testprocess",
+            upload_id=upload_id,
             user_id=1,
             title="Test Video",
             file_path="/original/path.mp4",
@@ -145,7 +176,7 @@ Error while opening encoder for output stream #0:0 - maybe incorrect parameters 
         )
         self.session.add(video)
 
-        job = models.VideoJob(upload_id="testprocess")
+        job = models.VideoJob(upload_id=upload_id)
         self.session.add(job)
         self.session.commit()
 
@@ -208,21 +239,35 @@ Error while opening encoder for output stream #0:0 - maybe incorrect parameters 
     @patch.object(Path, "exists")
     @patch("os.makedirs")
     @patch("os.path.normpath")
+    @patch.object(Path, "stat")
     def test_process_video_transcoding_failure(
-        self, mock_normpath, mock_makedirs, mock_exists, mock_run, mock_thumbnail
+        self,
+        mock_stat,
+        mock_normpath,
+        mock_makedirs,
+        mock_exists,
+        mock_run,
+        mock_thumbnail,
     ):
         """Test video processing when transcoding fails."""
         # Setup mocks
         mock_normpath.return_value = "/normalized/path.mp4"
         mock_exists.return_value = True
+        mock_stat.return_value = MagicMock(st_size=10485760)  # 10MB file
         mock_thumbnail.return_value = "/thumbnail/path.jpg"
 
         # Mock FFmpeg failure
         mock_run.side_effect = Exception("Transcoding failed")
 
+        # Create test video and job with unique IDs
+        import uuid
+
+        unique_id = str(uuid.uuid4())[:8]
+        upload_id = f"testfail{unique_id}"
+
         # Create test video and job
         video = models.Video(
-            upload_id="testfailtranscoding",
+            upload_id=upload_id,
             user_id=1,
             title="Failing Video",
             file_path="/original/path.mp4",
@@ -230,7 +275,7 @@ Error while opening encoder for output stream #0:0 - maybe incorrect parameters 
         )
         self.session.add(video)
 
-        job = models.VideoJob(upload_id="testfailtranscoding")
+        job = models.VideoJob(upload_id=upload_id)
         self.session.add(job)
         self.session.commit()
 
@@ -523,21 +568,35 @@ Error while opening encoder for output stream #0:0 - maybe incorrect parameters 
     @patch.object(Path, "exists")
     @patch("os.makedirs")
     @patch("os.path.normpath")
+    @patch.object(Path, "stat")
     def test_process_video_thumbnail_generation_failure(
-        self, mock_normpath, mock_makedirs, mock_exists, mock_run, mock_thumbnail
+        self,
+        mock_stat,
+        mock_normpath,
+        mock_makedirs,
+        mock_exists,
+        mock_run,
+        mock_thumbnail,
     ):
         """Test video processing when thumbnail generation fails."""
         # Setup mocks
         mock_normpath.return_value = "/normalized/path.mp4"
         mock_exists.return_value = True
+        mock_stat.return_value = MagicMock(st_size=10485760)  # 10MB file
         mock_run.return_value = MagicMock()
 
         # Mock thumbnail generation failure
         mock_thumbnail.side_effect = Exception("Thumbnail generation failed")
 
+        # Create test video and job with unique IDs
+        import uuid
+
+        unique_id = str(uuid.uuid4())[:8]
+        upload_id = f"testthumb{unique_id}"
+
         # Create test video and job
         video = models.Video(
-            upload_id="testthumbfail",
+            upload_id=upload_id,
             user_id=1,
             title="Thumbnail Fail Video",
             file_path="/original/path.mp4",
@@ -545,7 +604,7 @@ Error while opening encoder for output stream #0:0 - maybe incorrect parameters 
         )
         self.session.add(video)
 
-        job = models.VideoJob(upload_id="testthumbfail")
+        job = models.VideoJob(upload_id=upload_id)
         self.session.add(job)
         self.session.commit()
 
