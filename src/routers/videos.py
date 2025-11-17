@@ -209,8 +209,9 @@ async def upload_video(
 
         # Push job to Redis queue for processing
         try:
-            redis_client = redis.from_url(settings.REDIS_URL)
-            redis_client.lpush("video_jobs_queue", temp_video.upload_id)
+            from src.services.job_queue import job_queue
+
+            job_queue.enqueue_job(temp_video.upload_id, db)
         except Exception as e:
             logger.warning(f"Failed to queue video for processing: {str(e)}")
             # Don't fail the upload, just log the warning
@@ -219,7 +220,7 @@ async def upload_video(
             f"Video upload successful for user '{current_user.username}': video ID {temp_video.id}, queued for processing with request_id={request.state.request_id}"
         )
         return schemas.APIResponse(
-            data=temp_video,
+            data=schemas.Video.model_validate(temp_video),
             request_id=request.state.request_id,
             timestamp=datetime.now(timezone.utc),
             message="Video uploaded successfully and queued for processing",
@@ -272,7 +273,7 @@ def list_videos(
         )
 
         return schemas.PaginatedResponse(
-            data=videos,
+            data=[schemas.Video.model_validate(video) for video in videos],
             request_id=request.state.request_id,
             timestamp=datetime.now(timezone.utc),
             message=f"Retrieved {len(videos)} videos",
@@ -331,7 +332,7 @@ def get_video(
             f"User '{current_user.username}' accessed video upload_id {upload_id}"
         )
         return schemas.APIResponse(
-            data=video,
+            data=schemas.Video.model_validate(video),
             request_id=request.state.request_id,
             timestamp=datetime.now(timezone.utc),
             message="Video retrieved successfully",
@@ -392,7 +393,7 @@ def get_video_job(
             f"User '{current_user.username}' checked job status for video upload_id {upload_id}"
         )
         return schemas.APIResponse(
-            data=job,
+            data=schemas.VideoJob.model_validate(job),
             request_id=request.state.request_id,
             timestamp=datetime.now(timezone.utc),
             message="Job status retrieved successfully",
