@@ -159,3 +159,29 @@ class VideoJob(Base):
 
     def __repr__(self):
         return f"<VideoJob(upload_id='{self.upload_id}', status='{self.status}', progress={self.progress}%)>"
+
+
+class QueuedJob(Base):
+    """Database-backed job queue for Redis fallback."""
+
+    __tablename__ = "queued_jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    upload_id = Column(String(12), nullable=False, index=True)
+    queue_name = Column(String(100), nullable=False, index=True)
+    status = Column(
+        String(20), default="pending", index=True
+    )  # pending, processing, completed, failed, recovered
+    retry_count = Column(Integer, default=0)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Indexes
+    __table_args__ = (
+        Index("idx_queued_jobs_status_queue", "status", "queue_name"),
+        Index("idx_queued_jobs_upload_id", "upload_id"),
+    )
+
+    def __repr__(self):
+        return f"<QueuedJob(upload_id='{self.upload_id}', status='{self.status}', queue='{self.queue_name}')>"
