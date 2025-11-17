@@ -159,6 +159,14 @@ class Video(VideoBase):
             raise ValueError("Invalid upload ID format")
         return v
 
+    @field_validator("file_path", "hls_path", "thumbnail_path", mode="before")
+    @classmethod
+    def normalize_path(cls, v):
+        if v and isinstance(v, str):
+            # Ensure forward slashes for API responses
+            return v.replace("\\", "/")
+        return v
+
     class ConfigDict:
         from_attributes = True
 
