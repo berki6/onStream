@@ -6,8 +6,9 @@ from src.core.database import get_db
 from src.schema import models
 from tests.conftest import override_get_db
 import tempfile
-import os
+from pathlib import Path
 from unittest.mock import patch
+from src.utils.paths import to_relative_path
 
 app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
@@ -62,9 +63,9 @@ class TestStreamRouter:
         video.status = models.VideoStatus.READY
 
         # Create temporary HLS directory and playlist file
-        hls_dir = os.path.join("data", "hls", upload_id)
-        os.makedirs(hls_dir, exist_ok=True)
-        playlist_path = os.path.join(hls_dir, "index.m3u8")
+        hls_dir = Path("data") / "hls" / upload_id
+        hls_dir.mkdir(parents=True, exist_ok=True)
+        playlist_path = hls_dir / "index.m3u8"
 
         playlist_content = """#EXTM3U
 #EXT-X-VERSION:3
@@ -76,7 +77,7 @@ segment_000.ts
         with open(playlist_path, "w") as f:
             f.write(playlist_content)
 
-        video.hls_path = playlist_path
+        video.hls_path = to_relative_path(playlist_path)
         db_session.commit()
 
         # Test playlist streaming
@@ -89,7 +90,7 @@ segment_000.ts
         # Cleanup
         import shutil
 
-        if os.path.exists(hls_dir):
+        if hls_dir.exists():
             shutil.rmtree(hls_dir)
         db_session.delete(video)
         db_session.delete(user)
@@ -407,9 +408,9 @@ segment_000.ts
         )
         video.status = models.VideoStatus.READY
 
-        hls_dir = os.path.join("data", "hls", upload_id)
-        os.makedirs(hls_dir, exist_ok=True)
-        video.hls_path = os.path.join(hls_dir, "index.m3u8")
+        hls_dir = Path("data") / "hls" / upload_id
+        hls_dir.mkdir(parents=True, exist_ok=True)
+        video.hls_path = to_relative_path(hls_dir / "index.m3u8")
         db_session.commit()
 
         # Test path traversal in segment name
@@ -429,7 +430,7 @@ segment_000.ts
         # Cleanup
         import shutil
 
-        if os.path.exists(hls_dir):
+        if hls_dir.exists():
             shutil.rmtree(hls_dir)
         db_session.delete(video)
         db_session.delete(user)
@@ -490,14 +491,14 @@ segment_000.ts
         )
         video.status = models.VideoStatus.READY
 
-        hls_dir = os.path.join("data", "hls", upload_id)
-        os.makedirs(hls_dir, exist_ok=True)
-        video.hls_path = os.path.join(hls_dir, "index.m3u8")
+        hls_dir = Path("data") / "hls" / upload_id
+        hls_dir.mkdir(parents=True, exist_ok=True)
+        video.hls_path = to_relative_path(hls_dir / "index.m3u8")
 
         # Create fake playlist and segment files
         with open(video.hls_path, "w") as f:
             f.write("#EXTM3U\n#EXTINF:10.0,\nsegment_000.ts\n")
-        segment_path = os.path.join(hls_dir, "segment_000.ts")
+        segment_path = hls_dir / "segment_000.ts"
         with open(segment_path, "wb") as f:
             f.write(b"fake segment data")
 
@@ -523,7 +524,7 @@ segment_000.ts
         # Cleanup
         import shutil
 
-        if os.path.exists(hls_dir):
+        if hls_dir.exists():
             shutil.rmtree(hls_dir)
         db_session.delete(video)
         db_session.delete(user1)
@@ -618,12 +619,12 @@ segment_000.ts
         )
         video.status = models.VideoStatus.READY
 
-        hls_dir = os.path.join("data", "hls", upload_id)
-        os.makedirs(hls_dir, exist_ok=True)
-        video.hls_path = os.path.join(hls_dir, "index.m3u8")
+        hls_dir = Path("data") / "hls" / upload_id
+        hls_dir.mkdir(parents=True, exist_ok=True)
+        video.hls_path = to_relative_path(hls_dir / "index.m3u8")
 
         # Create a fake segment file
-        segment_path = os.path.join(hls_dir, "segment_000.ts")
+        segment_path = hls_dir / "segment_000.ts"
         with open(segment_path, "wb") as f:
             f.write(b"fake segment data")
 
@@ -638,7 +639,7 @@ segment_000.ts
         # Cleanup
         import shutil
 
-        if os.path.exists(hls_dir):
+        if hls_dir.exists():
             shutil.rmtree(hls_dir)
         db_session.delete(video)
         db_session.delete(user)
@@ -720,9 +721,9 @@ segment_000.ts
         )
         video.status = models.VideoStatus.READY
 
-        hls_dir = os.path.join("data", "hls", upload_id)
-        os.makedirs(hls_dir, exist_ok=True)
-        video.hls_path = os.path.join(hls_dir, "index.m3u8")
+        hls_dir = Path("data") / "hls" / upload_id
+        hls_dir.mkdir(parents=True, exist_ok=True)
+        video.hls_path = to_relative_path(hls_dir / "index.m3u8")
         db_session.commit()
 
         # Try to stream non-existent segment
@@ -733,7 +734,7 @@ segment_000.ts
         # Cleanup
         import shutil
 
-        if os.path.exists(hls_dir):
+        if hls_dir.exists():
             shutil.rmtree(hls_dir)
         db_session.delete(video)
         db_session.delete(user)

@@ -1,6 +1,7 @@
 import pytest
 import os
 import tempfile
+from pathlib import Path
 from unittest.mock import patch, MagicMock, mock_open
 from sqlalchemy.orm import sessionmaker
 from src.tasks.video_worker import (
@@ -62,7 +63,7 @@ Error while opening encoder for output stream #0:0 - maybe incorrect parameters 
         assert len(result) <= 250
 
     @patch("subprocess.run")
-    @patch("os.path.exists")
+    @patch.object(Path, "exists")
     def test_generate_thumbnail_success(self, mock_exists, mock_run):
         """Test successful thumbnail generation."""
         mock_exists.return_value = True
@@ -70,7 +71,9 @@ Error while opening encoder for output stream #0:0 - maybe incorrect parameters 
 
         with tempfile.TemporaryDirectory() as temp_dir:
             # Mock the thumbnail path
-            with patch("src.tasks.video_worker.THUMBNAIL_DIR", temp_dir):
+            with patch(
+                "src.tasks.video_worker.settings.VIDEO_THUMBNAIL_DIR", Path(temp_dir)
+            ):
                 result = generate_thumbnail("/fake/video.mp4", 123)
 
                 assert result is not None
@@ -78,7 +81,7 @@ Error while opening encoder for output stream #0:0 - maybe incorrect parameters 
                 mock_run.assert_called_once()
 
     @patch("subprocess.run")
-    @patch("os.path.exists")
+    @patch.object(Path, "exists")
     def test_generate_thumbnail_failure(self, mock_exists, mock_run):
         """Test thumbnail generation failure."""
         mock_exists.return_value = True
@@ -88,7 +91,7 @@ Error while opening encoder for output stream #0:0 - maybe incorrect parameters 
         assert result is None
 
     @patch("subprocess.run")
-    @patch("os.path.exists")
+    @patch.object(Path, "exists")
     def test_generate_thumbnail_file_not_found(self, mock_exists, mock_run):
         """Test thumbnail generation when input file doesn't exist."""
         mock_exists.return_value = False
@@ -119,7 +122,7 @@ Error while opening encoder for output stream #0:0 - maybe incorrect parameters 
 
     @patch("src.tasks.video_worker.generate_thumbnail")
     @patch("subprocess.run")
-    @patch("os.path.exists")
+    @patch.object(Path, "exists")
     @patch("os.makedirs")
     @patch("os.path.normpath")
     def test_process_video_success(
@@ -165,7 +168,7 @@ Error while opening encoder for output stream #0:0 - maybe incorrect parameters 
         self.session.delete(video)
         self.session.commit()
 
-    @patch("os.path.exists")
+    @patch.object(Path, "exists")
     def test_process_video_file_not_found(self, mock_exists):
         """Test video processing when input file doesn't exist."""
         mock_exists.return_value = False
@@ -202,7 +205,7 @@ Error while opening encoder for output stream #0:0 - maybe incorrect parameters 
 
     @patch("src.tasks.video_worker.generate_thumbnail")
     @patch("subprocess.run")
-    @patch("os.path.exists")
+    @patch.object(Path, "exists")
     @patch("os.makedirs")
     @patch("os.path.normpath")
     def test_process_video_transcoding_failure(
@@ -304,7 +307,7 @@ Error while opening encoder for output stream #0:0 - maybe incorrect parameters 
 
     @patch("src.tasks.video_worker.generate_thumbnail")
     @patch("subprocess.run")
-    @patch("os.path.exists")
+    @patch.object(Path, "exists")
     @patch("os.makedirs")
     @patch("os.path.normpath")
     def test_process_video_ffmpeg_command_failure(
@@ -360,7 +363,7 @@ Error while opening encoder for output stream #0:0 - maybe incorrect parameters 
 
     @patch("src.tasks.video_worker.generate_thumbnail")
     @patch("subprocess.run")
-    @patch("os.path.exists")
+    @patch.object(Path, "exists")
     @patch("os.makedirs")
     @patch("os.path.normpath")
     def test_process_video_database_connection_failure_during_processing(
@@ -411,7 +414,7 @@ Error while opening encoder for output stream #0:0 - maybe incorrect parameters 
 
     @patch("src.tasks.video_worker.generate_thumbnail")
     @patch("subprocess.run")
-    @patch("os.path.exists")
+    @patch.object(Path, "exists")
     @patch("os.makedirs")
     @patch("os.path.normpath")
     def test_process_video_file_cleanup_failure(
@@ -463,7 +466,7 @@ Error while opening encoder for output stream #0:0 - maybe incorrect parameters 
 
     @patch("src.tasks.video_worker.generate_thumbnail")
     @patch("subprocess.run")
-    @patch("os.path.exists")
+    @patch.object(Path, "exists")
     @patch("os.makedirs")
     @patch("os.path.normpath")
     def test_process_video_hls_directory_creation_failure(
@@ -517,7 +520,7 @@ Error while opening encoder for output stream #0:0 - maybe incorrect parameters 
 
     @patch("src.tasks.video_worker.generate_thumbnail")
     @patch("subprocess.run")
-    @patch("os.path.exists")
+    @patch.object(Path, "exists")
     @patch("os.makedirs")
     @patch("os.path.normpath")
     def test_process_video_thumbnail_generation_failure(
