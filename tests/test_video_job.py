@@ -33,7 +33,7 @@ def test_get_video_job_status(db_session: Session, test_user, mocker):
         data={"username": "testuser", "password": "testpass"},
     )
     assert response.status_code == 200
-    token = response.json()["access_token"]
+    token = response.json()["data"]["access_token"]
 
     # Upload video (this should create a video and job)
     response = client.post(
@@ -45,7 +45,7 @@ def test_get_video_job_status(db_session: Session, test_user, mocker):
 
     assert response.status_code == 201
     upload_response = response.json()
-    upload_id = upload_response["upload_id"]
+    upload_id = upload_response["data"]["upload_id"]
 
     # Verify job was created in database (Redis might not be available in test env)
     job = crud.get_job_for_video(
@@ -72,7 +72,7 @@ def test_get_video_job_status(db_session: Session, test_user, mocker):
     )
 
     assert response.status_code == 200
-    job_data = response.json()
+    job_data = response.json()["data"]
 
     # Verify job structure
     assert "upload_id" in job_data
@@ -97,7 +97,7 @@ def test_get_video_job_not_found(db_session: Session, test_user):
         data={"username": "testuser", "password": "testpass"},
     )
     assert response.status_code == 200
-    token = response.json()["access_token"]
+    token = response.json()["data"]["access_token"]
 
     response = client.get(
         "/videos/abcdefgh/job",  # Valid 8-character format but non-existent
@@ -130,7 +130,7 @@ def test_get_video_job_unauthorized(db_session: Session, test_user, mocker):
         data={"username": "testuser", "password": "testpass"},
     )
     assert response.status_code == 200
-    token1 = response.json()["access_token"]
+    token1 = response.json()["data"]["access_token"]
 
     # Create video with user 1
     video_data = {"title": "Test Video", "description": "Test Description"}
@@ -144,7 +144,7 @@ def test_get_video_job_unauthorized(db_session: Session, test_user, mocker):
 
     assert response.status_code == 201
     upload_response = response.json()
-    upload_id = upload_response["upload_id"]
+    upload_id = upload_response["data"]["upload_id"]
 
     # Login with second user
     response = client.post(
@@ -152,7 +152,7 @@ def test_get_video_job_unauthorized(db_session: Session, test_user, mocker):
         data={"username": "testuser2", "password": "testpass2"},
     )
     assert response.status_code == 200
-    token2 = response.json()["access_token"]
+    token2 = response.json()["data"]["access_token"]
 
     # Try to access with user 2
     response = client.get(

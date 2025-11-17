@@ -5,8 +5,6 @@ from src.main import app
 from src.core.database import get_db
 from src.schema import models
 from tests.conftest import override_get_db
-import tempfile
-import os
 
 app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
@@ -33,7 +31,7 @@ class TestVideoRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "missingfile", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Try upload without file
@@ -66,7 +64,7 @@ class TestVideoRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "invalidtype", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
@@ -104,7 +102,7 @@ class TestVideoRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "longtitle", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         long_title = "A" * 201  # Exceeds MAX_TITLE_LENGTH
@@ -143,7 +141,7 @@ class TestVideoRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "corrupt", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
@@ -181,7 +179,7 @@ class TestVideoRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "tooshort", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
@@ -219,7 +217,7 @@ class TestVideoRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "toolong", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
@@ -257,7 +255,7 @@ class TestVideoRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "paginate", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Test negative skip
@@ -301,7 +299,7 @@ class TestVideoRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "invalidid", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Test upload ID too short
@@ -336,7 +334,7 @@ class TestVideoRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "deletenotfound", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.delete("/videos/abcdefgh/", headers=headers)
@@ -378,7 +376,7 @@ class TestVideoRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "deleteowner", "password": "testpass"}
         )
-        token1 = response.json()["access_token"]
+        token1 = response.json()["data"]["access_token"]
         headers1 = {"Authorization": f"Bearer {token1}"}
 
         response = client.post(
@@ -387,13 +385,13 @@ class TestVideoRouterExtended:
             files={"file": ("owner.mp4", b"content", "video/mp4")},
             headers=headers1,
         )
-        upload_id = response.json()["upload_id"]
+        upload_id = response.json()["data"]["upload_id"]
 
         # Login as user2 and try to delete
         response = client.post(
             "/auth/login", data={"username": "deletestealer", "password": "testpass"}
         )
-        token2 = response.json()["access_token"]
+        token2 = response.json()["data"]["access_token"]
         headers2 = {"Authorization": f"Bearer {token2}"}
 
         response = client.delete(f"/videos/{upload_id}/", headers=headers2)
@@ -434,7 +432,7 @@ class TestVideoRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "autotitle", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Upload without title - should auto-generate from filename
@@ -444,7 +442,7 @@ class TestVideoRouterExtended:
             headers=headers,
         )
         assert response.status_code == 201
-        data = response.json()
+        data = response.json()["data"]
         assert data["title"] == "My Test Video"  # Should be title case
 
         upload_id = data["upload_id"]
@@ -482,7 +480,7 @@ class TestVideoRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "fallback", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Upload with empty title and no filename
@@ -517,12 +515,12 @@ class TestVideoRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "emptyvideos", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.get("/videos/", headers=headers)
         assert response.status_code == 200
-        videos = response.json()
+        videos = response.json()["data"]
         assert videos == []  # Should be empty list
 
         # Cleanup
@@ -551,7 +549,7 @@ class TestVideoRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "softdelete", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Create video
@@ -561,7 +559,7 @@ class TestVideoRouterExtended:
             files={"file": ("soft.mp4", b"content", "video/mp4")},
             headers=headers,
         )
-        upload_id = response.json()["upload_id"]
+        upload_id = response.json()["data"]["upload_id"]
 
         # Soft delete the video
         response = client.delete(f"/videos/{upload_id}/", headers=headers)
@@ -599,7 +597,7 @@ class TestVideoRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "dbtransfail", "password": "Testpass123!"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Mock database commit to fail only after user creation
@@ -648,7 +646,7 @@ class TestVideoRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "jobfail", "password": "Testpass123!"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
@@ -690,7 +688,7 @@ class TestVideoRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "movefail", "password": "Testpass123!"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
@@ -712,9 +710,11 @@ class TestVideoRouterExtended:
         mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
         mock_probe.return_value = 120.0
 
-        # Mock Redis lpush to fail
-        mock_redis = mocker.patch("redis.Redis.lpush")
-        mock_redis.side_effect = Exception("Redis connection failed")
+        # Mock job queue enqueue to fail
+        mock_enqueue = mocker.patch(
+            "src.services.job_queue.JobQueueService.enqueue_job"
+        )
+        mock_enqueue.return_value = False  # Simulate failure
 
         # Create and login test user
         from src.core.auth import get_password_hash
@@ -732,7 +732,7 @@ class TestVideoRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "redisfail", "password": "Testpass123!"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
@@ -744,9 +744,9 @@ class TestVideoRouterExtended:
         # Should still succeed since Redis failure is non-critical
         assert response.status_code == 201
         data = response.json()
-        assert "upload_id" in data
+        assert "upload_id" in data["data"]
 
-        upload_id = data["upload_id"]
+        upload_id = data["data"]["upload_id"]
 
         # Cleanup
         video = (
@@ -781,7 +781,7 @@ class TestVideoRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "commitfail", "password": "Testpass123!"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Mock the final commit in the crud service to fail

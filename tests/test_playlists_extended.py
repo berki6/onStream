@@ -33,7 +33,7 @@ class TestPlaylistRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "missingtitle", "password": "Testpass123!"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post("/playlists/", json={}, headers=headers)
@@ -61,7 +61,7 @@ class TestPlaylistRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "longplaylist", "password": "Testpass123!"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         long_title = "A" * 201  # Exceeds MAX_TITLE_LENGTH
@@ -97,7 +97,7 @@ class TestPlaylistRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "duplicate", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Create first playlist
@@ -142,7 +142,7 @@ class TestPlaylistRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "addnotfound", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
@@ -184,19 +184,19 @@ class TestPlaylistRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "playlistowner", "password": "testpass"}
         )
-        token1 = response.json()["access_token"]
+        token1 = response.json()["data"]["access_token"]
         headers1 = {"Authorization": f"Bearer {token1}"}
 
         response = client.post(
             "/playlists/", json={"name": "Owner's Playlist"}, headers=headers1
         )
-        playlist_id = response.json()["id"]
+        playlist_id = response.json()["data"]["id"]
 
         # Login as user2 and try to add video to user1's playlist
         response = client.post(
             "/auth/login", data={"username": "playliststealer", "password": "testpass"}
         )
-        token2 = response.json()["access_token"]
+        token2 = response.json()["data"]["access_token"]
         headers2 = {"Authorization": f"Bearer {token2}"}
 
         response = client.post(
@@ -241,14 +241,14 @@ class TestPlaylistRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "videonotfound", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Create playlist
         response = client.post(
             "/playlists/", json={"name": "Test Playlist"}, headers=headers
         )
-        playlist_id = response.json()["id"]
+        playlist_id = response.json()["data"]["id"]
 
         # Try to add non-existent video
         response = client.post(
@@ -301,7 +301,7 @@ class TestPlaylistRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "videoowner", "password": "testpass"}
         )
-        token1 = response.json()["access_token"]
+        token1 = response.json()["data"]["access_token"]
         headers1 = {"Authorization": f"Bearer {token1}"}
 
         response = client.post(
@@ -310,19 +310,19 @@ class TestPlaylistRouterExtended:
             files={"file": ("owner.mp4", b"content", "video/mp4")},
             headers=headers1,
         )
-        upload_id = response.json()["upload_id"]
+        upload_id = response.json()["data"]["upload_id"]
 
         # Login as user2 and create playlist
         response = client.post(
             "/auth/login", data={"username": "playlistuser", "password": "testpass"}
         )
-        token2 = response.json()["access_token"]
+        token2 = response.json()["data"]["access_token"]
         headers2 = {"Authorization": f"Bearer {token2}"}
 
         response = client.post(
             "/playlists/", json={"name": "User2 Playlist"}, headers=headers2
         )
-        playlist_id = response.json()["id"]
+        playlist_id = response.json()["data"]["id"]
 
         # Try to add user1's video to user2's playlist
         response = client.post(
@@ -374,14 +374,14 @@ class TestPlaylistRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "duplicatevideo", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Create playlist
         response = client.post(
             "/playlists/", json={"name": "Duplicate Test"}, headers=headers
         )
-        playlist_id = response.json()["id"]
+        playlist_id = response.json()["data"]["id"]
 
         # Create video
         response = client.post(
@@ -390,7 +390,7 @@ class TestPlaylistRouterExtended:
             files={"file": ("test.mp4", b"content", "video/mp4")},
             headers=headers,
         )
-        upload_id = response.json()["upload_id"]
+        upload_id = response.json()["data"]["upload_id"]
 
         # Add video to playlist first time
         response = client.post(
@@ -449,14 +449,14 @@ class TestPlaylistRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "notplaylist", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Create playlist
         response = client.post(
             "/playlists/", json={"name": "Remove Test"}, headers=headers
         )
-        playlist_id = response.json()["id"]
+        playlist_id = response.json()["data"]["id"]
 
         # Create video
         response = client.post(
@@ -465,7 +465,7 @@ class TestPlaylistRouterExtended:
             files={"file": ("test.mp4", b"content", "video/mp4")},
             headers=headers,
         )
-        upload_id = response.json()["upload_id"]
+        upload_id = response.json()["data"]["upload_id"]
 
         # Try to remove video not in playlist
         response = client.delete(
@@ -510,19 +510,19 @@ class TestPlaylistRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "emptyplaylist", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Create playlist
         response = client.post(
             "/playlists/", json={"name": "Empty Playlist"}, headers=headers
         )
-        playlist_id = response.json()["id"]
+        playlist_id = response.json()["data"]["id"]
 
         # List videos (should be empty)
         response = client.get(f"/playlists/{playlist_id}/videos/", headers=headers)
         assert response.status_code == 200
-        videos = response.json()
+        videos = response.json()["data"]
         assert videos == []
 
         # Cleanup
@@ -554,7 +554,7 @@ class TestPlaylistRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "playlistpaginate", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Test negative skip
@@ -598,7 +598,7 @@ class TestPlaylistRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "deletenotfound", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.delete("/playlists/999/", headers=headers)
@@ -637,20 +637,20 @@ class TestPlaylistRouterExtended:
             "/auth/login",
             data={"username": "playlistdeleteowner", "password": "testpass"},
         )
-        token1 = response.json()["access_token"]
+        token1 = response.json()["data"]["access_token"]
         headers1 = {"Authorization": f"Bearer {token1}"}
 
         response = client.post(
             "/playlists/", json={"name": "Owner's Playlist"}, headers=headers1
         )
-        playlist_id = response.json()["id"]
+        playlist_id = response.json()["data"]["id"]
 
         # Login as user2 and try to delete
         response = client.post(
             "/auth/login",
             data={"username": "playlistdeletestealer", "password": "testpass"},
         )
-        token2 = response.json()["access_token"]
+        token2 = response.json()["data"]["access_token"]
         headers2 = {"Authorization": f"Bearer {token2}"}
 
         response = client.delete(f"/playlists/{playlist_id}/", headers=headers2)
@@ -691,14 +691,14 @@ class TestPlaylistRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "positionupdate", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Create playlist
         response = client.post(
             "/playlists/", json={"name": "Position Test"}, headers=headers
         )
-        playlist_id = response.json()["id"]
+        playlist_id = response.json()["data"]["id"]
 
         # Create two videos
         response = client.post(
@@ -707,7 +707,7 @@ class TestPlaylistRouterExtended:
             files={"file": ("video1.mp4", b"content", "video/mp4")},
             headers=headers,
         )
-        upload_id1 = response.json()["upload_id"]
+        upload_id1 = response.json()["data"]["upload_id"]
 
         response = client.post(
             "/videos/",
@@ -715,7 +715,7 @@ class TestPlaylistRouterExtended:
             files={"file": ("video2.mp4", b"content", "video/mp4")},
             headers=headers,
         )
-        upload_id2 = response.json()["upload_id"]
+        upload_id2 = response.json()["data"]["upload_id"]
 
         # Add videos to playlist
         response = client.post(
@@ -742,7 +742,7 @@ class TestPlaylistRouterExtended:
 
         # Verify positions
         response = client.get(f"/playlists/{playlist_id}/videos/", headers=headers)
-        videos = response.json()
+        videos = response.json()["data"]
         assert len(videos) == 2
         # Positions should be updated accordingly
 
@@ -776,13 +776,13 @@ class TestPlaylistRouterExtended:
         hashed_password = get_password_hash("Testpass123!")
 
         user1 = models.User(
-            username="playlistowner",
-            email="playlistowner@example.com",
+            username="playlistowner2",
+            email="playlistowner2@example.com",
             hashed_password=hashed_password,
         )
         user2 = models.User(
-            username="videouploader",
-            email="videouploader@example.com",
+            username="videouploader2",
+            email="videouploader2@example.com",
             hashed_password=hashed_password,
         )
         db_session.add(user1)
@@ -794,22 +794,22 @@ class TestPlaylistRouterExtended:
         # Login as user1 and create playlist
         response = client.post(
             "/auth/login",
-            data={"username": "playlistowner", "password": "Testpass123!"},
+            data={"username": "playlistowner2", "password": "Testpass123!"},
         )
-        token1 = response.json()["access_token"]
+        token1 = response.json()["data"]["access_token"]
         headers1 = {"Authorization": f"Bearer {token1}"}
 
         response = client.post(
             "/playlists/", json={"name": "Cross User Playlist"}, headers=headers1
         )
-        playlist_id = response.json()["id"]
+        playlist_id = response.json()["data"]["id"]
 
         # Login as user2 and create video
         response = client.post(
             "/auth/login",
-            data={"username": "videouploader", "password": "Testpass123!"},
+            data={"username": "videouploader2", "password": "Testpass123!"},
         )
-        token2 = response.json()["access_token"]
+        token2 = response.json()["data"]["access_token"]
         headers2 = {"Authorization": f"Bearer {token2}"}
 
         response = client.post(
@@ -818,7 +818,7 @@ class TestPlaylistRouterExtended:
             files={"file": ("cross.mp4", b"content", "video/mp4")},
             headers=headers2,
         )
-        upload_id = response.json()["upload_id"]
+        upload_id = response.json()["data"]["upload_id"]
 
         # Try to add user2's video to user1's playlist (should fail)
         response = client.post(
@@ -866,7 +866,7 @@ class TestPlaylistRouterExtended:
         response = client.post(
             "/auth/login", data={"username": "dupname", "password": "Testpass123!"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Create first playlist

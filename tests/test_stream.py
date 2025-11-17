@@ -41,7 +41,7 @@ class TestStreamRouter:
             "/auth/login", data={"username": "streamuser", "password": "testpass"}
         )
         assert response.status_code == 200
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Create and process video
@@ -52,7 +52,7 @@ class TestStreamRouter:
             headers=headers,
         )
         assert response.status_code == 201
-        upload_id = response.json()["upload_id"]
+        upload_id = response.json()["data"]["upload_id"]
 
         # Update video to READY status with HLS path
         video = (
@@ -115,7 +115,7 @@ segment_000.ts
         response = client.post(
             "/auth/login", data={"username": "invaliduser", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Test invalid upload ID (too short)
@@ -151,7 +151,7 @@ segment_000.ts
         response = client.post(
             "/auth/login", data={"username": "notfounduser", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.get("/stream/abcdefgh/playlist.m3u8", headers=headers)
@@ -192,14 +192,14 @@ segment_000.ts
         response = client.post(
             "/auth/login", data={"username": "otheruser", "password": "testpass"}
         )
-        token2 = response.json()["access_token"]
+        token2 = response.json()["data"]["access_token"]
         headers2 = {"Authorization": f"Bearer {token2}"}
 
         # Create video for user1
         response = client.post(
             "/auth/login", data={"username": "owneruser", "password": "testpass"}
         )
-        token1 = response.json()["access_token"]
+        token1 = response.json()["data"]["access_token"]
         headers1 = {"Authorization": f"Bearer {token1}"}
 
         response = client.post(
@@ -208,7 +208,7 @@ segment_000.ts
             files={"file": ("private.mp4", b"content", "video/mp4")},
             headers=headers1,
         )
-        upload_id = response.json()["upload_id"]
+        upload_id = response.json()["data"]["upload_id"]
 
         # Try to access with user2
         response = client.get(f"/stream/{upload_id}/playlist.m3u8", headers=headers2)
@@ -248,7 +248,7 @@ segment_000.ts
         response = client.post(
             "/auth/login", data={"username": "pendinguser", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
@@ -257,7 +257,7 @@ segment_000.ts
             files={"file": ("pending.mp4", b"content", "video/mp4")},
             headers=headers,
         )
-        upload_id = response.json()["upload_id"]
+        upload_id = response.json()["data"]["upload_id"]
 
         # Try to stream before processing
         response = client.get(f"/stream/{upload_id}/playlist.m3u8", headers=headers)
@@ -296,7 +296,7 @@ segment_000.ts
         response = client.post(
             "/auth/login", data={"username": "missinguser", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
@@ -305,7 +305,7 @@ segment_000.ts
             files={"file": ("missing.mp4", b"content", "video/mp4")},
             headers=headers,
         )
-        upload_id = response.json()["upload_id"]
+        upload_id = response.json()["data"]["upload_id"]
 
         # Update video to READY but with non-existent HLS path
         video = (
@@ -345,7 +345,7 @@ segment_000.ts
         response = client.post(
             "/auth/login", data={"username": "pathtravuser", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Test path traversal in upload_id
@@ -387,7 +387,7 @@ segment_000.ts
         response = client.post(
             "/auth/login", data={"username": "segpathtrav", "password": "Testpass123!"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Mock video duration probe
@@ -398,7 +398,7 @@ segment_000.ts
                 files={"file": ("pathtrav.mp4", b"content", "video/mp4")},
                 headers=headers,
             )
-            upload_id = response.json()["upload_id"]
+            upload_id = response.json()["data"]["upload_id"]
 
         # Update video to READY and create HLS directory
         video = (
@@ -464,13 +464,13 @@ segment_000.ts
         response = client.post(
             "/auth/login", data={"username": "streamuser1", "password": "Testpass123!"}
         )
-        token1 = response.json()["access_token"]
+        token1 = response.json()["data"]["access_token"]
         headers1 = {"Authorization": f"Bearer {token1}"}
 
         response = client.post(
             "/auth/login", data={"username": "streamuser2", "password": "Testpass123!"}
         )
-        token2 = response.json()["access_token"]
+        token2 = response.json()["data"]["access_token"]
         headers2 = {"Authorization": f"Bearer {token2}"}
 
         # User1 uploads a video
@@ -481,7 +481,7 @@ segment_000.ts
                 files={"file": ("private.mp4", b"content", "video/mp4")},
                 headers=headers1,
             )
-            upload_id = response.json()["upload_id"]
+            upload_id = response.json()["data"]["upload_id"]
 
         # Update video to READY
         video = (
@@ -550,7 +550,7 @@ segment_000.ts
         response = client.post(
             "/auth/login", data={"username": "invalididuser", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Test various invalid upload_id formats (avoid characters that break URL parsing)
@@ -600,7 +600,7 @@ segment_000.ts
         response = client.post(
             "/auth/login", data={"username": "segmentuser", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
@@ -609,7 +609,7 @@ segment_000.ts
             files={"file": ("segment.mp4", b"content", "video/mp4")},
             headers=headers,
         )
-        upload_id = response.json()["upload_id"]
+        upload_id = response.json()["data"]["upload_id"]
 
         # Update video to READY and create HLS directory with segment
         video = (
@@ -664,7 +664,7 @@ segment_000.ts
         response = client.post(
             "/auth/login", data={"username": "invalidseguser", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Test invalid segment name with path traversal
@@ -702,7 +702,7 @@ segment_000.ts
         response = client.post(
             "/auth/login", data={"username": "segnotfound", "password": "testpass"}
         )
-        token = response.json()["access_token"]
+        token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
@@ -711,7 +711,7 @@ segment_000.ts
             files={"file": ("segnot.mp4", b"content", "video/mp4")},
             headers=headers,
         )
-        upload_id = response.json()["upload_id"]
+        upload_id = response.json()["data"]["upload_id"]
 
         # Update video to READY
         video = (

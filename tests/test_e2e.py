@@ -46,8 +46,8 @@ class TestEndToEndVideoWorkflow:
         )
         assert register_response.status_code == 201
         user_data = register_response.json()
-        assert user_data["username"] == "e2e_user"
-        assert user_data["email"] == "e2e@example.com"
+        assert user_data["data"]["username"] == "e2e_user"
+        assert user_data["data"]["email"] == "e2e@example.com"
 
         # Step 2: User Login
         login_response = client.post(
@@ -55,9 +55,9 @@ class TestEndToEndVideoWorkflow:
         )
         assert login_response.status_code == 200
         tokens = login_response.json()
-        assert "access_token" in tokens
-        assert tokens["token_type"] == "bearer"
-        access_token = tokens["access_token"]
+        assert "access_token" in tokens["data"]
+        assert tokens["data"]["token_type"] == "bearer"
+        access_token = tokens["data"]["access_token"]
 
         headers = {"Authorization": f"Bearer {access_token}"}
 
@@ -70,9 +70,9 @@ class TestEndToEndVideoWorkflow:
         )
         assert upload_response.status_code == 201
         video_data = upload_response.json()
-        assert "title" in video_data
-        assert video_data["status"] == "PENDING"
-        upload_id = video_data["upload_id"]
+        assert "title" in video_data["data"]
+        assert video_data["data"]["status"] == "PENDING"
+        upload_id = video_data["data"]["upload_id"]
 
         # Verify video was created in database
         video = crud.get_video_by_upload_id(db_session, upload_id)
@@ -89,14 +89,14 @@ class TestEndToEndVideoWorkflow:
         status_response = client.get(f"/videos/{upload_id}", headers=headers)
         assert status_response.status_code == 200
         status_data = status_response.json()
-        assert status_data["status"] == "PENDING"
+        assert status_data["data"]["status"] == "PENDING"
 
         # Step 5: Check Job Status
         job_response = client.get(f"/videos/{upload_id}/job", headers=headers)
         assert job_response.status_code == 200
         job_data = job_response.json()
-        assert job_data["status"] == "processing"
-        assert job_data["progress"] == 0
+        assert job_data["data"]["status"] == "processing"
+        assert job_data["data"]["progress"] == 0
 
         # Step 6: Simulate Video Processing Completion
         # Update video status to READY (simulating successful processing)
@@ -115,17 +115,17 @@ class TestEndToEndVideoWorkflow:
         status_response = client.get(f"/videos/{upload_id}", headers=headers)
         assert status_response.status_code == 200
         status_data = status_response.json()
-        assert status_data["status"] == "READY"
-        assert status_data["hls_path"] is not None
-        assert status_data["thumbnail_path"] is not None
+        assert status_data["data"]["status"] == "READY"
+        assert status_data["data"]["hls_path"] is not None
+        assert status_data["data"]["thumbnail_path"] is not None
 
         # Step 8: Check Job Status After Completion
         job_response = client.get(f"/videos/{upload_id}/job", headers=headers)
         assert job_response.status_code == 200
         job_data = job_response.json()
-        assert job_data["status"] == "ready"
-        assert job_data["progress"] == 100
-        assert "completed successfully" in job_data["message"]
+        assert job_data["data"]["status"] == "ready"
+        assert job_data["data"]["progress"] == 100
+        assert "completed successfully" in job_data["data"]["message"]
 
         # Step 9: Test Video Streaming (HLS Playlist)
         playlist_response = client.get(
@@ -139,8 +139,8 @@ class TestEndToEndVideoWorkflow:
         list_response = client.get("/videos/", headers=headers)
         assert list_response.status_code == 200
         videos_list = list_response.json()
-        assert len(videos_list) >= 1
-        assert any(v["upload_id"] == upload_id for v in videos_list)
+        assert len(videos_list["data"]) >= 1
+        assert any(v["upload_id"] == upload_id for v in videos_list["data"])
 
         # Step 11: Cleanup - Delete Video
         delete_response = client.delete(f"/videos/{upload_id}", headers=headers)
@@ -181,7 +181,7 @@ class TestEndToEndVideoWorkflow:
             "/auth/login", data={"username": "validation_user", "password": "testpass"}
         )
         assert login_response.status_code == 200
-        access_token = login_response.json()["access_token"]
+        access_token = login_response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {access_token}"}
 
         # Test 1: Invalid file type
@@ -273,14 +273,14 @@ class TestEndToEndVideoWorkflow:
             "/auth/login", data={"username": user1_name, "password": "testpass"}
         )
         assert login_response.status_code == 200
-        token1 = login_response.json()["access_token"]
+        token1 = login_response.json()["data"]["access_token"]
 
         # Login as user2
         login_response = client.post(
             "/auth/login", data={"username": user2_name, "password": "testpass"}
         )
         assert login_response.status_code == 200
-        token2 = login_response.json()["access_token"]
+        token2 = login_response.json()["data"]["access_token"]
 
         # Create video for user1
         headers1 = {"Authorization": f"Bearer {token1}"}
@@ -291,7 +291,7 @@ class TestEndToEndVideoWorkflow:
             headers=headers1,
         )
         assert upload_response.status_code == 201
-        upload_id = upload_response.json()["upload_id"]
+        upload_id = upload_response.json()["data"]["upload_id"]
 
         # Test 1: User2 tries to access user1's video
         headers2 = {"Authorization": f"Bearer {token2}"}
@@ -335,19 +335,19 @@ class TestEndToEndVideoWorkflow:
         response = client.get("/health")
         assert response.status_code == 200
         health_data = response.json()
-        assert "status" in health_data
-        assert "database" in health_data
+        assert "status" in health_data["data"]
+        assert "database" in health_data["data"]
         assert "timestamp" in health_data
 
         # Liveness probe
         response = client.get("/health/live")
         assert response.status_code == 200
-        assert response.json()["status"] == "alive"
+        assert response.json()["data"]["status"] == "alive"
 
         # Readiness probe
         response = client.get("/health/ready")
         assert response.status_code == 200
-        assert response.json()["status"] == "ready"
+        assert response.json()["data"]["status"] == "ready"
 
     def test_pagination_and_limits(self, db_session, mocker):
         """Test pagination and API limits."""
@@ -374,7 +374,7 @@ class TestEndToEndVideoWorkflow:
             "/auth/login", data={"username": "pagination_user", "password": "testpass"}
         )
         assert login_response.status_code == 200
-        access_token = login_response.json()["access_token"]
+        access_token = login_response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {access_token}"}
 
         # Create multiple videos
@@ -387,19 +387,19 @@ class TestEndToEndVideoWorkflow:
                 headers=headers,
             )
             assert response.status_code == 201
-            upload_ids.append(response.json()["upload_id"])
+            upload_ids.append(response.json()["data"]["upload_id"])
 
         # Test pagination - limit 2
         response = client.get("/videos/?limit=2", headers=headers)
         assert response.status_code == 200
         videos = response.json()
-        assert len(videos) == 2
+        assert len(videos["data"]) == 2
 
         # Test pagination - skip 2, limit 2
         response = client.get("/videos/?skip=2&limit=2", headers=headers)
         assert response.status_code == 200
         videos = response.json()
-        assert len(videos) == 2
+        assert len(videos["data"]) == 2
 
         # Test invalid pagination parameters
         response = client.get("/videos/?skip=-1", headers=headers)

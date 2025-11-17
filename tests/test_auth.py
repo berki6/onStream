@@ -30,8 +30,8 @@ def test_register_user(db_session: Session):
     )
     assert response.status_code == 201
     data = response.json()
-    assert data["username"] == "testuser123"
-    assert data["email"] == "test@example.com"
+    assert data["data"]["username"] == "testuser123"
+    assert data["data"]["email"] == "test@example.com"
 
 
 def test_register_duplicate_username(db_session: Session):
@@ -92,8 +92,8 @@ def test_login(test_user):
     )
     assert response.status_code == 200
     tokens = response.json()
-    assert "access_token" in tokens
-    assert tokens["token_type"] == "bearer"
+    assert "access_token" in tokens["data"]
+    assert tokens["data"]["token_type"] == "bearer"
 
 
 def test_login_invalid_credentials():
@@ -347,7 +347,7 @@ def test_jwt_token_structure(test_user):
     )
     assert response.status_code == 200
 
-    token = response.json()["access_token"]
+    token = response.json()["data"]["access_token"]
 
     # Decode token (without verification for testing)
     decoded = jwt.decode(token, "", options={"verify_signature": False})
@@ -397,7 +397,7 @@ def test_missing_bearer_prefix(test_user):
         data={"username": "testuser", "password": "testpass"},
     )
     assert response.status_code == 200  # Ensure login succeeds
-    token = response.json()["access_token"]
+    token = response.json()["data"]["access_token"]
 
     # Try without Bearer prefix
     headers = {"Authorization": token}  # Missing "Bearer "

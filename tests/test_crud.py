@@ -254,15 +254,16 @@ class TestCRUDOperations:
         db_session.commit()
 
         # Test getting all videos
-        user_videos = crud.get_videos_by_user(db_session, user.id)
+        user_videos, total_count = crud.get_videos_by_user(db_session, user.id)
         assert len(user_videos) == 5
+        assert total_count == 5
 
         # Test pagination - limit 2
-        paginated = crud.get_videos_by_user(db_session, user.id, skip=0, limit=2)
+        paginated, _ = crud.get_videos_by_user(db_session, user.id, skip=0, limit=2)
         assert len(paginated) == 2
 
         # Test pagination - skip 2, limit 2
-        paginated2 = crud.get_videos_by_user(db_session, user.id, skip=2, limit=2)
+        paginated2, _ = crud.get_videos_by_user(db_session, user.id, skip=2, limit=2)
         assert len(paginated2) == 2
         assert paginated2[0].title == "Test Video 2"
         assert paginated2[1].title == "Test Video 3"
@@ -277,7 +278,7 @@ class TestCRUDOperations:
         db_session.commit()
         db_session.refresh(other_user)
 
-        other_videos = crud.get_videos_by_user(db_session, other_user.id)
+        other_videos, _ = crud.get_videos_by_user(db_session, other_user.id)
         assert len(other_videos) == 0
 
         # Cleanup
