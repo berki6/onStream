@@ -36,7 +36,7 @@ def create_playlist(
         )
 
     # Check for duplicate title for this user
-    existing_playlists = crud.get_playlists_by_user(db, current_user.id)
+    existing_playlists, _ = crud.get_playlists_by_user(db, current_user.id)
     if any(p.name == playlist.name for p in existing_playlists):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -49,7 +49,7 @@ def create_playlist(
             f"User '{current_user.username}' created playlist '{playlist.name}'"
         )
         return schemas.APIResponse(
-            data=db_playlist,
+            data=schemas.Playlist.model_validate(db_playlist),
             request_id=request.state.request_id,
             timestamp=datetime.now(timezone.utc),
             message="Playlist created successfully",
@@ -137,7 +137,7 @@ def get_playlist(
             f"User '{current_user.username}' accessed playlist ID {playlist_id}"
         )
         return schemas.APIResponse(
-            data=playlist,
+            data=schemas.Playlist.model_validate(playlist),
             request_id=request.state.request_id,
             timestamp=datetime.now(timezone.utc),
             message="Playlist retrieved successfully",
