@@ -1,4 +1,6 @@
-# OnStream - Video Streaming Platform
+# 🚧 OnStream - Video Streaming Platform (In Development) 🚧
+
+> ⚠️ **UNDER ACTIVE DEVELOPMENT** — This project is a work in progress. APIs, features, and architecture may change significantly before the first stable release.
 
 [![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.121.1-green.svg)](https://fastapi.tiangolo.com/)
@@ -6,7 +8,42 @@
 
 A modern, scalable video streaming platform built with FastAPI, featuring asynchronous video processing, HLS streaming, and Redis-based job queuing.
 
-## 🚀 Features
+## System Architecture
+
+```mermaid
+flowchart TB
+    Client[Client / Browser] -->|HTTP Requests| API[FastAPI Application]
+
+    subgraph API [FastAPI Application]
+        Auth[Auth Middleware\nJWT Validation]
+        Router[API Router Layer]
+        Service[Service Layer]
+        ORM[SQLAlchemy ORM]
+    end
+
+    subgraph Storage [Data & File Storage]
+        DB[(Database\nSQLite / PostgreSQL / MySQL)]
+        FS[File System\nUploads / HLS / Thumbnails]
+    end
+
+    subgraph Queue [Background Job System]
+        Redis[(Redis\nJob Queue & Cache)]
+        Worker[Video Processing Worker\nFFmpeg]
+    end
+
+    Client --> Auth
+    Auth --> Router
+    Router --> Service
+    Service --> ORM
+    ORM --> DB
+    Service --> FS
+    Service -->|Enqueue Job| Redis
+    Redis -->|Dequeue Job| Worker
+    Worker -->|Write HLS / Thumbnails| FS
+    Worker -->|Update Status| DB
+```
+
+## Features
 
 ### Core Functionality
 
@@ -18,162 +55,24 @@ A modern, scalable video streaming platform built with FastAPI, featuring asynch
 - **Playlists**: User-created video playlists with custom ordering
 - **Analytics**: Video view tracking and analytics (optional)
 
-### Technical Features
+### Technical Highlights
 
 - **RESTful API**: Well-documented REST API with OpenAPI/Swagger
-- **Database**: SQLAlchemy ORM with support for SQLite, PostgreSQL, and MySQL
-- **Migrations**: Alembic for database schema versioning
+- **Database**: SQLAlchemy ORM (SQLite, PostgreSQL, MySQL)
 - **Background Jobs**: Redis-based job queue with worker processes
-- **File Storage**: Organized file storage with configurable directories
-- **Logging**: Structured logging with configurable levels
 - **Health Checks**: Comprehensive health monitoring endpoints
-- **CORS Support**: Cross-origin resource sharing configuration
-- **Environment-Aware Signal Handling**: Intelligent process lifecycle management based on environment
-- **Standardized API Responses**: Consistent response format across all endpoints
-- **Request ID Tracking**: End-to-end request tracing for debugging and monitoring
+- **Standardized API Responses**: Consistent response format with request ID tracking
+- **Environment-Aware Signal Handling**: Worker lifecycle management adapts to dev/production
 
-### Reliability & Resilience Features
+### Reliability & Resilience
 
-- **Connection Pooling**: Redis connection pool with configurable limits and automatic cleanup
-- **Retry Logic**: Exponential backoff retry mechanism for Redis operations with configurable attempts
-- **Circuit Breaker Pattern**: Automatic failure detection and recovery for Redis connections
-- **Job Persistence Fallback**: Database-backed job queue that persists jobs when Redis is unavailable
-- **Automatic Recovery**: Jobs automatically recovered from database to Redis when service is restored
+- **Connection Pooling & Retry**: Configurable Redis pool (10 connections) with exponential backoff retry (3 attempts)
+- **Circuit Breaker**: Three-state pattern (CLOSED → OPEN → HALF_OPEN) prevents cascading failures
+- **Job Persistence Fallback**: Database-backed queue when Redis is unavailable; jobs auto-migrate on recovery
 - **Graceful Degradation**: System continues operating with reduced functionality during outages
+- **Environment-Aware Signal Handling**: Ctrl+C works in development; ignored in production (managed by supervisor/systemd)
 
-## 🔧 Reliability Architecture
-
-### Connection Pooling & Retry Logic
-
-The platform implements robust Redis connection management with:
-
-- **Connection Pool**: Configurable pool size (default: 10 connections) with automatic cleanup
-- **Socket Timeouts**: 5-second connection and read timeouts to prevent hanging operations
-- **Retry Mechanism**: Up to 3 retry attempts with exponential backoff (1s, 2s, 4s delays)
-- **Error Handling**: Graceful handling of `ConnectionError`, `TimeoutError`, and `OSError`
-
-### Circuit Breaker Pattern
-
-Implements a three-state circuit breaker for Redis operations:
-
-- **CLOSED State**: Normal operation, all requests pass through
-- **OPEN State**: Failure threshold exceeded (5 failures), requests fail fast
-- **HALF_OPEN State**: Testing recovery after timeout period (60 seconds)
-
-**Benefits**:
-
-- Prevents cascading failures during Redis outages
-- Reduces system load during service degradation
-- Enables faster recovery when services are restored
-- Provides monitoring and alerting capabilities
-
-### Job Persistence Fallback
-
-When Redis is unavailable, the system automatically falls back to database storage:
-
-- **Primary Storage**: Redis queue for optimal performance
-- **Fallback Storage**: Database `QueuedJob` table for persistence
-- **Recovery Process**: Automatic migration of jobs from database to Redis when service restores
-- **Status Tracking**: Complete job lifecycle tracking (pending → processing → completed/failed)
-
-**Key Features**:
-
-- Zero job loss during Redis outages
-- Automatic recovery with configurable batch sizes (max 100 jobs)
-- Retry limits to prevent infinite processing loops
-- Comprehensive monitoring and statistics
-
-### Monitoring & Health Checks
-
-Enhanced health monitoring includes:
-
-- **Circuit Breaker Status**: Current state and failure counts
-- **Queue Statistics**: Redis and database queue lengths
-- **Recovery Metrics**: Jobs recovered and pending counts
-- **Service Dependencies**: Database, Redis, and FFmpeg availability
-
-### Environment-Aware Signal Handling
-
-The video processing worker implements sophisticated signal handling that adapts to the deployment environment:
-
-**Development Environment** (`ENV=development`):
-
-- **Ctrl+C Support**: Graceful shutdown triggered by keyboard interrupt
-- **Signal Handlers**: SIGINT and SIGTERM signals are caught and processed
-- **Clean Termination**: Worker completes current tasks before shutting down
-- **Developer-Friendly**: Easy stopping during development and debugging
-
-**Production Environment** (`ENV=production`):
-
-- **Process Manager Control**: Lifecycle managed exclusively by supervisor/systemd
-- **Keyboard Interrupt Immunity**: Ctrl+C is completely ignored (signal.SIG_IGN)
-- **Robust Operation**: Prevents accidental termination from keyboard input
-- **Enterprise-Grade**: Follows production service best practices
-
-**Key Benefits**:
-
-- **Safety**: Prevents accidental service disruption in production
-- **Control**: Proper shutdown procedures through management tools only
-- **Flexibility**: Easy development workflow vs. robust production operation
-- **Thread-Safe**: Uses `threading.Event()` for race-condition-free shutdown coordination
-
-**Usage**:
-
-```bash
-# Development - Ctrl+C works
-ENV=development python start_worker.py
-
-# Production - Ctrl+C ignored, use supervisor commands
-ENV=production python start_worker.py
-```
-
-## 📁 Project Structure
-
-```text
-onstream/
-├── src/
-│   ├── core/                 # Core application components
-│   │   ├── auth.py          # JWT authentication utilities
-│   │   ├── config.py        # Application configuration
-│   │   ├── database.py      # Database connection and session management
-│   │   └── logger.py        # Logging configuration
-│   ├── routers/             # API route handlers
-│   │   ├── auth.py          # Authentication endpoints
-│   │   ├── videos.py        # Video management endpoints
-│   │   ├── stream.py        # Video streaming endpoints
-│   │   ├── health.py        # Health check endpoints
-│   │   └── playlists.py     # Playlist management endpoints
-│   ├── schema/              # Data models and schemas
-│   │   ├── models.py        # SQLAlchemy database models
-│   │   └── schemas.py       # Pydantic API schemas
-│   ├── services/            # Business logic services
-│   │   └── crud.py          # Database CRUD operations
-│   ├── tasks/               # Background job processors
-│   │   └── video_worker.py  # Video processing worker
-│   ├── utils/               # Utility functions
-│   │   └── upload_id.py     # Upload ID generation utilities
-│   └── main.py              # FastAPI application entry point
-├── tests/                   # Test suite
-│   ├── conftest.py          # Test configuration and fixtures
-│   ├── test_*.py            # Individual test modules
-│   └── sample.mp4           # Test video file
-├── alembic/                 # Database migrations
-│   └── versions/            # Migration files
-├── data/                    # File storage directories
-│   ├── uploads/             # Uploaded video files
-│   ├── videos/              # Processed video files
-│   ├── hls/                 # HLS streaming segments
-│   └── thumbnails/          # Generated thumbnails
-├── docs/                    # Documentation
-├── requirements.txt         # Python dependencies
-├── pytest.ini              # Test configuration
-├── alembic.ini             # Migration configuration
-├── start_worker.py         # Worker process entry point
-├── README_Redis.md         # Redis job queue documentation
-└── CHANGELOG               # Project changelog
-```
-
-## 🛠️ Installation
+## Installation
 
 ### Prerequisites
 
@@ -223,7 +122,7 @@ onstream/
    redis-server
    ```
 
-## 🚀 Running the Application
+## Running the Application
 
 ### Development Server
 
@@ -259,7 +158,7 @@ python start_worker.py
 python start_worker.py
 ```
 
-## 🔧 Configuration
+## Configuration
 
 The application uses environment variables for configuration. Copy `.env.example` to `.env` and modify as needed.
 
@@ -283,26 +182,14 @@ The application uses environment variables for configuration. Copy `.env.example
 
 The application automatically configures file paths based on the environment:
 
-**Development Mode** (`ENV=development`):
+- **Development** (`ENV=development`): Paths resolved relative to project root (e.g., `data/uploads` → `/full/path/to/project/data/uploads`)
+- **Production** (`ENV=production`): Paths treated as absolute (container-friendly, e.g., `data` → `/app/data`)
 
-- Base paths are resolved relative to the project root
-- Example: `data/uploads` → `/full/path/to/project/data/uploads`
+## API Response Structure
 
-**Production Mode** (`ENV=production`):
-
-- Base paths are treated as absolute (container-friendly)
-- Example: `data` → `/app/data` (when running in Docker)
-
-This ensures consistent file handling across development and production environments without manual path manipulation.
-
-## 📋 API Response Structure
-
-All API endpoints return standardized responses following industry best practices (inspired by GitHub, Stripe, and AWS APIs).
-
-### Standard Response Format
+All endpoints return standardized responses with consistent format, inspired by GitHub, Stripe, and AWS APIs.
 
 **Successful Response:**
-
 ```json
 {
   "success": true,
@@ -314,7 +201,6 @@ All API endpoints return standardized responses following industry best practice
 ```
 
 **Error Response:**
-
 ```json
 {
   "success": false,
@@ -326,7 +212,6 @@ All API endpoints return standardized responses following industry best practice
 ```
 
 **Paginated Response:**
-
 ```json
 {
   "success": true,
@@ -343,8 +228,6 @@ All API endpoints return standardized responses following industry best practice
 }
 ```
 
-### Response Fields
-
 | Field | Type | Description |
 |-------|------|-------------|
 | `success` | boolean | Operation success status |
@@ -354,25 +237,9 @@ All API endpoints return standardized responses following industry best practice
 | `timestamp` | string | ISO 8601 UTC timestamp |
 | `pagination` | object | Pagination metadata (list endpoints only) |
 
-### Benefits
+### Request ID Tracking
 
-- **Consistency**: Uniform response format across all endpoints
-- **Debugging**: Request IDs enable end-to-end tracing
-- **Client Integration**: Predictable response structure
-- **Monitoring**: Standardized error reporting and success metrics
-
-## 🔍 Request ID Tracking
-
-Every API request is assigned a unique UUID for complete request lifecycle tracking.
-
-### How It Works
-
-1. **Request Arrival**: Middleware generates UUID and sets in request context
-2. **Response Header**: `X-Request-ID` header included in all responses
-3. **Log Correlation**: All log entries include request ID in format
-4. **Error Tracing**: Failed requests traceable across all components
-
-### Log Format with Request IDs
+Every API request is assigned a unique UUID (`X-Request-ID` header + body field) for end-to-end lifecycle tracing. All log entries include the request ID for correlation across components:
 
 ```log
 2025-11-17 13:24:03 - src.routers.auth - INFO - [550e8400-e29b-41d4-a716-446655440000] - User 'john' logged in successfully
@@ -380,149 +247,61 @@ Every API request is assigned a unique UUID for complete request lifecycle track
 2025-11-17 13:24:05 - src.tasks.worker - INFO - [550e8400-e29b-41d4-a716-446655440000] - Processing video job
 ```
 
-### Key Features
+## API Endpoints
 
-- **Distributed Tracing**: Track requests across microservices
-- **Debugging**: Correlate logs from different components
-- **Performance Monitoring**: Measure end-to-end request latency
-- **Error Correlation**: Link errors to specific user requests
-- **Production Support**: Easier incident investigation
-
-### Request ID in Headers
-
-All API responses include the `X-Request-ID` header:
-
-```log
-HTTP/1.1 200 OK
-Content-Type: application/json
-X-Request-ID: 550e8400-e29b-41d4-a716-446655440000
-...
-
-{
-  "success": true,
-  "data": {...},
-  "request_id": "550e8400-e29b-41d4-a716-446655440000",
-  ...
-}
-```
-
-## 📚 API Endpoints
+> **Note**: All endpoints except `/auth/register`, `/auth/login`, and `/health` require a Bearer token.
 
 ### Authentication
 
-- `POST /auth/register` - Register new user
-  - **Body**: `{"username": "string", "email": "string", "password": "string"}`
-  - **Response**: `201 Created` - Standardized APIResponse with user data
-  - **Errors**: `400 Bad Request` - Username/email already exists, invalid data
-- `POST /auth/login` - User login
-  - **Body**: `{"username": "string", "password": "string"}`
-  - **Response**: `200 OK` - Standardized APIResponse with access token
-  - **Errors**: `401 Unauthorized` - Invalid credentials
+- `POST /auth/register` — Register new user
+  - **Body**: `{"username", "email", "password"}`
+  - **Response**: `201 Created`
+- `POST /auth/login` — User login
+  - **Body**: `{"username", "password"}`
+  - **Response**: `200 OK` with access token
 
 ### Videos
 
-- `POST /videos/` - Upload video
-  - **Auth**: Bearer token required
-  - **Content-Type**: `multipart/form-data`
-  - **Body**: `file` (video file), `title` (optional)
-  - **Response**: `201 Created` - Standardized APIResponse with video object and `upload_id`
-  - **Errors**: `400 Bad Request` - Invalid file type/size, `413 Payload Too Large` - File too large
-- `GET /videos/` - List user videos
-  - **Auth**: Bearer token required
+- `POST /videos/` — Upload video (`multipart/form-data`)
+  - **Body**: `file` (video), `title` (optional)
+  - **Response**: `201 Created` with video object and `upload_id`
+- `GET /videos/` — List user videos (paginated)
   - **Query**: `skip` (int, default 0), `limit` (int, default 100, max 100)
-  - **Response**: `200 OK` - Paginated APIResponse with array of video objects
-- `GET /videos/{upload_id}` - Get video details
-  - **Auth**: Bearer token required
-  - **Path**: `upload_id` (8-character string)
-  - **Response**: `200 OK` - Standardized APIResponse with video object
-  - **Errors**: `404 Not Found` - Video not found, `403 Forbidden` - Access denied
-- `GET /videos/{upload_id}/job` - Get processing status
-  - **Auth**: Bearer token required
-  - **Path**: `upload_id` (8-character string)
-  - **Response**: `200 OK` - Standardized APIResponse with job status and progress
-  - **Errors**: `404 Not Found` - Job not found
-- `DELETE /videos/{upload_id}` - Delete video
-  - **Auth**: Bearer token required
-  - **Path**: `upload_id` (8-character string)
-  - **Response**: `204 No Content`
-  - **Errors**: `404 Not Found` - Video not found, `403 Forbidden` - Access denied
+- `GET /videos/{upload_id}` — Get video details
+- `GET /videos/{upload_id}/job` — Get processing status
+- `DELETE /videos/{upload_id}` — Delete video (`204 No Content`)
 
 ### Streaming
 
-- `GET /stream/{upload_id}/playlist.m3u8` - Get HLS playlist
-  - **Auth**: Bearer token required
-  - **Path**: `upload_id` (8-character string)
-  - **Response**: `200 OK` - M3U8 playlist file
-  - **Errors**: `404 Not Found` - Video not found/ready, `403 Forbidden` - Access denied
-- `GET /stream/{upload_id}/{segment}.ts` - Get HLS video segment
-  - **Auth**: Bearer token required
-  - **Path**: `upload_id` (8-character string), `segment` (filename)
-  - **Response**: `200 OK` - TS video segment
-  - **Errors**: `404 Not Found` - Segment not found, `403 Forbidden` - Access denied
+- `GET /stream/{upload_id}/playlist.m3u8` — Get HLS playlist
+- `GET /stream/{upload_id}/{segment}.ts` — Get HLS video segment
 
 ### Playlists
 
-- `POST /playlists/` - Create playlist
-  - **Auth**: Bearer token required
-  - **Body**: `{"name": "string"}`
-  - **Response**: `201 Created` - Standardized APIResponse with playlist object
-  - **Errors**: `400 Bad Request` - Invalid name or duplicate name
-- `GET /playlists/` - List user's playlists
-  - **Auth**: Bearer token required
-  - **Query**: `skip` (int, default 0), `limit` (int, default 100, max 100)
-  - **Response**: `200 OK` - Paginated APIResponse with array of playlist objects
-- `GET /playlists/{playlist_id}` - Get specific playlist
-  - **Auth**: Bearer token required
-  - **Path**: `playlist_id` (integer)
-  - **Response**: `200 OK` - Standardized APIResponse with playlist object and videos
-  - **Errors**: `404 Not Found` - Playlist not found, `403 Forbidden` - Access denied
-- `DELETE /playlists/{playlist_id}` - Delete playlist
-  - **Auth**: Bearer token required
-  - **Path**: `playlist_id` (integer)
-  - **Response**: `204 No Content`
-  - **Errors**: `404 Not Found` - Playlist not found, `403 Forbidden` - Access denied
-- `POST /playlists/{playlist_id}/videos/{upload_id}` - Add video to playlist
-  - **Auth**: Bearer token required
-  - **Path**: `playlist_id` (integer), `upload_id` (8-character string)
-  - **Body**: `{"position": int}` (optional, defaults to end)
-  - **Response**: `201 Created` - Standardized APIResponse with operation details
-  - **Errors**: `404 Not Found` - Playlist/video not found, `403 Forbidden` - Access denied
-- `DELETE /playlists/{playlist_id}/videos/{upload_id}` - Remove video from playlist
-  - **Auth**: Bearer token required
-  - **Path**: `playlist_id` (integer), `upload_id` (8-character string)
-  - **Response**: `204 No Content`
-  - **Errors**: `404 Not Found` - Playlist/video not found, `403 Forbidden` - Access denied
-- `GET /playlists/{playlist_id}/videos` - List videos in playlist
-  - **Auth**: Bearer token required
-  - **Path**: `playlist_id` (integer)
-  - **Response**: `200 OK` - Standardized APIResponse with array of video objects with positions
-  - **Errors**: `404 Not Found` - Playlist not found, `403 Forbidden` - Access denied
-- `PUT /playlists/{playlist_id}/videos/{upload_id}` - Update video position
-  - **Auth**: Bearer token required
-  - **Path**: `playlist_id` (integer), `upload_id` (8-character string)
-  - **Body**: `{"position": int}` (required)
-  - **Response**: `200 OK` - Standardized APIResponse with updated position
-  - **Errors**: `404 Not Found` - Playlist/video not found, `403 Forbidden` - Access denied
+- `POST /playlists/` — Create playlist
+  - **Body**: `{"name"}`
+- `GET /playlists/` — List user's playlists (paginated)
+- `GET /playlists/{playlist_id}` — Get playlist with videos
+- `DELETE /playlists/{playlist_id}` — Delete playlist
+- `POST /playlists/{playlist_id}/videos/{upload_id}` — Add video to playlist
+  - **Body**: `{"position"}` (optional, defaults to end)
+- `DELETE /playlists/{playlist_id}/videos/{upload_id}` — Remove video from playlist
+- `GET /playlists/{playlist_id}/videos` — List videos in playlist with positions
+- `PUT /playlists/{playlist_id}/videos/{upload_id}` — Update video position
+  - **Body**: `{"position"}` (required)
 
 ### Health
 
-- `GET /health` - Comprehensive application health check
-  - **Response**: `200 OK` - Standardized APIResponse with health status details
-  - **Checks**: Database connectivity, Redis connectivity, FFmpeg availability
-  - **Errors**: `503 Service Unavailable` - Any critical service unhealthy
-- `GET /health/live` - Liveness probe
-  - **Response**: `200 OK` - Standardized APIResponse with liveness status and metrics
-- `GET /health/ready` - Readiness probe
-  - **Response**: `200 OK` - Standardized APIResponse with readiness status
-  - **Checks**: Database, Redis, and FFmpeg availability
-  - **Errors**: `503 Service Unavailable` - Any dependency unavailable
+- `GET /health` — Comprehensive health check (db, Redis, FFmpeg)
+- `GET /health/live` — Liveness probe
+- `GET /health/ready` — Readiness probe
 
-## 🧪 Testing
+## Testing
 
 [![Tests](https://img.shields.io/badge/tests-123%20passed-green.svg)](tests/)
 [![Coverage](https://img.shields.io/badge/coverage-80.61%25-brightgreen.svg)](tests/)
 
-**Current Test Status**: ✅ **123 tests passed** with **80.61% code coverage** (237 uncovered lines out of 1222 total)
+**Current Test Status**: 123 tests passed with **80.61% code coverage** (237 uncovered lines out of 1222 total)
 
 ### Run Tests
 
@@ -540,60 +319,32 @@ pytest tests/test_videos_extended.py
 pytest -v
 ```
 
-### Test Structure
-
-- **Unit Tests**: Individual component testing
-- **Integration Tests**: API endpoint testing with database
-- **E2E Tests**: Complete workflow testing
-- **Fixtures**: Pre-configured test data and database sessions
-
-### Coverage Report
-
-```bash
-TOTAL                        1222    237    81%
-Required test coverage of 80% reached. Total coverage: 80.61%
-================================================ 123 passed in 46.63s ================================================
-```
-
 ### Test Files
 
-- `test_auth.py` - Authentication endpoints
-- `test_crud.py` - Database operations
-- `test_models.py` - Data models and schemas
-- `test_videos_extended.py` - Video management (extended)
-- `test_video_job.py` - Background job processing
-- `test_video_worker.py` - Video processing worker
-- `test_playlists_extended.py` - Playlist management
-- `test_stream.py` - Video streaming endpoints
-- `test_e2e.py` - End-to-end workflows
+- `test_auth.py` — Authentication endpoints
+- `test_crud.py` — Database operations
+- `test_models.py` — Data models and schemas
+- `test_videos_extended.py` — Video management (extended)
+- `test_video_job.py` — Background job processing
+- `test_video_worker.py` — Video processing worker
+- `test_playlists_extended.py` — Playlist management
+- `test_stream.py` — Video streaming endpoints
+- `test_e2e.py` — End-to-end workflows
 
-## 🗄️ Database Schema
+## Database Schema
 
 ### Core Tables
 
-- **users**: User accounts and authentication
-- **videos**: Video metadata and file references
-- **video_jobs**: Background processing job tracking
-- **playlists**: User-created video collections
-- **playlist_videos**: Many-to-many playlist-video relationships
-- **video_views**: Analytics and view tracking
+- **users** — User accounts and authentication
+- **videos** — Video metadata and file references
+- **video_jobs** — Background processing job tracking
+- **playlists** — User-created video collections
+- **playlist_videos** — Many-to-many playlist-video relationships
+- **video_views** — Analytics and view tracking
 
-### Schema Documentation
+For detailed schema documentation with ERD diagrams, see: **[docs/SCHEMA.md](docs/SCHEMA.md)**
 
-For detailed database schema documentation with Mermaid diagrams, see: **[docs/SCHEMA.md](docs/SCHEMA.md)**
-
-This document includes:
-
-- Entity Relationship Diagrams (ERD)
-- Class diagrams for all models
-- Pydantic schema documentation
-- Field constraints and validation rules
-- Database indexes and relationships
-- Data flow diagrams
-
-### Migrations
-
-Database schema changes are managed through Alembic:
+### Migrations (Alembic)
 
 ```bash
 # Create new migration
@@ -606,56 +357,36 @@ alembic upgrade head
 alembic downgrade -1
 ```
 
-## 🔄 Video Processing Pipeline
+## Video Processing Pipeline
 
-1. **Upload**: Video file uploaded via API endpoint
-2. **Validation**: File type, size, and duration validation
-3. **Queue**: Job added to Redis queue for processing
-4. **Processing**: Worker processes video with FFmpeg:
+1. **Upload** — Video file uploaded via API endpoint
+2. **Validation** — File type, size, and duration validation
+3. **Queue** — Job added to Redis queue for processing
+4. **Processing** — Worker processes video with FFmpeg:
    - HLS segment generation
    - Thumbnail extraction
    - Metadata updates
-5. **Completion**: Video marked as ready for streaming
+5. **Completion** — Video marked as ready for streaming
 
-## 📊 Monitoring & Observability
+## Monitoring & Observability
 
 ### Logging
 
-Structured logging with configurable levels and comprehensive request tracking:
+Structured logging with configurable levels and request ID correlation across all components:
 
-- Console and file output with request ID correlation
+- Console and file output with `[uuid]` format
 - Request/response logging with unique identifiers
 - Error tracking with stack traces and request context
-- Request ID format: `[uuid]` in all log entries
-- End-to-end request tracing across all components
-
-**Log Format with Request IDs:**
-
-```log
-2025-11-17 13:24:03 - src.routers.auth - INFO - [550e8400-e29b-41d4-a716-446655440000] - User 'john' logged in successfully
-2025-11-17 13:24:04 - src.routers.videos - INFO - [550e8400-e29b-41d4-a716-446655440000] - Video upload started
-2025-11-17 13:24:05 - src.tasks.worker - INFO - [550e8400-e29b-41d4-a716-446655440000] - Processing video job
-```
 
 ### Health Checks
 
-Comprehensive health monitoring:
-
-- Application status
-- Database connectivity
-- Redis connectivity
-- Background worker status
+- Application status, database connectivity, Redis connectivity, background worker status
 
 ### Metrics (Optional)
 
-Prometheus metrics support for:
+Prometheus metrics support for request counts/latency, database query performance, queue processing metrics, and error rates.
 
-- Request counts and latency
-- Database query performance
-- Queue processing metrics
-- Error rates
-
-## 🚀 Deployment
+## Deployment
 
 ### Production Considerations
 
@@ -670,7 +401,6 @@ Prometheus metrics support for:
 ### Docker Deployment
 
 ```dockerfile
-# Example Dockerfile
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -686,7 +416,7 @@ CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 ### Supervisor Configuration
 
-For production deployment with process management, use Supervisor to manage the video worker processes. Create the configuration file `/etc/supervisor/conf.d/onstream-worker.conf`:
+For production, manage the video worker with Supervisor (`/etc/supervisor/conf.d/onstream-worker.conf`):
 
 ```ini
 [program:onstream-worker]
@@ -704,45 +434,19 @@ stopwaitsecs=30
 stopsignal=TERM
 ```
 
-**Supervisor Commands:**
-
 ```bash
-# Reload configuration
-sudo supervisorctl reread
-sudo supervisorctl update
-
-# Start the worker
+sudo supervisorctl reread && sudo supervisorctl update
 sudo supervisorctl start onstream-worker
-
-# Check status
 sudo supervisorctl status onstream-worker
-
-# Stop the worker
-sudo supervisorctl stop onstream-worker
-
-# Restart the worker
-sudo supervisorctl restart onstream-worker
-
-# View logs
-sudo supervisorctl tail onstream-worker
 ```
 
-**Key Configuration Options:**
-
-- `stopsignal=TERM`: Sends SIGTERM for graceful shutdown
-- `stopwaitsecs=30`: Waits up to 30 seconds for clean shutdown
-- `environment=ENV=production`: Ensures production signal handling (Ctrl+C ignored)
-- `autorestart=true`: Automatically restarts worker if it crashes
-- `redirect_stderr=true`: Combines stdout and stderr in log file
-
-## 📝 License
+## License
 
 Pending.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
-- [FastAPI](https://fastapi.tiangolo.com/) - Modern Python web framework
-- [SQLAlchemy](https://sqlalchemy.org/) - Python SQL toolkit
-- [FFmpeg](https://ffmpeg.org/) - Multimedia processing
-- [Redis](https://redis.io/) - In-memory data structure store
-- [Pydantic](https://pydantic-docs.helpmanual.io/) - Data validation
+- [FastAPI](https://fastapi.tiangolo.com/) — Modern Python web framework
+- [SQLAlchemy](https://sqlalchemy.org/) — Python SQL toolkit
+- [FFmpeg](https://ffmpeg.org/) — Multimedia processing
+- [Redis](https://redis.io/) — In-memory data structure store
