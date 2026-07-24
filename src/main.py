@@ -2,9 +2,11 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 import subprocess
 from contextlib import asynccontextmanager
+from pathlib import Path
 import uuid
 import time
 
@@ -12,7 +14,8 @@ from src.api.v1.router import api_router
 from src.api.v1.routes import health
 from src.application.errors import AppError
 from src.core.config import settings
-from src.core.logger import get_logger, request_id_context
+from src.core.logger import bind_context, clear_context, get_logger
+from src.utils.paths import PROJECT_ROOT
 
 load_dotenv()
 
@@ -68,10 +71,13 @@ def create_app() -> FastAPI:
     async def add_request_id(request, call_next):
         request_id = str(uuid.uuid4())
         request.state.request_id = request_id
-        request_id_context.set(request_id)
-        response = await call_next(request)
-        response.headers["X-Request-ID"] = request_id
-        return response
+        bind_context(request_id=request_id)
+        try:
+            response = await call_next(request)
+            response.headers["X-Request-ID"] = request_id
+            return response
+        finally:
+            clear_context()
 
     if settings.PROMETHEUS_ENABLED:
 
@@ -118,6 +124,16 @@ def create_app() -> FastAPI:
 
     application.include_router(api_router, prefix="/v1")
     application.include_router(health.router, prefix="", tags=["health"])
+
+    if settings.DEMO_PLAYER_ENABLED:
+        demo_dir = PROJECT_ROOT / "static" / "demo"
+        if demo_dir.is_dir():
+            application.mount(
+                "/demo",
+                StaticFiles(directory=str(demo_dir), html=True),
+                name="demo",
+            )
+            logger.info("Demo player mounted at /demo/")
 
     @application.get("/")
     def read_root():

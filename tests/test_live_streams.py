@@ -26,6 +26,7 @@ def _live_defaults(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "LIVE_HLS_DIR", tmp_path / "live")
     monkeypatch.setattr(settings, "PUBLIC_RTMP_BASE_URL", "rtmp://localhost:1935/live")
     monkeypatch.setattr(settings, "PUBLIC_API_BASE_URL", "http://localhost:8000")
+    monkeypatch.setattr(settings, "PUBLIC_WEBRTC_BASE_URL", "http://localhost:8889")
     monkeypatch.setattr(settings, "MEDIAMTX_AUTH_SECRET", "")
     # Clear ABR registry between tests
     live_abr._processes.clear()
@@ -62,13 +63,19 @@ def test_create_stream_returns_rtmp_and_key(test_user, db_session: Session):
     assert data["rtmp_url"] == "rtmp://localhost:1935/live"
     assert f"/v1/playback/live/{data['stream_id']}/master.m3u8" in data["playback_url"]
     assert data["status"] == "idle"
+    assert data["whip_url"] == f"http://localhost:8889/live/{data['stream_key']}/whip"
+    assert data["whep_url"] == f"http://localhost:8889/live/{data['stream_key']}/whep"
     # Plaintext key must not appear on subsequent GET
     get_resp = client.get(
         f"/v1/live/{data['stream_id']}",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert get_resp.status_code == 200
-    assert "stream_key" not in get_resp.json()["data"]
+    body = get_resp.json()["data"]
+    assert "stream_key" not in body
+    assert "whip_url" not in body
+    assert "whep_url" not in body
+    assert body.get("webrtc_base") == "http://localhost:8889"
 
 
 def test_list_get_delete(test_user, db_session: Session):

@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from src.application.errors import AppError
 from src.application.ids import validate_public_video_id
 from src.core.config import settings
-from src.core.logger import get_logger
+from src.core.logger import bind_context, get_logger
 from src.infrastructure.db.repositories import job_repository, video_repository
 from src.infrastructure.media import ffmpeg as media_ffmpeg
 from src.infrastructure.queue.job_queue import job_queue
@@ -54,11 +54,23 @@ def list_videos(
 
 
 def get_video(db: Session, video_id: str, user_id: int):
+    bind_context(upload_id=video_id, user_id=user_id)
     return _owned_video(db, video_id, user_id)
 
 
+def _playback_purge_urls(upload_id: str) -> list[str]:
+    base = settings.PUBLIC_API_BASE_URL.rstrip("/")
+    return [
+        f"{base}/v1/playback/{upload_id}/master.m3u8",
+    ]
+
+
 def update_video(db: Session, video_id: str, user_id: int, body: VideoUpdate):
+    bind_context(upload_id=video_id, user_id=user_id)
     video = _owned_video(db, video_id, user_id)
+    became_private = (
+        body.is_public is False and video.is_public is True
+    )
     if body.title is not None:
         video.title = body.title
     if body.description is not None:
@@ -67,10 +79,18 @@ def update_video(db: Session, video_id: str, user_id: int, body: VideoUpdate):
         video.is_public = body.is_public
     db.commit()
     db.refresh(video)
+    if became_private:
+        try:
+            from src.infrastructure.cdn import get_cdn_purger
+
+            get_cdn_purger().purge_urls(_playback_purge_urls(video_id))
+        except Exception as e:
+            logger.warning(f"CDN purge on privatize failed for {video_id}: {e}")
     return video
 
 
 def delete_video(db: Session, video_id: str, user_id: int) -> None:
+    bind_context(upload_id=video_id, user_id=user_id)
     video = _owned_video(db, video_id, user_id)
     storage = get_storage()
     try:
@@ -92,11 +112,19 @@ def delete_video(db: Session, video_id: str, user_id: int) -> None:
     except Exception as e:
         logger.warning(f"Failed to remove thumbnail {video.thumbnail_path}: {e}")
 
+    try:
+        from src.infrastructure.cdn import get_cdn_purger
+
+        get_cdn_purger().purge_urls(_playback_purge_urls(video_id))
+    except Exception as e:
+        logger.warning(f"CDN purge on delete failed for {video_id}: {e}")
+
     video_repository.soft_delete(db, video_id)
     try:
         emit_video_event(db, video, "video.deleted")
     except Exception as e:
         logger.warning(f"Webhook emit failed on delete: {e}")
+    logger.info("Deleted video")
 
 
 def create_multipart_upload(

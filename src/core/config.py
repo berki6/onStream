@@ -131,6 +131,27 @@ class Settings(BaseSettings):
     MEDIA_PYAV_ENABLED: bool = _env_bool("MEDIA_PYAV_ENABLED", "true")
     QOE_CANARY_ENABLED: bool = _env_bool("QOE_CANARY_ENABLED", "true")
 
+    # WebRTC / WHIP-WHEP
+    PUBLIC_WEBRTC_BASE_URL: str = os.environ.get(
+        "PUBLIC_WEBRTC_BASE_URL", "http://localhost:8889"
+    )
+    PUBLIC_HTTPS_BASE_URL: str = os.environ.get("PUBLIC_HTTPS_BASE_URL", "")
+
+    # CDN purge
+    CDN_PROVIDER: str = os.environ.get("CDN_PROVIDER", "none")
+    CLOUDFLARE_API_TOKEN: str = os.environ.get("CLOUDFLARE_API_TOKEN", "")
+    CLOUDFLARE_ZONE_ID: str = os.environ.get("CLOUDFLARE_ZONE_ID", "")
+    BUNNY_API_KEY: str = os.environ.get("BUNNY_API_KEY", "")
+    BUNNY_PULL_ZONE_ID: str = os.environ.get("BUNNY_PULL_ZONE_ID", "")
+
+    # Encode / quality
+    FFMPEG_HWACCEL: str = os.environ.get("FFMPEG_HWACCEL", "")
+    QUALITY_GATE_ENABLED: bool = _env_bool("QUALITY_GATE_ENABLED", "false")
+    QUALITY_GATE_STRICT: bool = _env_bool("QUALITY_GATE_STRICT", "false")
+    QUALITY_GATE_MIN_VMAF: float = float(os.environ.get("QUALITY_GATE_MIN_VMAF", "70"))
+
+    # Demo player
+    DEMO_PLAYER_ENABLED: bool = _env_bool("DEMO_PLAYER_ENABLED", "false")
 
     # AI media intelligence (off by default for CI)
     AI_ENABLED: bool = _env_bool("AI_ENABLED", "false")
@@ -255,6 +276,14 @@ class Settings(BaseSettings):
         allowed = {"local", "s3"}
         if v.lower() not in allowed:
             raise ValueError("STORAGE_BACKEND must be 'local' or 's3'")
+        return v.lower()
+
+    @field_validator("CDN_PROVIDER")
+    @classmethod
+    def validate_cdn_provider(cls, v: str) -> str:
+        allowed = {"none", "cloudflare", "bunny"}
+        if v.lower() not in allowed:
+            raise ValueError("CDN_PROVIDER must be 'none', 'cloudflare', or 'bunny'")
         return v.lower()
 
 

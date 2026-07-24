@@ -1,0 +1,39 @@
+# GPU worker image for NVENC-capable hosts.
+# Same base as Dockerfile; set FFMPEG_HWACCEL=nvenc and ensure the host
+# provides an FFmpeg build with h264_nvenc (NVIDIA drivers + CUDA).
+#
+# Build:  docker build -f Dockerfile.gpu -t onstream-worker-gpu .
+# Run:    docker compose --profile gpu up worker-gpu
+#
+# On hosts without NVENC, encode_rendition falls back to libx264 automatically.
+
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    FFMPEG_HWACCEL=nvenc
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --upgrade pip && pip install -r requirements.txt
+
+COPY . .
+
+RUN mkdir -p data/uploads data/hls data/thumbnails data/cache \
+    && chmod +x scripts/docker-entrypoint.sh
+
+# Note: stock Debian ffmpeg often lacks NVENC. For production GPU encode,
+# replace the apt ffmpeg step with a CUDA/NVENC-enabled build, e.g.:
+#   FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04  (plus python + nvenc ffmpeg)
+# or mount a host ffmpeg with --enable-nvenc into PATH.
+
+EXPOSE 8000
+
+ENTRYPOINT ["./scripts/docker-entrypoint.sh"]

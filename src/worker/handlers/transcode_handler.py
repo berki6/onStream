@@ -181,6 +181,33 @@ def process_video(session, job):
             )
             encoded.append(rung)
 
+        # Optional quality gate against highest rung vs source
+        if settings.QUALITY_GATE_ENABLED and encoded:
+            from src.infrastructure.media.quality import evaluate_quality_gate
+
+            top = max(encoded, key=lambda r: r["height"])
+            sample_seg = output_dir / f"{top['height']}p" / "segment_000.ts"
+            ref_for_gate = upload_file
+            if sample_seg.is_file():
+                score, passed = evaluate_quality_gate(ref_for_gate, sample_seg)
+                if score is not None:
+                    video.quality_score = score
+                if not passed:
+                    emit_video_event(
+                        session,
+                        video,
+                        "video.quality",
+                        {
+                            "quality_score": score,
+                            "min_vmaf": settings.QUALITY_GATE_MIN_VMAF,
+                            "passed": False,
+                        },
+                    )
+                    if settings.QUALITY_GATE_STRICT:
+                        raise RuntimeError(
+                            f"Quality gate failed (score={score})"
+                        )
+
         update_job_progress(
             session,
             job,

@@ -1,4 +1,4 @@
-# MediaMTX — RTMP ingest + HLS remux for OnStream live
+# MediaMTX — RTMP ingest + HLS remux + WebRTC (WHIP/WHEP) for OnStream live
 # Docs: https://mediamtx.org/
 
 logLevel: info
@@ -26,6 +26,13 @@ authHTTPExclude:
 
 rtmp: yes
 rtmpAddress: :1935
+
+###############################################
+# WebRTC (WHIP publish / WHEP playback)
+
+webrtc: yes
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189
 
 ###############################################
 # HLS (disk-backed for OnStream to serve)

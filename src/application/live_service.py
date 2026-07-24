@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from src.application.errors import AppError
 from src.application import playback_service
 from src.core.config import settings
-from src.core.logger import get_logger
+from src.core.logger import bind_context, get_logger
 from src.core.security.tokens import create_stream_token, decode_token
 from src.infrastructure.db import models
 from src.infrastructure.db.repositories import live_stream_repository
@@ -81,6 +81,19 @@ def _playback_url(stream_id: str, token: Optional[str] = None) -> str:
     return base
 
 
+def _webrtc_base() -> str:
+    return settings.PUBLIC_WEBRTC_BASE_URL.rstrip("/")
+
+
+def _whip_whep_urls(stream_key: str) -> dict:
+    base = _webrtc_base()
+    path = f"live/{stream_key}"
+    return {
+        "whip_url": f"{base}/{path}/whip",
+        "whep_url": f"{base}/{path}/whep",
+    }
+
+
 def _to_response(
     stream: models.LiveStream,
     *,
@@ -99,9 +112,11 @@ def _to_response(
         "started_at": stream.started_at,
         "ended_at": stream.ended_at,
         "created_at": stream.created_at,
+        "webrtc_base": _webrtc_base(),
     }
     if stream_key is not None:
         data["stream_key"] = stream_key
+        data.update(_whip_whep_urls(stream_key))
     return data
 
 
@@ -116,6 +131,7 @@ def create_stream(
     plaintext_key = _generate_stream_key()
     key_hash = hash_stream_key(plaintext_key)
     prefix = plaintext_key[:8]
+    bind_context(stream_id=stream_id, user_id=user_id)
 
     stream = live_stream_repository.create(
         db,
@@ -126,6 +142,7 @@ def create_stream(
         stream_key_prefix=prefix,
         is_public=is_public,
     )
+    logger.info("Created live stream")
     return _to_response(stream, stream_key=plaintext_key)
 
 
@@ -140,6 +157,7 @@ def list_streams(db: Session, user_id: int, skip: int = 0, limit: int = 100):
 def get_stream(db: Session, stream_id: str, user_id: int) -> dict:
     _require_live_enabled()
     validate_stream_id(stream_id)
+    bind_context(stream_id=stream_id, user_id=user_id)
     stream = live_stream_repository.get_by_stream_id(db, stream_id)
     if not stream or stream.status == "ended":
         raise AppError("Live stream not found", code="not_found", status_code=404)
@@ -151,6 +169,7 @@ def get_stream(db: Session, stream_id: str, user_id: int) -> dict:
 def delete_stream(db: Session, stream_id: str, user_id: int) -> dict:
     _require_live_enabled()
     validate_stream_id(stream_id)
+    bind_context(stream_id=stream_id, user_id=user_id)
     stream = live_stream_repository.get_by_stream_id(db, stream_id)
     if not stream or stream.status == "ended":
         raise AppError("Live stream not found", code="not_found", status_code=404)
@@ -168,8 +187,22 @@ def delete_stream(db: Session, stream_id: str, user_id: int) -> dict:
     except Exception as exc:
         logger.warning("MediaMTX kick on delete failed for %s: %s", stream_id, exc)
 
+    # CDN purge for live playback URLs
+    try:
+        from src.infrastructure.cdn import get_cdn_purger
+
+        base = settings.PUBLIC_API_BASE_URL.rstrip("/")
+        get_cdn_purger().purge_urls(
+            [
+                f"{base}/v1/playback/live/{stream_id}/master.m3u8",
+            ]
+        )
+    except Exception as exc:
+        logger.warning("CDN purge on live delete failed for %s: %s", stream_id, exc)
+
     live_abr.stop_abr(stream_id)
     stream = live_stream_repository.revoke(db, stream)
+    logger.info("Deleted live stream")
     return _to_response(stream)
 
 

@@ -6,6 +6,9 @@ import subprocess
 from pathlib import Path
 
 from src.core.config import settings
+from src.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def extract_concise_error(stderr_text: str, max_lines=3, max_length=250) -> str:
@@ -104,23 +107,24 @@ def probe_duration(video_path: str) -> float:
     return _shell_probe_duration(video_path)
 
 
-def encode_rendition(
+def _build_encode_cmd(
     upload_file: Path,
     rendition_dir: Path,
     height: int,
     bitrate_k: int,
     segment_seconds: int,
-) -> None:
-    rendition_dir.mkdir(parents=True, exist_ok=True)
+    *,
+    use_nvenc: bool,
+) -> list:
     gop = segment_seconds * 30  # assume ~30fps
     cmd = [
         "ffmpeg",
         "-i",
         str(upload_file),
         "-c:v",
-        "libx264",
+        "h264_nvenc" if use_nvenc else "libx264",
         "-preset",
-        "medium",
+        "p4" if use_nvenc else "medium",
         "-profile:v",
         "main",
         "-b:v",
@@ -131,30 +135,83 @@ def encode_rendition(
         f"{bitrate_k * 2}k",
         "-vf",
         f"scale=-2:{height}",
-        "-x264-params",
-        f"keyint={gop}:min-keyint={gop}:scenecut=0",
-        "-force_key_frames",
-        f"expr:gte(t,n_forced*{segment_seconds})",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "128k",
-        "-ac",
-        "2",
-        "-hls_time",
-        str(segment_seconds),
-        "-hls_playlist_type",
-        "vod",
-        "-hls_list_size",
-        "0",
-        "-hls_segment_filename",
-        str(rendition_dir / "segment_%03d.ts"),
-        "-f",
-        "hls",
-        str(rendition_dir / "index.m3u8"),
-        "-y",
     ]
+    if use_nvenc:
+        cmd.extend(
+            [
+                "-g",
+                str(gop),
+                "-force_key_frames",
+                f"expr:gte(t,n_forced*{segment_seconds})",
+            ]
+        )
+    else:
+        cmd.extend(
+            [
+                "-x264-params",
+                f"keyint={gop}:min-keyint={gop}:scenecut=0",
+                "-force_key_frames",
+                f"expr:gte(t,n_forced*{segment_seconds})",
+            ]
+        )
+    cmd.extend(
+        [
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-ac",
+            "2",
+            "-hls_time",
+            str(segment_seconds),
+            "-hls_playlist_type",
+            "vod",
+            "-hls_list_size",
+            "0",
+            "-hls_segment_filename",
+            str(rendition_dir / "segment_%03d.ts"),
+            "-f",
+            "hls",
+            str(rendition_dir / "index.m3u8"),
+            "-y",
+        ]
+    )
+    return cmd
+
+
+def encode_rendition(
+    upload_file: Path,
+    rendition_dir: Path,
+    height: int,
+    bitrate_k: int,
+    segment_seconds: int,
+) -> None:
+    rendition_dir.mkdir(parents=True, exist_ok=True)
+    prefer_nvenc = (settings.FFMPEG_HWACCEL or "").lower() == "nvenc"
+    cmd = _build_encode_cmd(
+        upload_file,
+        rendition_dir,
+        height,
+        bitrate_k,
+        segment_seconds,
+        use_nvenc=prefer_nvenc,
+    )
     result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0 and prefer_nvenc:
+        logger.warning(
+            "NVENC encode failed for %sp; retrying with libx264: %s",
+            height,
+            extract_concise_error(result.stderr or ""),
+        )
+        cmd = _build_encode_cmd(
+            upload_file,
+            rendition_dir,
+            height,
+            bitrate_k,
+            segment_seconds,
+            use_nvenc=False,
+        )
+        result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise subprocess.CalledProcessError(
             result.returncode, cmd, stderr=result.stderr

@@ -31,6 +31,7 @@ class LiveStreamResponse(BaseModel):
     playback_url: Optional[str] = None
     hls_path: Optional[str] = None
     abr_hls_path: Optional[str] = None
+    webrtc_base: Optional[str] = None
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
@@ -39,9 +40,11 @@ class LiveStreamResponse(BaseModel):
 
 
 class LiveStreamCreateResponse(LiveStreamResponse):
-    """Create response includes plaintext stream_key once."""
+    """Create response includes plaintext stream_key and WHIP/WHEP once."""
 
     stream_key: str
+    whip_url: Optional[str] = None
+    whep_url: Optional[str] = None
 
 
 class LivePlaybackTokenCreate(BaseModel):

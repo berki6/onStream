@@ -86,6 +86,7 @@ class Video(VideoBase):
     suggested_title: Optional[str] = None
     suggested_tags: Optional[str] = None
     moderation_score: Optional[float] = None
+    quality_score: Optional[float] = None
     moderation_labels: Optional[str] = None
     quarantined_at: Optional[datetime] = None
     preview_clip_path: Optional[str] = None

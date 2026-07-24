@@ -78,6 +78,8 @@ services:
     ports:
       - "1935:1935"
       - "8888:8888"
+      - "8889:8889"
+      - "8189:8189/udp"
       - "9997:9997"
     volumes:
       - ./configs/mediamtx.yml:/mediamtx.yml:ro
@@ -133,8 +135,98 @@ services:
         pip install -q -r requirements-ai.txt &&
         ./scripts/docker-entrypoint.sh worker
 
+  worker-gpu:
+    profiles: ["gpu"]
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    command: ["worker"]
+    env_file:
+      - .env.docker
+    environment:
+      FFMPEG_HWACCEL: nvenc
+    volumes:
+      - media_data:/app/data
+      - live_data:/app/data/live
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      createbuckets:
+        condition: service_completed_successfully
+      api:
+        condition: service_started
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  coturn:
+    profiles: ["turn"]
+    image: coturn/coturn:latest
+    network_mode: host
+    environment:
+      DETECT_EXTERNAL_IP: "yes"
+    # Prefer docker-compose.turn.yml for port mappings when host network is unavailable.
+    command:
+      - "-n"
+      - "--log-file=stdout"
+      - "--listening-port=3478"
+      - "--fingerprint"
+      - "--lt-cred-mech"
+      - "--user=onstream:onstreamturn"
+      - "--realm=onstream.local"
+
+  caddy:
+    profiles: ["edge"]
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+      - mediamtx
+
+  prometheus:
+    profiles: ["obs"]
+    image: prom/prometheus:v2.54.1
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+
+  grafana:
+    profiles: ["obs"]
+    image: grafana/grafana:11.2.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
 volumes:
   postgres_data:
   minio_data:
   media_data:
   live_data:
+  caddy_data:
+  caddy_config:
+  prometheus_data:
+  grafana_data:

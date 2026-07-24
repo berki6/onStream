@@ -5,7 +5,7 @@ from __future__ import annotations
 import signal
 
 from src.core.config import settings
-from src.core.logger import get_logger
+from src.core.logger import bind_context, clear_context, get_logger
 from src.infrastructure.db.session import SessionLocal
 from src.infrastructure.queue.job_queue import job_queue
 from src.infrastructure.webhooks.delivery import process_pending_deliveries
@@ -36,14 +36,18 @@ def signal_handler(signum, frame):
 def dispatch_job(job: dict) -> None:
     upload_id = job.get("upload_id")
     job_type = job.get("job_type") or "transcode"
-    handler = _HANDLERS.get(job_type)
-    if not handler:
-        logger.error(f"Unknown job_type '{job_type}' for {upload_id}")
-        job_queue.mark_job_failed(
-            upload_id or "", f"Unknown job_type: {job_type}", job_type=job_type
-        )
-        return
-    handler(upload_id)
+    bind_context(upload_id=upload_id, job_type=job_type)
+    try:
+        handler = _HANDLERS.get(job_type)
+        if not handler:
+            logger.error(f"Unknown job_type '{job_type}' for {upload_id}")
+            job_queue.mark_job_failed(
+                upload_id or "", f"Unknown job_type: {job_type}", job_type=job_type
+            )
+            return
+        handler(upload_id)
+    finally:
+        clear_context()
 
 
 def _tick_live_health() -> None:

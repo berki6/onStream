@@ -37,6 +37,7 @@ class Video(Base):
     suggested_title = Column(String(200), nullable=True)
     suggested_tags = Column(Text, nullable=True)
     moderation_score = Column(Float, nullable=True)
+    quality_score = Column(Float, nullable=True)
     moderation_labels = Column(Text, nullable=True)
     quarantined_at = Column(DateTime(timezone=True), nullable=True)
     preview_clip_path = Column(String(500), nullable=True)

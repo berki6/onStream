@@ -1,76 +1,63 @@
-# Media operations notes (live health, MediaMTX API, QoE, OTel)
+# Ops: media delivery (CDN, NVENC, quality, observability)
 
-## Live health
+## CDN purge
 
-- Worker tick (every ~5 loops) runs `check_live_streams`.
-- Streams with `status=live` whose playlist is **missing** are revoked (`ended`).
-- Streams whose playlist **mtime age** exceeds `LIVE_STALE_SECONDS` (default 20) become `idle`.
-- Emits webhook event `live.ended` with `{stream_id, status, reason}`.
-- Owner API: `GET /v1/live/{stream_id}/health`.
+OnStream can purge edge caches when a video is deleted, when a public video is made private, or when a live stream is revoked.
 
-Env:
+| Setting | Values |
+|---------|--------|
+| `CDN_PROVIDER` | `none` (default), `cloudflare`, `bunny` |
+| `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ZONE_ID` | Cloudflare zone purge |
+| `BUNNY_API_KEY` / `BUNNY_PULL_ZONE_ID` | Bunny.net URL purge |
 
-```
-LIVE_HEALTH_ENABLED=true
-LIVE_STALE_SECONDS=20
-```
+Implementation: `src/infrastructure/cdn/` (`get_cdn_purger()`). Default is a no-op so local/dev stays quiet.
 
-## MediaMTX control API
+## NVENC (GPU encode)
 
-- Config: `api: yes` / `apiAddress: :9997` in `configs/mediamtx.yml`.
-- Compose exposes `9997`.
-- Client: `src/infrastructure/live/mediamtx_client.py` (`get_path`, `kick_publisher`, `is_path_ready`).
-- Soft-fails with warning logs when API is down.
-- `DELETE /v1/live/{stream_id}` kicks publisher then stops ABR.
+1. Set `FFMPEG_HWACCEL=nvenc` on the worker.
+2. Run the GPU profile:
 
-```
-MEDIAMTX_API_URL=http://localhost:9997   # Docker: http://mediamtx:9997
-MEDIAMTX_API_USER=
-MEDIAMTX_API_PASS=
+```bash
+docker compose --profile gpu up worker-gpu
 ```
 
-## Playback CDN headers
+`Dockerfile.gpu` sets `FFMPEG_HWACCEL=nvenc`. Stock apt FFmpeg often lacks NVENC; on production GPU hosts, use an NVENC-enabled FFmpeg (or NVIDIA CUDA base + custom build).
 
-```
-PLAYBACK_CDN_HEADERS_ENABLED=true
-```
+`encode_rendition` tries `h264_nvenc` first; on failure it retries with `libx264`.
 
-VOD playlists short-cache; VOD segments immutable; live playlists no-cache; live segments `max-age=2`.
+## Quality gate (VMAF / PSNR)
 
-## PyAV / OpenCV
+| Setting | Default |
+|---------|---------|
+| `QUALITY_GATE_ENABLED` | `false` |
+| `QUALITY_GATE_STRICT` | `false` |
+| `QUALITY_GATE_MIN_VMAF` | `70` |
 
-```
-MEDIA_PYAV_ENABLED=true
-```
+When enabled, the transcode worker scores the top rung vs source via `src/infrastructure/media/quality.py` (libvmaf, else PSNR). Score is stored on `videos.quality_score`. Low scores emit webhook event `video.quality`. With `QUALITY_GATE_STRICT=true`, a failing gate fails the job.
 
-When enabled, `ffmpeg.probe_*`, caption audio extract, moderation/smart-thumbnail frame sampling prefer PyAV (+ numpy/OpenCV variance/Laplacian when installed via `requirements-ai.txt`). Shell ffmpeg remains the fallback.
+Migration: `alembic upgrade head` (adds `quality_score`).
 
-## QoE canary
+## Grafana / Prometheus (`obs` profile)
 
-```
-QOE_CANARY_ENABLED=true
-```
-
-Worker tick samples live playlist age + local file read latency into Prometheus histograms (`onstream_qoe_*`).
-
-## OpenTelemetry
-
-```
-OTEL_ENABLED=false
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
+```bash
+docker compose --profile obs up prometheus grafana
 ```
 
-`setup_tracing()` runs from API `create_app` (and optionally the worker). Requires OTel packages from `requirements.txt`.
+- Prometheus: `http://localhost:9090` (scrapes `api:8000/metrics`)
+- Grafana: `http://localhost:3000` (admin/admin; Prometheus datasource provisioned)
 
-## Useful metrics
+Config lives under `deploy/prometheus.yml` and `deploy/grafana/provisioning/`.
 
-| Metric | Meaning |
-|--------|---------|
-| `onstream_live_streams_active` | Gauge of live streams |
-| `onstream_live_playlist_age_seconds` | Playlist mtime age |
-| `onstream_live_streams_stale_total` | Health transitions |
-| `onstream_live_abr_active` | ABR processes |
-| `onstream_live_auth_total` | MediaMTX auth allow/deny |
-| `onstream_playback_responses_total` | Playback responses |
-| `onstream_qoe_playlist_age_seconds` | QoE canary ages |
-| `onstream_qoe_fetch_latency_seconds` | QoE local read latency |
+## Structured logging
+
+`structlog` merges bound context (`request_id`, `upload_id`, `stream_id`, `job_type`, `user_id`) into every log line. JSON in `ENV=production`; console-friendly otherwise. Use `bind_context(...)` / `clear_context()`.
+
+## Related profiles
+
+| Profile | Purpose |
+|---------|---------|
+| `ai` | AI captions/embeddings worker |
+| `gpu` | NVENC worker |
+| `turn` | coturn (+ optional `docker-compose.turn.yml`) |
+| `edge` | Caddy reverse proxy |
+| `obs` | Prometheus + Grafana |
