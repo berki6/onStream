@@ -1,13 +1,2 @@
-*
-
-# But not these files...
-!.gitignore
-!SCHEMA.md
-!FOUNDATION.md
-!MEDIA_CORE.md
-!AI_MEDIA.md
-!PLAYBACK_CLIENTS.md
-!OPS_MEDIA.md
-
-# ...even if they are in subdirectories
-!*/
+# Historical drafts only — keep current docs tracked
+Archive/

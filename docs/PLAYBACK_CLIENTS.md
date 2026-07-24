@@ -1,12 +1,65 @@
 # Playback clients (VLC / OBS / WHIP / WHEP)
 
-OnStream serves **HLS**. Use VLC or OBS as players; use OBS as a live encoder into MediaMTX. WebRTC publish/play uses MediaMTX **WHIP** / **WHEP**.
+Index: [`README.md`](README.md).
 
-## Efficiency notes (live)
+This document explains how players and encoders attach to OnStream. VOD and live both deliver **HLS** through OnStream’s playback API. Live ingest is delegated to **MediaMTX** (RTMP and WebRTC WHIP/WHEP), while OnStream owns stream identity, publish authorization, playback URLs, health, and revoke/kick behavior.
 
-1. **Default (efficient):** `LIVE_ABR_ENABLED=false` — MediaMTX remuxes one HLS ladder from OBS. Best for LAN / OBS→VLC.
-2. **Optional:** `LIVE_ABR_ENABLED=true` — FFmpeg realtime multi-bitrate ABR (more CPU; better for remote/mobile viewers).
-3. Do not enable live ABR only because VOD has ABR.
+Use the first section for live system design. The remainder provides operator recipes for VLC, OBS, WHIP/WHEP, optional edge profiles, and the Expo demo.
+
+## Live system design
+
+A live session begins when an authenticated user creates a stream. OnStream stores only a hashed key and returns the plaintext key (and WHIP/WHEP URLs) once. OBS or a WHIP client publishes to MediaMTX on path `live/{stream_key}`. MediaMTX asks OnStream’s auth webhook before allowing publish; on success the row becomes `live` and HLS appears on the shared live volume. Viewers never need the stream key: they play `/v1/playback/live/{stream_id}/...` with a stream token or public flag. Revoke deletes the credential, kicks the publisher, stops optional ABR, and can purge CDN URLs.
+
+```mermaid
+sequenceDiagram
+  participant App as API live_service
+  participant OBS as OBS / WHIP client
+  participant MTX as MediaMTX
+  participant Auth as /v1/live/mediamtx-auth
+  participant Disk as LIVE_HLS_DIR volume
+  participant Player as VLC / Expo / WHEP
+
+  App->>App: create_stream hash key store prefix
+  App-->>OBS: rtmp_url stream_key whip_url once
+  OBS->>MTX: publish live/stream_key
+  MTX->>Auth: publish auth
+  Auth->>Auth: hash_stream_key lookup set_live
+  Auth-->>MTX: allow
+  MTX->>Disk: remux HLS under live/key
+  opt LIVE_ABR_ENABLED
+    Auth->>App: start_abr to stream_id/abr
+  end
+  Player->>App: GET /v1/playback/live/stream_id/master.m3u8?token=
+  App->>Disk: authorize resolve rewrite
+  Note over App: worker check_live_streams marks stale idle/ended
+  App->>MTX: kick_publisher on DELETE
+```
+
+| Concern | Module |
+|---------|--------|
+| Create / URLs / revoke | `application/live_service.py` |
+| Auth webhook | `api/v1/routes/live.py` → `authorize_publish` |
+| Playback | `api/v1/routes/live_playback.py` |
+| Health snapshot | `infrastructure/live/health.py` |
+| Kick | `infrastructure/live/mediamtx_client.py` |
+| Optional live ABR | `infrastructure/media/live_abr.py` |
+| MediaMTX config | `configs/mediamtx.yml` |
+
+**Path convention.** MediaMTX path = `live/{plaintext_stream_key}`. Auth hashes the key and looks up `stream_key_hash`. Playback uses opaque `stream_id` so publish secrets are not embedded in player URLs.
+
+**Create response once.** `stream_key`, `whip_url`, and `whep_url` are returned only on `POST /v1/live/`. Later GET responses expose `webrtc_base` and `playback_url` without the secret key. Store the create payload securely if you need to reconnect an encoder.
+
+### Efficiency notes (live)
+
+1. **Default:** `LIVE_ABR_ENABLED=false` — MediaMTX remuxes one HLS ladder (inexpensive; appropriate for LAN OBS→VLC).
+2. **Optional:** `LIVE_ABR_ENABLED=true` — FFmpeg realtime multi-bitrate under `{LIVE_HLS_DIR}/{stream_id}/abr` (CPU intensive).
+3. Do not enable live ABR solely because VOD uses ABR; the cost models differ.
+
+### TURN / Caddy
+
+- LAN demonstration networks typically do not need TURN.
+- Internet or NAT traversal: enable `docker compose --profile turn` and configure ICE using `configs/mediamtx.turn.example.yml`.
+- Browser WHIP over HTTPS: enable `--profile edge` (Caddy) and HTTPS public base URLs — see [`OPS_MEDIA.md`](OPS_MEDIA.md).
 
 ## VOD → VLC or OBS (already available)
 
@@ -165,3 +218,15 @@ When `PLAYBACK_CDN_HEADERS_ENABLED=true`, playback responses set `Cache-Control`
 | `.ts` | long `immutable` | `max-age=2` |
 
 Owner health: `GET /v1/live/{stream_id}/health` (stale playlist age, ABR status).
+
+## Mobile demo (Expo Go)
+
+Lab app under [`onstream-demo/`](../onstream-demo/) (Expo SDK **54** for Expo Go on physical phones; SDK 57 needs a dev build during the transition).
+
+```bash
+cd onstream-demo
+npm install
+npm start
+```
+
+Set API base to `http://<LAN-IP>:8000` in the app (phones cannot use `localhost` for your PC). Covers auth, VOD upload, signed HLS (`expo-video`), live create (copy RTMP/WHIP/WHEP once), health, and revoke. See [`onstream-demo/README.md`](../onstream-demo/README.md).

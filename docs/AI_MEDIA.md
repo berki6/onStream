@@ -1,58 +1,97 @@
-# AI Media Intelligence
+# AI media intelligence — system design
 
-OnStream can run optional post-transcode AI jobs: captions, chapters, moderation,
-embeddings, and smart thumbnails. All AI work is **off by default** (`AI_ENABLED=false`)
-so CI stays lightweight and GPU-free.
+Index: [`README.md`](README.md).
 
-## Enabling
+OnStream can attach optional intelligence jobs after a successful VOD transcode: captions, chapters, moderation, embeddings, and smart thumbnails. The feature set is **disabled by default** (`AI_ENABLED=false`) so continuous integration and laptop development remain lightweight and GPU-free.
 
-Set in `.env` / Compose:
+AI work reuses the same Redis dispatch map as media encoding (`job_type` handlers in `src/worker/runner.py`). There is no separate broker. See [`REDIS_QUEUE.md`](REDIS_QUEUE.md) for transport details and [`MEDIA_CORE.md`](MEDIA_CORE.md) for where AI is enqueued after `READY`.
 
-```
+## Enabling AI
+
+Configure providers and thresholds in `.env` or Compose:
+
+```bash
 AI_ENABLED=true
 AI_CAPTIONS_PROVIDER=mock          # or faster_whisper
 AI_EMBEDDINGS_PROVIDER=mock        # or sentence_transformers
 AI_MODERATION_THRESHOLD=0.7
 ```
 
-Feature flags (only apply when `AI_ENABLED=true`):
+Per-feature flags are consulted only when `AI_ENABLED=true`:
 
-- `AI_CAPTIONS_ENABLED`
-- `AI_CHAPTERS_ENABLED` (enqueued after captions)
-- `AI_MODERATION_ENABLED` (parallel after transcode)
-- `AI_EMBEDDINGS_ENABLED` (after captions)
-- `AI_SMART_THUMBNAIL_ENABLED` (parallel after transcode)
+| Flag | Default intent |
+|------|----------------|
+| `AI_CAPTIONS_ENABLED` | Whisper / mock → VTT + transcript |
+| `AI_CHAPTERS_ENABLED` | After captions |
+| `AI_MODERATION_ENABLED` | Parallel after transcode |
+| `AI_EMBEDDINGS_ENABLED` | After captions → `video_embeddings` |
+| `AI_SMART_THUMBNAIL_ENABLED` | Parallel after transcode |
 
-Install optional packages:
+Install optional packages and run the dedicated profile when you want heavy dependencies isolated from the default worker image:
 
-```
+```bash
 pip install -r requirements-ai.txt
-```
-
-Docker profile:
-
-```
 docker compose --profile ai up worker-ai
 ```
 
-## Job flow
+## Job graph
 
-1. Transcode completes → status `READY`
-2. If AI enabled: enqueue `moderation`, `smart_thumbnail`, and `captions`
-3. Captions done → write VTT + transcript; emit `video.captions_ready`; enqueue `chapters` + `embeddings`
-4. Moderation score ≥ threshold → status `QUARANTINED`, `is_public=false`, emit `video.quarantined`
+Transcode remains the critical path. When AI is enabled, moderation and smart thumbnail run in parallel with captions. Captions unlock chapters and embeddings because those stages consume transcript text. Moderation may move a `READY` video into `QUARANTINED` without rolling back the HLS tree; playback then becomes owner-only until review.
 
-Queue payloads are JSON `{"upload_id","job_type"}` (legacy plain upload_id strings still work as `transcode`).
+```mermaid
+flowchart TD
+  T[transcode READY] --> E{AI_ENABLED?}
+  E -->|no| Z[stop]
+  E -->|yes| M[enqueue moderation]
+  E -->|yes| S[enqueue smart_thumbnail]
+  E -->|yes| C[enqueue captions]
+  C --> Cap[captions_handler VTT + transcript]
+  Cap --> WH1[webhook video.captions_ready]
+  Cap --> Ch[enqueue chapters]
+  Cap --> Em[enqueue embeddings]
+  M --> Mod{score >= threshold?}
+  Mod -->|yes| Q[status QUARANTINED is_public=false]
+  Q --> WH2[webhook video.quarantined]
+  Mod -->|no| OK[leave READY]
+```
 
-## APIs
+Queue payloads are JSON `{"upload_id","job_type"}` on `video_jobs_queue`.
 
-- `GET /v1/moderation/queue` — quarantined videos for the current user
-- `POST /v1/moderation/{video_id}/review` — `{ "action": "approve"|"reject", "make_public": true|false }`
-- `GET /v1/search/?q=&mode=keyword|semantic&limit=`
-- `GET /v1/videos/{video_id}/chapters`
+## Data written on `videos`
 
-Playback: quarantined videos are playable by the **owner only**. When `caption_vtt_path` is set, master playlists inject `#EXT-X-MEDIA:TYPE=SUBTITLES`.
+Handlers persist artifacts as paths and JSON on the `videos` row (and embedding rows), so playback and search APIs do not need a second metadata store.
 
-## Mock providers
+| Field | Producer |
+|-------|----------|
+| `caption_vtt_path`, `transcript_path`, `detected_language` | captions |
+| `chapters_json`, `suggested_title`, `suggested_tags` | chapters |
+| `moderation_score`, `moderation_labels`, `quarantined_at` | moderation |
+| `preview_clip_path` / smart thumb paths | smart_thumbnail |
+| rows in `video_embeddings` | embeddings |
 
-With `AI_CAPTIONS_PROVIDER=mock` / `AI_EMBEDDINGS_PROVIDER=mock`, handlers produce deterministic fake artifacts suitable for tests without ffmpeg Whisper or sentence-transformers.
+Playback behavior: quarantined assets are playable by the **owner only**. When `caption_vtt_path` is set, master playlists inject `#EXT-X-MEDIA:TYPE=SUBTITLES` so compatible players can load captions.
+
+## HTTP surface
+
+| Method | Path | Role |
+|--------|------|------|
+| GET | `/v1/moderation/queue` | Quarantined items for current user |
+| POST | `/v1/moderation/{video_id}/review` | `approve` \| `reject` (+ optional `make_public`) |
+| GET | `/v1/search/?q=&mode=keyword\|semantic` | Keyword or embedding search |
+| GET | `/v1/videos/{video_id}/chapters` | Chapter JSON |
+
+## Providers
+
+| Setting | `mock` | Real |
+|---------|--------|------|
+| `AI_CAPTIONS_PROVIDER` | Deterministic fake VTT | `faster_whisper` |
+| `AI_EMBEDDINGS_PROVIDER` | Fake vectors | `sentence_transformers` |
+
+Mock providers exist so pytest and CI never require Whisper weights or embedding model downloads.
+
+## Design constraints
+
+- AI enqueue happens after media is `READY`; captions and related jobs do not delay the first playable ABR tree.
+- Moderation may quarantine afterward; that is an access-policy change, not a re-encode.
+- The default worker can run AI handlers; the `ai` Compose profile isolates heavy Python dependencies.
+- There is no separate Celery application — AI jobs share the custom queue.
