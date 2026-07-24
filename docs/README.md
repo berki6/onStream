@@ -12,6 +12,7 @@ docs/
 ├── REDIS_QUEUE.md         ← Redis queue, breaker, DB fallback, dispatch
 ├── PLAYBACK_CLIENTS.md    ← live design + VLC/OBS/WHIP/Expo recipes
 ├── OPS_MEDIA.md           ← CDN, NVENC, VMAF, metrics, Caddy
+├── PROVIDERS.md           ← storage / AI / email / CDN registries
 ├── AI_MEDIA.md            ← post-transcode AI job graph
 ├── API.md                 ← /v1 route catalogue
 ├── SCHEMA.md              ← DB ERD + table map
@@ -27,13 +28,14 @@ docs/
    - Live → [`PLAYBACK_CLIENTS.md`](PLAYBACK_CLIENTS.md)
    - AI → [`AI_MEDIA.md`](AI_MEDIA.md)
    - Operations → [`OPS_MEDIA.md`](OPS_MEDIA.md)
+   - Vendors → [`PROVIDERS.md`](PROVIDERS.md)
 4. Integrate against [`API.md`](API.md) and the live OpenAPI UI at `/docs`.
 5. For schema work, use [`SCHEMA.md`](SCHEMA.md) together with Alembic.
 
 ## Product principles
 
 - OnStream is a self-hosted Mux-style **media engine**, not a social application.
-- Background work uses the custom Redis queue; Celery, Dramatiq, and Arq are out of scope.
+- Background work uses the custom Redis queue only (no Celery broker settings).
 - The public HTTP prefix is **`/v1`**; playback lives under `/v1/playback/...`.
 - Live ingest is provided by **MediaMTX** (RTMP and WHIP/WHEP).
 

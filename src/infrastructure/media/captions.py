@@ -99,40 +99,10 @@ def transcribe(
     model_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Transcribe audio/video path.
+    Transcribe audio/video path via the captions provider registry.
 
     Returns {"language": str, "segments": [{"start","end","text"}, ...]}.
-    Falls back to mock when provider=mock or faster_whisper is unavailable.
     """
-    provider = (provider or settings.AI_CAPTIONS_PROVIDER or "mock").lower()
-    duration = probe_duration(path) or 30.0
+    from src.infrastructure.ai.registry import get_captions_provider
 
-    if provider == "mock":
-        return {"language": "en", "segments": _mock_segments(duration)}
-
-    if provider == "faster_whisper":
-        try:
-            from faster_whisper import WhisperModel  # type: ignore
-
-            model = WhisperModel(
-                model_name or settings.WHISPER_MODEL, device="cpu", compute_type="int8"
-            )
-            segments_iter, info = model.transcribe(path, beam_size=1)
-            segments = [
-                {
-                    "start": float(s.start),
-                    "end": float(s.end),
-                    "text": (s.text or "").strip(),
-                }
-                for s in segments_iter
-            ]
-            if not segments:
-                segments = _mock_segments(duration)
-            lang = getattr(info, "language", None) or "en"
-            return {"language": lang, "segments": segments}
-        except Exception as e:
-            logger.warning(f"faster_whisper unavailable, using mock: {e}")
-            return {"language": "en", "segments": _mock_segments(duration)}
-
-    logger.warning(f"Unknown captions provider '{provider}', using mock")
-    return {"language": "en", "segments": _mock_segments(duration)}
+    return get_captions_provider(provider).transcribe(path, model_name=model_name)

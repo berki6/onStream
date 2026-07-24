@@ -8,7 +8,7 @@ AI work reuses the same Redis dispatch map as media encoding (`job_type` handler
 
 ## Enabling AI
 
-Configure providers and thresholds in `.env` or Compose:
+Providers resolve through `src/infrastructure/ai/registry.py` (see [`PROVIDERS.md`](PROVIDERS.md)). Configure names and thresholds in `.env` or Compose:
 
 ```bash
 AI_ENABLED=true
@@ -94,4 +94,4 @@ Mock providers exist so pytest and CI never require Whisper weights or embedding
 - AI enqueue happens after media is `READY`; captions and related jobs do not delay the first playable ABR tree.
 - Moderation may quarantine afterward; that is an access-policy change, not a re-encode.
 - The default worker can run AI handlers; the `ai` Compose profile isolates heavy Python dependencies.
-- There is no separate Celery application — AI jobs share the custom queue.
+- AI jobs share the custom Redis queue (same worker dispatch as transcode).

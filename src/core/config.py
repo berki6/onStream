@@ -47,24 +47,18 @@ class Settings(BaseSettings):
         "VIDEO_THUMBNAIL_DIR", "data/thumbnails"
     )
 
-    # Storage: local | s3
+    # Storage: local | s3 | minio | r2
     STORAGE_BACKEND: str = os.environ.get("STORAGE_BACKEND", "local")
     S3_ENDPOINT_URL: str = os.environ.get("S3_ENDPOINT_URL", "")
     S3_ACCESS_KEY: str = os.environ.get("S3_ACCESS_KEY", "minioadmin")
     S3_SECRET_KEY: str = os.environ.get("S3_SECRET_KEY", "minioadmin")
     S3_BUCKET: str = os.environ.get("S3_BUCKET", "onstream")
     S3_REGION: str = os.environ.get("S3_REGION", "us-east-1")
+    # path | virtual — r2/minio default to path via registry when unset
+    S3_ADDRESSING_STYLE: str = os.environ.get("S3_ADDRESSING_STYLE", "")
 
     SENTRY_DSN: str = os.environ.get("SENTRY_DSN", "")
     REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379/1")
-    CELERY_BROKER_URL: str = os.environ.get(
-        "CELERY_BROKER_URL", "redis://localhost:6379/0"
-    )
-    CELERY_RESULT_BACKEND: str = os.environ.get(
-        "CELERY_RESULT_BACKEND", "redis://localhost:6379/0"
-    )
-    CELERY_DEFAULT_QUEUE: str = os.environ.get("CELERY_DEFAULT_QUEUE", "default")
-    CELERY_ENABLED: bool = bool(int(os.environ.get("CELERY_ENABLED", "0")))
 
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
         os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
@@ -100,6 +94,17 @@ class Settings(BaseSettings):
     PUBLIC_API_BASE_URL: str = os.environ.get(
         "PUBLIC_API_BASE_URL", "http://localhost:8000"
     )
+    # CDN / edge host for playback URLs (purge + public links). Empty → PUBLIC_API_BASE_URL
+    PUBLIC_PLAYBACK_BASE_URL: str = os.environ.get("PUBLIC_PLAYBACK_BASE_URL", "")
+
+    # Email (password reset, etc.)
+    EMAIL_PROVIDER: str = os.environ.get("EMAIL_PROVIDER", "log")
+    SMTP_HOST: str = os.environ.get("SMTP_HOST", "")
+    SMTP_PORT: int = int(os.environ.get("SMTP_PORT", "587"))
+    SMTP_USER: str = os.environ.get("SMTP_USER", "")
+    SMTP_PASSWORD: str = os.environ.get("SMTP_PASSWORD", "")
+    SMTP_FROM: str = os.environ.get("SMTP_FROM", "noreply@onstream.local")
+    SMTP_USE_TLS: bool = _env_bool("SMTP_USE_TLS", "true")
 
     # Live streaming (MediaMTX RTMP → HLS)
     LIVE_ENABLED: bool = _env_bool("LIVE_ENABLED", "true")
@@ -169,12 +174,20 @@ class Settings(BaseSettings):
     AI_EMBEDDINGS_PROVIDER: str = os.environ.get(
         "AI_EMBEDDINGS_PROVIDER", "sentence_transformers"
     )
+    AI_MODERATION_PROVIDER: str = os.environ.get("AI_MODERATION_PROVIDER", "heuristic")
 
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @property
+    def public_playback_base_url(self) -> str:
+        base = (self.PUBLIC_PLAYBACK_BASE_URL or self.PUBLIC_API_BASE_URL or "").rstrip(
+            "/"
+        )
+        return base or "http://localhost:8000"
 
     @property
     def abr_ladder_list(self) -> List[dict]:
@@ -225,6 +238,26 @@ class Settings(BaseSettings):
                 raise RuntimeError(
                     "CORS_ORIGINS must be set explicitly in production."
                 )
+            if self.EMAIL_PROVIDER in {"none", "log"}:
+                raise RuntimeError(
+                    "EMAIL_PROVIDER must be 'smtp' in production "
+                    "(none/log would drop or log password-reset secrets)."
+                )
+            if self.EMAIL_PROVIDER == "smtp" and not (self.SMTP_HOST or "").strip():
+                raise RuntimeError(
+                    "SMTP_HOST is required when EMAIL_PROVIDER=smtp in production."
+                )
+            if self.STORAGE_BACKEND in {"s3", "minio", "r2"}:
+                if not (self.S3_BUCKET or "").strip():
+                    raise RuntimeError(
+                        "S3_BUCKET is required for object storage in production."
+                    )
+            if self.STORAGE_BACKEND in {"minio", "r2"} and not (
+                self.S3_ENDPOINT_URL or ""
+            ).strip():
+                raise RuntimeError(
+                    "S3_ENDPOINT_URL is required for minio/r2 in production."
+                )
         return self
 
     @field_validator("DATABASE_URL")
@@ -255,28 +288,34 @@ class Settings(BaseSettings):
             raise ValueError("REDIS_URL must start with 'redis://' or 'rediss://'")
         return v
 
-    @field_validator("CELERY_BROKER_URL")
-    @classmethod
-    def validate_celery_broker_url(cls, v: str) -> str:
-        if not v:
-            raise ValueError("CELERY_BROKER_URL cannot be empty")
-        if not (
-            v.startswith("redis://")
-            or v.startswith("rediss://")
-            or v.startswith("amqp://")
-        ):
-            raise ValueError(
-                "CELERY_BROKER_URL must start with 'redis://', 'rediss://', or 'amqp://'"
-            )
-        return v
-
     @field_validator("STORAGE_BACKEND")
     @classmethod
     def validate_storage_backend(cls, v: str) -> str:
-        allowed = {"local", "s3"}
-        if v.lower() not in allowed:
-            raise ValueError("STORAGE_BACKEND must be 'local' or 's3'")
-        return v.lower()
+        key = (v or "").lower().strip()
+        allowed = {"local", "s3", "minio", "r2"}
+        if key not in allowed:
+            raise ValueError(
+                "STORAGE_BACKEND must be 'local', 's3', 'minio', or 'r2'"
+            )
+        return key
+
+    @field_validator("S3_ADDRESSING_STYLE")
+    @classmethod
+    def validate_s3_addressing_style(cls, v: str) -> str:
+        if not v or not str(v).strip():
+            return ""
+        allowed = {"path", "virtual"}
+        key = str(v).lower().strip()
+        if key not in allowed:
+            raise ValueError("S3_ADDRESSING_STYLE must be 'path' or 'virtual'")
+        return key
+
+    @field_validator("SMTP_PORT")
+    @classmethod
+    def validate_smtp_port(cls, v: int) -> int:
+        if not (1 <= int(v) <= 65535):
+            raise ValueError("SMTP_PORT must be between 1 and 65535")
+        return int(v)
 
     @field_validator("CDN_PROVIDER")
     @classmethod
@@ -284,6 +323,42 @@ class Settings(BaseSettings):
         allowed = {"none", "cloudflare", "bunny"}
         if v.lower() not in allowed:
             raise ValueError("CDN_PROVIDER must be 'none', 'cloudflare', or 'bunny'")
+        return v.lower()
+
+    @field_validator("EMAIL_PROVIDER")
+    @classmethod
+    def validate_email_provider(cls, v: str) -> str:
+        allowed = {"none", "log", "smtp"}
+        if v.lower() not in allowed:
+            raise ValueError("EMAIL_PROVIDER must be 'none', 'log', or 'smtp'")
+        return v.lower()
+
+    @field_validator("AI_CAPTIONS_PROVIDER")
+    @classmethod
+    def validate_ai_captions_provider(cls, v: str) -> str:
+        allowed = {"mock", "faster_whisper"}
+        if v.lower() not in allowed:
+            raise ValueError(
+                "AI_CAPTIONS_PROVIDER must be 'mock' or 'faster_whisper'"
+            )
+        return v.lower()
+
+    @field_validator("AI_EMBEDDINGS_PROVIDER")
+    @classmethod
+    def validate_ai_embeddings_provider(cls, v: str) -> str:
+        allowed = {"mock", "sentence_transformers"}
+        if v.lower() not in allowed:
+            raise ValueError(
+                "AI_EMBEDDINGS_PROVIDER must be 'mock' or 'sentence_transformers'"
+            )
+        return v.lower()
+
+    @field_validator("AI_MODERATION_PROVIDER")
+    @classmethod
+    def validate_ai_moderation_provider(cls, v: str) -> str:
+        allowed = {"heuristic"}
+        if v.lower() not in allowed:
+            raise ValueError("AI_MODERATION_PROVIDER must be 'heuristic'")
         return v.lower()
 
 

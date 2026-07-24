@@ -47,6 +47,10 @@ sequenceDiagram
 
 **Path convention.** MediaMTX path = `live/{plaintext_stream_key}`. Auth hashes the key and looks up `stream_key_hash`. Playback uses opaque `stream_id` so publish secrets are not embedded in player URLs.
 
+### LiveControlPlane (documented only)
+
+Publish auth, kick, and path health are MediaMTX-specific today. A future `LiveControlPlane` interface (`authorize_publish`, `kick_publisher`, `path_state`) would let a second ingest backend plug in without rewriting `live_service`. **No alternate implementation ships in this tree** — MediaMTX remains the only control plane. See [`FOUNDATION.md`](FOUNDATION.md) and [`PROVIDERS.md`](PROVIDERS.md).
+
 **Create response once.** `stream_key`, `whip_url`, and `whep_url` are returned only on `POST /v1/live/`. Later GET responses expose `webrtc_base` and `playback_url` without the secret key. Store the create payload securely if you need to reconnect an encoder.
 
 ### Efficiency notes (live)

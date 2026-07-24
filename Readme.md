@@ -57,6 +57,7 @@ Start at **[`docs/README.md`](docs/README.md)** (source of truth index).
 | [docs/REDIS_QUEUE.md](docs/REDIS_QUEUE.md) | Queue, circuit breaker, dispatch |
 | [docs/PLAYBACK_CLIENTS.md](docs/PLAYBACK_CLIENTS.md) | Live design + VLC/OBS/WHIP/Expo |
 | [docs/OPS_MEDIA.md](docs/OPS_MEDIA.md) | CDN, NVENC, VMAF, metrics, Caddy |
+| [docs/PROVIDERS.md](docs/PROVIDERS.md) | Storage / AI / email / CDN registries |
 | [docs/AI_MEDIA.md](docs/AI_MEDIA.md) | AI job graph |
 | [docs/API.md](docs/API.md) | `/v1` route map |
 | [docs/SCHEMA.md](docs/SCHEMA.md) | DB ERD + table map |

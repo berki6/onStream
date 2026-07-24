@@ -86,7 +86,7 @@ flowchart TB
 | `worker` | Dequeue jobs, transcode/AI handlers, live health + QoE ticks |
 | `postgres` | Source of truth for users, videos, jobs, live, webhooks |
 | `redis` | `video_jobs_queue` list (`LPUSH` / `BLPOP`) |
-| `minio` | Optional S3 when `STORAGE_BACKEND=s3` |
+| `minio` | Optional object store when `STORAGE_BACKEND=minio` or `s3` |
 | `mediamtx` | Live ingest (RTMP/WHIP) + remux HLS into shared `live_data` volume |
 
 Profiles keep the **happy path small**. A laptop `docker compose up` should not pull CUDA, Whisper weights, or coturn unless you ask. Each profile adds capacity for a real deployment concern (AI weight, GPU encode, NAT, TLS, dashboards) without forking the product into multiple repos.
@@ -128,7 +128,7 @@ Implementation: `src/core/security/tokens.py`. Playback also accepts the **owner
 
 ## Storage design
 
-Storage is abstracted so the same application code can run against local directories or an S3-compatible bucket (MinIO in Compose). The factory in `src/infrastructure/storage/factory.py` returns `LocalStorage` or `S3Storage` based on `STORAGE_BACKEND`.
+Storage is abstracted behind a provider registry so the same application code can run against local directories or S3-compatible buckets (MinIO in Compose, Cloudflare R2, or AWS). `get_storage()` in `src/infrastructure/storage/factory.py` resolves `STORAGE_BACKEND` via `registry.py` (`local` | `s3` | `minio` | `r2`). Operator detail and R2 credentials live in [`PROVIDERS.md`](PROVIDERS.md).
 
 Object keys and `hls_path` values stored in the database are project-relative strings (`src/utils/paths.py`). That keeps Docker (`/app/data/...`) and local virtualenv checkouts interchangeable without rewriting rows when the absolute prefix changes.
 
@@ -140,18 +140,32 @@ data/
 ├── thumbnails/{video_db_id}.jpg
 ├── live/live/{stream_key}/…          # MediaMTX remux (volume shared)
 │    └── {stream_id}/abr/…            # optional live ABR
-└── cache/…                           # S3 download cache when backend=s3
+└── cache/…                           # S3 download cache when backend≠local
 ```
 
 | Setting | Default | Meaning |
 |---------|---------|---------|
-| `STORAGE_BACKEND` | `local` | `local` \| `s3` |
+| `STORAGE_BACKEND` | `local` | `local` \| `s3` \| `minio` \| `r2` |
+| `S3_ADDRESSING_STYLE` | (backend default) | `path` \| `virtual` |
+| `PUBLIC_PLAYBACK_BASE_URL` | (→ API base) | Edge host used when building CDN purge URLs |
 | `VIDEO_UPLOAD_DIR` | `data/uploads` | ingest objects |
 | `VIDEO_HLS_DIR` | `data/hls` | VOD ABR output |
 | `VIDEO_THUMBNAIL_DIR` | `data/thumbnails` | posters |
 | `LIVE_HLS_DIR` | `data/live` | live playlists (API + MediaMTX) |
 
 Compose mounts: `media_data` → `/app/data`; `live_data` → `/app/data/live` and MediaMTX `/hls`. The shared live volume is required so MediaMTX can write remuxed HLS and the API can authorize and serve it without a second copy pipeline.
+
+## Live control plane (future seam)
+
+Kick, publish auth, and path health today call MediaMTX HTTP APIs and the OnStream auth webhook directly (`live_service.py`, `mediamtx_client.py`). A future `LiveControlPlane` protocol would isolate:
+
+| Method | Responsibility |
+|--------|----------------|
+| `authorize_publish` | Validate stream key / path before ingest |
+| `kick_publisher` | Drop an active publisher on revoke/delete |
+| `path_state` / health inputs | Ready signals for live health ticks |
+
+**Sole implementation now:** MediaMTX. nginx-rtmp and alternate SFUs are explicit non-goals until a second product backend is required. See [`PLAYBACK_CLIENTS.md`](PLAYBACK_CLIENTS.md) and [`PROVIDERS.md`](PROVIDERS.md).
 
 ## Observability hooks (foundation)
 
@@ -181,5 +195,6 @@ Relational state (users, videos, jobs, live streams, webhooks) lives behind SQLA
 | [`REDIS_QUEUE.md`](REDIS_QUEUE.md) | Queue, circuit breaker, DB fallback, dispatch |
 | [`PLAYBACK_CLIENTS.md`](PLAYBACK_CLIENTS.md) | Live + client recipes |
 | [`OPS_MEDIA.md`](OPS_MEDIA.md) | CDN, NVENC, VMAF, Grafana |
+| [`PROVIDERS.md`](PROVIDERS.md) | Storage / AI / email / CDN registries |
 | [`AI_MEDIA.md`](AI_MEDIA.md) | Post-transcode AI graph |
 | [`API.md`](API.md) | Route catalogue |

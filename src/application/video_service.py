@@ -59,7 +59,7 @@ def get_video(db: Session, video_id: str, user_id: int):
 
 
 def _playback_purge_urls(upload_id: str) -> list[str]:
-    base = settings.PUBLIC_API_BASE_URL.rstrip("/")
+    base = settings.public_playback_base_url
     return [
         f"{base}/v1/playback/{upload_id}/master.m3u8",
     ]

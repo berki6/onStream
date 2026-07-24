@@ -22,17 +22,20 @@ flowchart LR
 
 | Trigger | Module | URL purged |
 |---------|--------|------------|
-| Soft-delete video | `application/video_service.py` | `{PUBLIC_API_BASE_URL}/v1/playback/{upload_id}/master.m3u8` |
+| Soft-delete video | `application/video_service.py` | `{PUBLIC_PLAYBACK_BASE_URL}/v1/playback/{upload_id}/master.m3u8` |
 | Public → private | same | same |
 | Delete live stream | `application/live_service.py` | `/v1/playback/live/{stream_id}/master.m3u8` |
 
 | Setting | Values |
 |---------|--------|
 | `CDN_PROVIDER` | `none` (default), `cloudflare`, `bunny` |
+| `PUBLIC_PLAYBACK_BASE_URL` | Edge origin for purge URLs; empty → `PUBLIC_API_BASE_URL` |
 | `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ZONE_ID` | Cloudflare |
 | `BUNNY_API_KEY` / `BUNNY_PULL_ZONE_ID` | Bunny |
 
 Implementation package: `src/infrastructure/cdn/` (`base.py`, `cloudflare.py`, `bunny.py`, `noop.py`, `factory.py`). Requests use `httpx` with `tenacity` retries. Continuous integration mocks HTTP; there are no stub providers that pretend to purge.
+
+**R2 + Cloudflare.** Object storage (`STORAGE_BACKEND=r2`) and CDN purge are independent: R2 holds bytes; Cloudflare (or Bunny) caches playback HTTP. Set `PUBLIC_PLAYBACK_BASE_URL` to the hostname viewers use so purge targets match edge cache keys. Credential and addressing notes: [`PROVIDERS.md`](PROVIDERS.md). Fastly is not implemented in this pass.
 
 **Cache headers versus purge.** When `PLAYBACK_CDN_HEADERS_ENABLED=true`, `playback_headers.py` emits short `Cache-Control` on live playlists and longer cache on VOD segments. Headers reduce stale edge behavior day to day; purge corrects revocation events.
 

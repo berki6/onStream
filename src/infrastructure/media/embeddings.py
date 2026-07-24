@@ -95,29 +95,14 @@ def embed_texts(
     model_name: Optional[str] = None,
 ) -> List[List[float]]:
     """
-    Embed texts. Mock provider returns deterministic unit vectors.
-    Real provider uses sentence-transformers when installed.
+    Embed texts via the embeddings provider registry.
+    Mock provider returns deterministic unit vectors.
     """
-    provider = (provider or settings.AI_EMBEDDINGS_PROVIDER or "mock").lower()
+    from src.infrastructure.ai.registry import get_embeddings_provider
+
     if not texts:
         return []
-
-    if provider == "mock":
-        return [_mock_embed(t) for t in texts]
-
-    if provider == "sentence_transformers":
-        try:
-            from sentence_transformers import SentenceTransformer  # type: ignore
-
-            model = SentenceTransformer(model_name or settings.EMBEDDING_MODEL)
-            vectors = model.encode(list(texts), normalize_embeddings=True)
-            return [list(map(float, v)) for v in vectors]
-        except Exception as e:
-            logger.warning(f"sentence-transformers unavailable, using mock: {e}")
-            return [_mock_embed(t) for t in texts]
-
-    logger.warning(f"Unknown embeddings provider '{provider}', using mock")
-    return [_mock_embed(t) for t in texts]
+    return get_embeddings_provider(provider).embed_texts(texts, model_name=model_name)
 
 
 def cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:

@@ -73,15 +73,39 @@ def refresh(db: Session, refresh_token: str) -> Dict[str, Any]:
 
 def request_password_reset(db: Session, email: str) -> Dict[str, Any]:
     """Always succeeds to avoid email enumeration. May include token in non-prod."""
+    from src.core.logger import get_logger
+    from src.infrastructure.email import get_email_sender
+
+    logger = get_logger(__name__)
     user = user_repository.get_by_email(db, email=email)
     data: Dict[str, Any] = {"requested": True}
     if user:
         token = create_password_reset_token(user.email)
-        if settings.ENV != "production" or settings.DEBUG:
+        base = settings.PUBLIC_API_BASE_URL.rstrip("/")
+        reset_url = f"{base}/v1/auth/password-reset/confirm"
+        body = (
+            f"A password reset was requested for your OnStream account.\n\n"
+            f"Use this token with POST {reset_url}:\n\n{token}\n\n"
+            f"If you did not request this, you can ignore this message.\n"
+        )
+        try:
+            get_email_sender().send(
+                to=user.email,
+                subject="OnStream password reset",
+                body_text=body,
+            )
+        except Exception as exc:
+            # Do not leak delivery failures to the client; always log for ops.
+            logger.error(
+                "password_reset_email_failed to=%s error=%s",
+                user.email,
+                exc,
+            )
+        # Never return reset tokens in production (even if DEBUG=true).
+        if settings.ENV != "production":
             data["reset_token"] = token
-            data["note"] = "Token included because ENV is not production (or DEBUG)."
+            data["note"] = "Token included because ENV is not production."
     return data
-
 
 def confirm_password_reset(db: Session, token: str, new_password: str) -> Dict[str, Any]:
     try:

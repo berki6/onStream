@@ -1,14 +1,12 @@
 """Storage backend factory and re-exports."""
 
-from src.infrastructure.storage.base import StorageBackend
-from src.infrastructure.storage.local import LocalStorage
-from src.infrastructure.storage.s3 import S3Storage
+from __future__ import annotations
 
-# Re-export factory symbols; avoid circular import by defining factory in this module
 from typing import Optional
 
-from src.core.config import settings
 from src.core.logger import get_logger
+from src.infrastructure.storage.base import StorageBackend
+from src.infrastructure.storage.registry import create_storage
 
 logger = get_logger(__name__)
 
@@ -18,13 +16,8 @@ _storage: Optional[StorageBackend] = None
 def get_storage() -> StorageBackend:
     global _storage
     if _storage is None:
-        backend = settings.STORAGE_BACKEND.lower()
-        if backend == "s3":
-            _storage = S3Storage()
-            logger.info("Using S3 storage backend")
-        else:
-            _storage = LocalStorage()
-            logger.info("Using local storage backend")
+        _storage = create_storage()
+        logger.info("Using storage backend: %s", type(_storage).__name__)
     return _storage
 
 

@@ -191,7 +191,7 @@ def delete_stream(db: Session, stream_id: str, user_id: int) -> dict:
     try:
         from src.infrastructure.cdn import get_cdn_purger
 
-        base = settings.PUBLIC_API_BASE_URL.rstrip("/")
+        base = settings.public_playback_base_url
         get_cdn_purger().purge_urls(
             [
                 f"{base}/v1/playback/live/{stream_id}/master.m3u8",

@@ -12,11 +12,7 @@ from src.core.config import settings
 from src.core.logger import get_logger
 from src.infrastructure.db import models
 from src.infrastructure.db.session import engine
-from src.infrastructure.media.moderation import (
-    combine_scores,
-    score_frames,
-    score_transcript,
-)
+from src.infrastructure.ai.registry import get_moderation_provider
 from src.infrastructure.queue.job_queue import job_queue
 from src.infrastructure.webhooks.delivery import emit_video_event
 from src.utils.paths import to_absolute_path
@@ -49,23 +45,26 @@ def process_moderation(upload_id: str) -> None:
                 text = " ".join(
                     str(s.get("text", "")) for s in (data.get("segments") or [])
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "moderation transcript parse failed for %s: %s",
+                    upload_id,
+                    exc,
+                )
         if not text:
             text = f"{video.title or ''} {video.description or ''}"
 
-        t_score, t_labels = score_transcript(text)
-
-        frame_score, frame_labels = 0.0, []
+        video_path = None
         try:
             from src.infrastructure.storage import get_storage
 
-            local = get_storage().ensure_local(video.file_path)
-            frame_score, frame_labels = score_frames(str(local))
+            video_path = str(get_storage().ensure_local(video.file_path))
         except Exception as e:
-            logger.warning(f"Frame scoring skipped for {upload_id}: {e}")
+            logger.warning(f"Frame scoring path resolve skipped for {upload_id}: {e}")
 
-        result = combine_scores(t_score, t_labels, frame_score, frame_labels)
+        result = get_moderation_provider().score(
+            transcript_text=text, video_path=video_path
+        )
         video.moderation_score = result["score"]
         video.moderation_labels = json.dumps(result["labels"])
 
