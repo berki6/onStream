@@ -3,8 +3,8 @@
 # But not these files...
 !.gitignore
 !SCHEMA.md
-!PHASE1.md
-!PHASE2.md
+!FOUNDATION.md
+!MEDIA_CORE.md
 
 # ...even if they are in subdirectories
 !*/

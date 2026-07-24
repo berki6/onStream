@@ -1,4 +1,4 @@
-"""Phase 2 focused tests: stream tokens, webhooks, ABR master playlist helper, uploads."""
+"""Media-core tests: stream tokens, webhooks, ABR master playlist helper, uploads."""
 
 import hmac
 import hashlib

@@ -136,7 +136,7 @@ The API will be available at: [http://localhost:8000](http://localhost:8000)
 - **API Documentation**: [http://localhost:8000/docs](http://localhost:8000/docs) (Swagger UI)
 - **Alternative Docs**: [http://localhost:8000/redoc](http://localhost:8000/redoc) (ReDoc)
 
-### Docker Compose (Phase 1 stack)
+### Docker Compose
 
 Full local stack: Postgres, Redis, MinIO, API, and worker.
 
@@ -146,7 +146,7 @@ docker compose up --build
 
 Uses [`.env.docker`](.env.docker). API: http://localhost:8000 — MinIO console: http://localhost:9001.
 
-See [`docs/PHASE1.md`](docs/PHASE1.md) for the Phase 1 foundation scope.
+See [`docs/FOUNDATION.md`](docs/FOUNDATION.md) for the production foundation scope.
 
 ### Background Worker
 

@@ -1,4 +1,4 @@
-"""Phase 2: job stages, storyboard paths, uploads, webhooks, API keys.
+"""Media core: job stages, storyboard paths, uploads, webhooks, API keys.
 
 Idempotent for DBs that already received these columns/tables via create_all.
 """

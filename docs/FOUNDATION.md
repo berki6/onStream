@@ -1,6 +1,6 @@
-# Phase 1 — Production Foundation
+# Production Foundation
 
-Child of the OnStream 5-phase parent roadmap. Scope is foundation only.
+Scope is foundation only.
 
 ## Goals
 
@@ -16,4 +16,4 @@ Child of the OnStream 5-phase parent roadmap. Scope is foundation only.
 
 ## Out of scope
 
-ABR, signed playback, webhooks, orgs/channels, AI, live (phases 2–5).
+ABR, signed playback, webhooks, orgs/channels, AI, and live streaming.
