@@ -3,7 +3,8 @@
 # But not these files...
 !.gitignore
 !SCHEMA.md
-# etc...
+!PHASE1.md
+!PHASE2.md
 
 # ...even if they are in subdirectories
 !*/
