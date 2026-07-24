@@ -39,12 +39,12 @@ def issue_token(
     validate_public_video_id(video_id)
     video = video_repository.get_by_upload_id(db, video_id)
     if not video:
-        raise AppError("Video not found", code=ErrorCode.PLAYBACK_NOT_FOUND, status_code=404)
+        raise AppError("Video not found", code=ErrorCode.PLAYBACK_NOT_FOUND)
     if video.user_id != user_id:
-        raise AppError("Access denied", code=ErrorCode.PLAYBACK_FORBIDDEN, status_code=403)
+        raise AppError("Access denied", code=ErrorCode.PLAYBACK_FORBIDDEN)
     if not _is_playable(video):
         raise AppError(
-            "Video is not ready for streaming", code=ErrorCode.PLAYBACK_NOT_READY, status_code=409
+            "Video is not ready for streaming", code=ErrorCode.PLAYBACK_NOT_READY
         )
 
     ttl = expires_in if expires_in is not None else settings.STREAM_TOKEN_EXPIRE_SECONDS
@@ -65,7 +65,7 @@ def check_origin(origin_or_referer: str) -> None:
     if not allowed:
         return
     if not any(origin_or_referer.startswith(a) for a in allowed):
-        raise AppError("Origin not allowed", code=ErrorCode.PLAYBACK_FORBIDDEN, status_code=403)
+        raise AppError("Origin not allowed", code=ErrorCode.PLAYBACK_FORBIDDEN)
 
 
 def authorize_access(
@@ -105,11 +105,10 @@ def authorize_access(
             except JWTError:
                 pass
         if current_user:
-            raise AppError("Access denied", code=ErrorCode.PLAYBACK_FORBIDDEN, status_code=403)
+            raise AppError("Access denied", code=ErrorCode.PLAYBACK_FORBIDDEN)
         raise AppError(
             "Stream token required for private video",
             code=ErrorCode.PLAYBACK_UNAUTHORIZED,
-            status_code=401,
         )
 
     if video.is_public and video.status == models.VideoStatus.READY:
@@ -135,23 +134,22 @@ def authorize_access(
         return None
 
     if current_user:
-        raise AppError("Access denied", code=ErrorCode.PLAYBACK_FORBIDDEN, status_code=403)
+        raise AppError("Access denied", code=ErrorCode.PLAYBACK_FORBIDDEN)
 
     raise AppError(
         "Stream token required for private video",
         code=ErrorCode.PLAYBACK_UNAUTHORIZED,
-        status_code=401,
     )
 
 
 def safe_asset_path(asset_path: str) -> str:
     if not asset_path:
-        raise AppError("Invalid segment name", code=ErrorCode.PLAYBACK_BAD_REQUEST, status_code=400)
+        raise AppError("Invalid segment name", code=ErrorCode.PLAYBACK_BAD_REQUEST)
     normalized = asset_path.replace("\\", "/").lstrip("/")
     if ".." in normalized or normalized.startswith("/"):
-        raise AppError("Stream segment not found", code=ErrorCode.PLAYBACK_NOT_FOUND, status_code=404)
+        raise AppError("Stream segment not found", code=ErrorCode.PLAYBACK_NOT_FOUND)
     if not re.match(r"^[A-Za-z0-9_./\-]+$", normalized):
-        raise AppError("Stream segment not found", code=ErrorCode.PLAYBACK_NOT_FOUND, status_code=404)
+        raise AppError("Stream segment not found", code=ErrorCode.PLAYBACK_NOT_FOUND)
     return normalized
 
 
@@ -213,14 +211,14 @@ def get_ready_video(db: Session, video_id: str) -> models.Video:
     validate_public_video_id(video_id)
     video = video_repository.get_by_upload_id(db, video_id)
     if not video:
-        raise AppError("Video not found", code=ErrorCode.PLAYBACK_NOT_FOUND, status_code=404)
+        raise AppError("Video not found", code=ErrorCode.PLAYBACK_NOT_FOUND)
     if not _is_playable(video):
         raise AppError(
-            "Video is not ready for streaming", code=ErrorCode.PLAYBACK_NOT_READY, status_code=409
+            "Video is not ready for streaming", code=ErrorCode.PLAYBACK_NOT_READY
         )
     if not video.hls_path:
         raise AppError(
-            "Stream playlist not available", code=ErrorCode.PLAYBACK_NOT_FOUND, status_code=404
+            "Stream playlist not available", code=ErrorCode.PLAYBACK_NOT_FOUND
         )
     return video
 
@@ -233,7 +231,7 @@ def resolve_master(video: models.Video) -> Tuple[Path, str]:
         path = storage.ensure_local(key)
     except FileNotFoundError as e:
         raise AppError(
-            "Stream playlist not available", code=ErrorCode.PLAYBACK_NOT_FOUND, status_code=404
+            "Stream playlist not available", code=ErrorCode.PLAYBACK_NOT_FOUND
         ) from e
     return path, key
 
@@ -252,5 +250,5 @@ def resolve_asset(video: models.Video, asset_path: str) -> Tuple[Path, str]:
             if safe.endswith(".ts")
             else "Stream asset not found"
         )
-        raise AppError(detail, code=ErrorCode.PLAYBACK_NOT_FOUND, status_code=404) from e
+        raise AppError(detail, code=ErrorCode.PLAYBACK_NOT_FOUND) from e
     return path, safe

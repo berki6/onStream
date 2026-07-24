@@ -102,7 +102,10 @@ def create_app() -> FastAPI:
     @application.exception_handler(RequestValidationError)
     async def validation_exception_handler(request, exc):
         from src.application.error_codes import ErrorCode
-        from src.application.error_envelope import error_body
+        from src.application.error_envelope import (
+            error_body,
+            validation_detail_code,
+        )
 
         errors = []
         for error in exc.errors():
@@ -113,11 +116,12 @@ def create_app() -> FastAPI:
             msg = error.get("msg", "Validation error")
             if msg.startswith("Value error, "):
                 msg = msg.replace("Value error, ", "")
+            detail_code = validation_detail_code(field, str(error.get("type") or ""))
             errors.append(
                 {
                     "field": field,
                     "message": msg,
-                    "code": ErrorCode.VALIDATION_FAILED.value,
+                    "code": detail_code.value,
                 }
             )
 
@@ -128,6 +132,7 @@ def create_app() -> FastAPI:
                 code=ErrorCode.VALIDATION_FAILED,
                 message="Validation failed",
                 details=errors,
+                http_status=422,
             ),
         )
 
@@ -143,6 +148,7 @@ def create_app() -> FastAPI:
                 code=exc.code,
                 message=exc.message,
                 details=exc.details,
+                http_status=exc.status_code,
             ),
             headers=headers,
         )
@@ -186,6 +192,7 @@ def create_app() -> FastAPI:
                 code=code,
                 message=message,
                 details=details,
+                http_status=exc.status_code,
             ),
             headers=getattr(exc, "headers", None),
         )
@@ -207,6 +214,7 @@ def create_app() -> FastAPI:
                 request=request,
                 code=ErrorCode.INTERNAL_SERVER_ERROR,
                 message=message,
+                http_status=500,
             ),
         )
 

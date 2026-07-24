@@ -24,7 +24,6 @@ def create_playlist(db: Session, user_id: int, playlist: PlaylistCreate):
         raise AppError(
             f"Title must be {MAX_TITLE_LENGTH} characters or less",
             code=ErrorCode.PLAYLIST_BAD_REQUEST,
-            status_code=400,
         )
     existing_playlists, _ = playlist_repository.list_by_user(db, user_id)
     if any(p.name == playlist.name for p in existing_playlists):
@@ -41,13 +40,12 @@ def list_playlists(
 ) -> Tuple[list, int]:
     if skip < 0:
         raise AppError(
-            "Skip parameter must be non-negative", code=ErrorCode.PLAYLIST_BAD_REQUEST, status_code=400
+            "Skip parameter must be non-negative", code=ErrorCode.PLAYLIST_BAD_REQUEST
         )
     if limit < 1 or limit > settings.MAX_LIST_LIMIT:
         raise AppError(
             f"Limit must be between 1 and {settings.MAX_LIST_LIMIT}",
             code=ErrorCode.PLAYLIST_BAD_REQUEST,
-            status_code=400,
         )
     return playlist_repository.list_by_user(db, user_id, skip=skip, limit=limit)
 
@@ -55,9 +53,9 @@ def list_playlists(
 def get_playlist(db: Session, playlist_id: int, user_id: int):
     playlist = playlist_repository.get_by_id(db, playlist_id)
     if not playlist:
-        raise AppError("Playlist not found", code=ErrorCode.PLAYLIST_NOT_FOUND, status_code=404)
+        raise AppError("Playlist not found", code=ErrorCode.PLAYLIST_NOT_FOUND)
     if playlist.user_id != user_id:
-        raise AppError("Access denied", code=ErrorCode.PLAYLIST_FORBIDDEN, status_code=403)
+        raise AppError("Access denied", code=ErrorCode.PLAYLIST_FORBIDDEN)
     return playlist
 
 
@@ -78,13 +76,13 @@ def add_video(
     get_playlist(db, playlist_id, user_id)
     video = video_repository.get_by_upload_id(db, video_id)
     if not video:
-        raise AppError("Video not found", code=ErrorCode.VIDEO_NOT_FOUND, status_code=404)
+        raise AppError("Video not found", code=ErrorCode.VIDEO_NOT_FOUND)
     if video.user_id != user_id:
-        raise AppError("Access denied", code=ErrorCode.PLAYLIST_FORBIDDEN, status_code=403)
+        raise AppError("Access denied", code=ErrorCode.PLAYLIST_FORBIDDEN)
     result = playlist_repository.add_video(db, playlist_id, video.id, video_data.position)
     if result is None:
         raise AppError(
-            "Video already in playlist", code=ErrorCode.PLAYLIST_BAD_REQUEST, status_code=400
+            "Video already in playlist", code=ErrorCode.PLAYLIST_BAD_REQUEST
         )
     return {
         "playlist_id": playlist_id,
@@ -100,12 +98,12 @@ def remove_video(
     get_playlist(db, playlist_id, user_id)
     video = video_repository.get_by_upload_id(db, video_id)
     if not video:
-        raise AppError("Video not found", code=ErrorCode.VIDEO_NOT_FOUND, status_code=404)
+        raise AppError("Video not found", code=ErrorCode.VIDEO_NOT_FOUND)
     if video.user_id != user_id:
-        raise AppError("Access denied", code=ErrorCode.PLAYLIST_FORBIDDEN, status_code=403)
+        raise AppError("Access denied", code=ErrorCode.PLAYLIST_FORBIDDEN)
     result = playlist_repository.remove_video(db, playlist_id, video.id)
     if not result:
-        raise AppError("Video not in playlist", code=ErrorCode.PLAYLIST_NOT_FOUND, status_code=404)
+        raise AppError("Video not in playlist", code=ErrorCode.PLAYLIST_NOT_FOUND)
 
 
 def list_videos(db: Session, playlist_id: int, user_id: int) -> List[Dict[str, Any]]:
@@ -136,14 +134,14 @@ def update_video_position(
     get_playlist(db, playlist_id, user_id)
     video = video_repository.get_by_upload_id(db, video_id)
     if not video:
-        raise AppError("Video not found", code=ErrorCode.VIDEO_NOT_FOUND, status_code=404)
+        raise AppError("Video not found", code=ErrorCode.VIDEO_NOT_FOUND)
     if video.user_id != user_id:
-        raise AppError("Access denied", code=ErrorCode.PLAYLIST_FORBIDDEN, status_code=403)
+        raise AppError("Access denied", code=ErrorCode.PLAYLIST_FORBIDDEN)
     result = playlist_repository.update_video_position(
         db, playlist_id, video.id, video_data.position
     )
     if not result:
-        raise AppError("Video not in playlist", code=ErrorCode.PLAYLIST_BAD_REQUEST, status_code=400)
+        raise AppError("Video not in playlist", code=ErrorCode.PLAYLIST_BAD_REQUEST)
     return {
         "playlist_id": playlist_id,
         "video_upload_id": video_id,

@@ -17,9 +17,9 @@ def get_chapters(db: Session, video_id: str, user_id: int) -> List[Dict[str, Any
     validate_public_video_id(video_id)
     video = video_repository.get_by_upload_id(db, video_id)
     if not video:
-        raise AppError("Video not found", code=ErrorCode.CAPTION_NOT_FOUND, status_code=404)
+        raise AppError("Video not found", code=ErrorCode.CAPTION_NOT_FOUND)
     if video.user_id != user_id:
-        raise AppError("Access denied", code=ErrorCode.CAPTION_FORBIDDEN, status_code=403)
+        raise AppError("Access denied", code=ErrorCode.CAPTION_FORBIDDEN)
     if not video.chapters_json:
         return []
     try:
@@ -33,9 +33,9 @@ def get_caption_meta(db: Session, video_id: str, user_id: int) -> Dict[str, Opti
     validate_public_video_id(video_id)
     video = video_repository.get_by_upload_id(db, video_id)
     if not video:
-        raise AppError("Video not found", code=ErrorCode.CAPTION_NOT_FOUND, status_code=404)
+        raise AppError("Video not found", code=ErrorCode.CAPTION_NOT_FOUND)
     if video.user_id != user_id:
-        raise AppError("Access denied", code=ErrorCode.CAPTION_FORBIDDEN, status_code=403)
+        raise AppError("Access denied", code=ErrorCode.CAPTION_FORBIDDEN)
     return {
         "caption_vtt_path": video.caption_vtt_path,
         "transcript_path": video.transcript_path,

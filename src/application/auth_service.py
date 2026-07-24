@@ -24,9 +24,9 @@ from src.schemas.auth import UserCreate
 
 def register(db: Session, user: UserCreate):
     if user_repository.get_by_username(db, username=user.username):
-        raise AppError("Username already registered", code=ErrorCode.AUTH_USERNAME_TAKEN, status_code=400)
+        raise AppError("Username already registered", code=ErrorCode.AUTH_USERNAME_TAKEN)
     if user_repository.get_by_email(db, email=user.email):
-        raise AppError("Email already registered", code=ErrorCode.AUTH_EMAIL_TAKEN, status_code=400)
+        raise AppError("Email already registered", code=ErrorCode.AUTH_EMAIL_TAKEN)
     return user_repository.create(db, user)
 
 
@@ -36,7 +36,6 @@ def login(db: Session, username: str, password: str) -> Dict[str, Any]:
         raise AppError(
             "Incorrect username or password",
             code=ErrorCode.AUTH_INVALID_CREDENTIALS,
-            status_code=401,
         )
     access_token = create_access_token(
         data={"sub": user.username},
@@ -56,13 +55,13 @@ def refresh(db: Session, refresh_token: str) -> Dict[str, Any]:
         payload = decode_token(refresh_token, expected_type="refresh")
         username = payload.get("sub")
         if not username:
-            raise AppError("Invalid refresh token", code=ErrorCode.AUTH_INVALID_TOKEN, status_code=401)
+            raise AppError("Invalid refresh token", code=ErrorCode.AUTH_INVALID_TOKEN)
     except JWTError as e:
-        raise AppError("Invalid refresh token", code=ErrorCode.AUTH_INVALID_TOKEN, status_code=401) from e
+        raise AppError("Invalid refresh token", code=ErrorCode.AUTH_INVALID_TOKEN) from e
 
     user = user_repository.get_by_username(db, username=str(username))
     if not user or not user.is_active:
-        raise AppError("Invalid refresh token", code=ErrorCode.AUTH_INVALID_TOKEN, status_code=401)
+        raise AppError("Invalid refresh token", code=ErrorCode.AUTH_INVALID_TOKEN)
 
     access_token = create_access_token(data={"sub": user.username})
     return {

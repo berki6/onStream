@@ -746,6 +746,25 @@ class TestVideoRouterExtended:
         body = response.json()
         assert body["error"]["code"] == "INTERNAL_QUEUE_FAILURE"
 
+        # Video/job left in ERROR for operator retry
+        errored = (
+            db_session.query(models.Video)
+            .filter(models.Video.user_id == user.id)
+            .order_by(models.Video.id.desc())
+            .first()
+        )
+        assert errored is not None
+        assert errored.status == models.VideoStatus.ERROR
+        job = (
+            db_session.query(models.VideoJob)
+            .filter(models.VideoJob.upload_id == errored.upload_id)
+            .first()
+        )
+        assert job is not None
+        assert job.error_code == "INTERNAL_QUEUE_FAILURE"
+
+        db_session.delete(job)
+        db_session.delete(errored)
         db_session.delete(user)
         db_session.commit()
 

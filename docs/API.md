@@ -88,6 +88,10 @@ All `/v1` errors (except MediaMTX auth webhook, which returns bare status) use:
 
 Job rows (`video_jobs` / `queued_jobs`) and `video.failed` webhooks also carry `error_code` when a worker fails.
 
+Prometheus counter `onstream_api_errors_total{code,http_status}` increments on every structured error response.
+
+When enqueue fails after Redis **and** DB fallback (`INTERNAL_QUEUE_FAILURE`), the video/job are marked `ERROR` so clients can retry via the jobs API.
+
 ```mermaid
 flowchart TB
   Client --> Auth["/v1/auth"]

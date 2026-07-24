@@ -58,7 +58,7 @@ async def master_playlist(
         validate_public_video_id(video_id)
         video = video_repository.get_by_upload_id(db, video_id)
         if not video:
-            raise AppError("Video not found", code=ErrorCode.PLAYBACK_NOT_FOUND, status_code=404)
+            raise AppError("Video not found", code=ErrorCode.PLAYBACK_NOT_FOUND)
         stream_token = playback_service.authorize_access(
             video,
             token,
@@ -98,7 +98,7 @@ async def playback_asset(
         validate_public_video_id(video_id)
         video = video_repository.get_by_upload_id(db, video_id)
         if not video:
-            raise AppError("Video not found", code=ErrorCode.PLAYBACK_NOT_FOUND, status_code=404)
+            raise AppError("Video not found", code=ErrorCode.PLAYBACK_NOT_FOUND)
         stream_token = playback_service.authorize_access(
             video,
             token,

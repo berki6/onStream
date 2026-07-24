@@ -105,6 +105,7 @@ Prometheus metrics live in `src/core/metrics.py` and are exposed at `GET /metric
 |--------|--------|
 | `onstream_http_requests_total` | HTTP count by method/endpoint/status |
 | `onstream_http_request_duration_seconds` | Latency histogram |
+| `onstream_api_errors_total` | Structured API errors by `code` + `http_status` |
 | `onstream_live_streams_active` | Live gauge |
 | `onstream_live_streams_stale_total` | Stale detections |
 | `onstream_live_playlist_age_seconds` | Playlist freshness |

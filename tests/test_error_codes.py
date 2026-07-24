@@ -61,3 +61,30 @@ def test_validation_error_envelope():
     assert body["error"]["code"] == ErrorCode.VALIDATION_FAILED.value
     assert isinstance(body["error"]["details"], list)
     assert "detail" not in body
+    assert all("code" in d for d in body["error"]["details"])
+
+
+def test_validation_detail_code_for_ids():
+    from src.application.error_envelope import validation_detail_code
+
+    assert (
+        validation_detail_code("upload_id", "string_pattern_mismatch")
+        is ErrorCode.VALIDATION_INVALID_ID
+    )
+    assert (
+        validation_detail_code("email", "missing") is ErrorCode.VALIDATION_FAILED
+    )
+
+
+def test_openapi_includes_error_responses():
+    schema = client.app.openapi()
+    paths = schema.get("paths") or {}
+    # A representative authenticated route should advertise structured errors
+    video_post = paths.get("/v1/videos/") or paths.get("/v1/videos")
+    assert video_post is not None
+    post = video_post.get("post") or {}
+    responses = post.get("responses") or {}
+    assert "400" in responses or "422" in responses or "401" in responses
+    # components should include ErrorResponse
+    comps = (schema.get("components") or {}).get("schemas") or {}
+    assert "ErrorResponse" in comps or "ErrorBody" in comps

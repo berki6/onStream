@@ -34,12 +34,12 @@ def review(
     validate_public_video_id(video_id)
     video = video_repository.get_by_upload_id(db, video_id)
     if not video:
-        raise AppError("Video not found", code=ErrorCode.VIDEO_NOT_FOUND, status_code=404)
+        raise AppError("Video not found", code=ErrorCode.VIDEO_NOT_FOUND)
     if video.user_id != user_id:
-        raise AppError("Access denied", code=ErrorCode.MODERATION_FORBIDDEN, status_code=403)
+        raise AppError("Access denied", code=ErrorCode.MODERATION_FORBIDDEN)
     if video.status != models.VideoStatus.QUARANTINED:
         raise AppError(
-            "Video is not quarantined", code=ErrorCode.MODERATION_CONFLICT, status_code=409
+            "Video is not quarantined", code=ErrorCode.MODERATION_CONFLICT
         )
 
     action = (action or "").lower().strip()
@@ -65,5 +65,4 @@ def review(
     raise AppError(
         "action must be 'approve' or 'reject'",
         code=ErrorCode.MODERATION_BAD_REQUEST,
-        status_code=400,
     )

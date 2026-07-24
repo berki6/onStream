@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from src.api.v1.error_responses import ERROR_RESPONSES
 from src.api.v1.routes import (
     api_keys,
     auth,
@@ -15,7 +16,7 @@ from src.api.v1.routes import (
     webhooks,
 )
 
-api_router = APIRouter()
+api_router = APIRouter(responses=ERROR_RESPONSES)
 
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(videos.router, prefix="/videos", tags=["videos"])

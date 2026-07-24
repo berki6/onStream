@@ -58,6 +58,6 @@ def revoke_key(db: Session, user_id: int, key_id: int) -> None:
         .first()
     )
     if not record:
-        raise AppError("API key not found", code=ErrorCode.API_KEY_NOT_FOUND, status_code=404)
+        raise AppError("API key not found", code=ErrorCode.API_KEY_NOT_FOUND)
     record.is_active = False
     db.commit()

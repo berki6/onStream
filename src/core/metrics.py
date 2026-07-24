@@ -50,6 +50,11 @@ PLAYBACK_RESPONSES = Counter(
     "HLS playback responses served",
     ["kind", "live"],
 )
+API_ERRORS = Counter(
+    "onstream_api_errors_total",
+    "Structured API / application errors",
+    ["code", "http_status"],
+)
 QOE_PLAYLIST_AGE = Histogram(
     "onstream_qoe_playlist_age_seconds",
     "QoE canary observed playlist age",

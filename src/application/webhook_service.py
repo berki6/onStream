@@ -63,6 +63,6 @@ def delete_endpoint(db: Session, user_id: int, endpoint_id: int) -> None:
         .first()
     )
     if not ep:
-        raise AppError("Webhook not found", code=ErrorCode.WEBHOOK_NOT_FOUND, status_code=404)
+        raise AppError("Webhook not found", code=ErrorCode.WEBHOOK_NOT_FOUND)
     db.delete(ep)
     db.commit()
