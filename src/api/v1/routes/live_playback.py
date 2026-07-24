@@ -12,6 +12,7 @@ from src.api.v1.deps import get_optional_user
 from src.api.v1.responses import raise_app_error
 from src.application import live_service, playback_service
 from src.application.errors import AppError
+from src.application.playback_headers import cache_headers
 from src.infrastructure.db.session import get_db
 
 router = APIRouter()
@@ -26,6 +27,15 @@ def _bearer(request: Request) -> Optional[str]:
 
 def _origin(request: Request) -> str:
     return request.headers.get("Origin") or request.headers.get("Referer") or ""
+
+
+def _inc_playback(kind: str) -> None:
+    try:
+        from src.core.metrics import PLAYBACK_RESPONSES
+
+        PLAYBACK_RESPONSES.labels(kind=kind, live="true").inc()
+    except Exception:
+        pass
 
 
 @router.get("/{stream_id}/master.m3u8")
@@ -50,8 +60,11 @@ async def live_master_playlist(
         body = playback_service.rewrite_playlist(raw, stream_token or token)
     except AppError as e:
         raise_app_error(e)
+    _inc_playback("master")
     return StreamingResponse(
-        iter([body]), media_type="application/vnd.apple.mpegurl"
+        iter([body]),
+        media_type="application/vnd.apple.mpegurl",
+        headers=cache_headers(live=True, asset_name="master.m3u8"),
     )
 
 
@@ -77,11 +90,16 @@ async def live_playback_asset(
     except AppError as e:
         raise_app_error(e)
 
+    headers = cache_headers(live=True, asset_name=safe)
+
     if safe.endswith(".m3u8"):
         raw = path.read_text(encoding="utf-8", errors="ignore")
         body = playback_service.rewrite_playlist(raw, stream_token or token)
+        _inc_playback("playlist")
         return StreamingResponse(
-            iter([body]), media_type="application/vnd.apple.mpegurl"
+            iter([body]),
+            media_type="application/vnd.apple.mpegurl",
+            headers=headers,
         )
 
     media_type = "video/MP2T" if safe.endswith(".ts") else "application/octet-stream"
@@ -95,4 +113,5 @@ async def live_playback_asset(
             for chunk in iter(lambda: f.read(4096), b""):
                 yield chunk
 
-    return StreamingResponse(iterfile(), media_type=media_type)
+    _inc_playback("segment" if safe.endswith(".ts") else "asset")
+    return StreamingResponse(iterfile(), media_type=media_type, headers=headers)

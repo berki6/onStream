@@ -114,6 +114,23 @@ class Settings(BaseSettings):
     PUBLIC_RTMP_BASE_URL: str = os.environ.get(
         "PUBLIC_RTMP_BASE_URL", "rtmp://localhost:1935/live"
     )
+    LIVE_HEALTH_ENABLED: bool = _env_bool("LIVE_HEALTH_ENABLED", "true")
+    LIVE_STALE_SECONDS: int = int(os.environ.get("LIVE_STALE_SECONDS", "20"))
+    PLAYBACK_CDN_HEADERS_ENABLED: bool = _env_bool(
+        "PLAYBACK_CDN_HEADERS_ENABLED", "true"
+    )
+    MEDIAMTX_API_URL: str = os.environ.get(
+        "MEDIAMTX_API_URL", "http://localhost:9997"
+    )
+    MEDIAMTX_API_USER: str = os.environ.get("MEDIAMTX_API_USER", "")
+    MEDIAMTX_API_PASS: str = os.environ.get("MEDIAMTX_API_PASS", "")
+    OTEL_ENABLED: bool = _env_bool("OTEL_ENABLED", "false")
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = os.environ.get(
+        "OTEL_EXPORTER_OTLP_ENDPOINT", ""
+    )
+    MEDIA_PYAV_ENABLED: bool = _env_bool("MEDIA_PYAV_ENABLED", "true")
+    QOE_CANARY_ENABLED: bool = _env_bool("QOE_CANARY_ENABLED", "true")
+
 
     # AI media intelligence (off by default for CI)
     AI_ENABLED: bool = _env_bool("AI_ENABLED", "false")

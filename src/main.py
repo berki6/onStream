@@ -32,6 +32,14 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     application = FastAPI(title="OnStream", version="0.3.0", lifespan=lifespan)
 
+    try:
+        from src.core.otel import instrument_fastapi, setup_tracing
+
+        setup_tracing(service_name="onstream-api")
+        instrument_fastapi(application)
+    except Exception as e:
+        logger.warning(f"OTel setup skipped: {e}")
+
     if settings.SENTRY_DSN:
         try:
             import sentry_sdk

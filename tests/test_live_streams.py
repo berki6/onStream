@@ -203,3 +203,99 @@ def test_abr_enabled_calls_start(test_user, db_session: Session, monkeypatch):
 
     # Cleanup
     live_abr.stop_abr(stream_id)
+
+
+def test_unpublish_marks_idle_and_stops_abr(test_user, db_session: Session, monkeypatch):
+    monkeypatch.setattr(settings, "LIVE_ABR_ENABLED", True)
+    token = _auth_token()
+    created = _create_stream(token)
+    key = created["stream_key"]
+    stream_id = created["stream_id"]
+
+    fake_proc = MagicMock()
+    fake_proc.poll.return_value = None
+    with patch(
+        "src.infrastructure.media.live_abr.subprocess.Popen", return_value=fake_proc
+    ):
+        with patch("src.infrastructure.media.live_abr.shutil.which", return_value="ffmpeg"):
+            client.post(
+                "/v1/live/mediamtx-auth",
+                json={"action": "publish", "path": f"live/{key}"},
+            )
+            assert live_abr.abr_running(stream_id)
+
+    unpub = client.post(
+        "/v1/live/mediamtx-auth",
+        json={"action": "unpublish", "path": f"live/{key}"},
+    )
+    assert unpub.status_code == 200
+    assert not live_abr.abr_running(stream_id)
+
+    got = client.get(
+        f"/v1/live/{stream_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert got.json()["data"]["status"] == "idle"
+
+
+def test_health_endpoint_owner_only(test_user, db_session: Session, tmp_path):
+    token = _auth_token()
+    created = _create_stream(token, is_public=True)
+    stream_id = created["stream_id"]
+    key = created["stream_key"]
+
+    client.post(
+        "/v1/live/mediamtx-auth",
+        json={"action": "publish", "path": f"live/{key}"},
+    )
+    hls_dir = Path(settings.LIVE_HLS_DIR) / f"live/{key}"
+    hls_dir.mkdir(parents=True, exist_ok=True)
+    (hls_dir / "index.m3u8").write_text("#EXTM3U\n#EXTINF:2.0,\nseg0.ts\n", encoding="utf-8")
+
+    ok = client.get(
+        f"/v1/live/{stream_id}/health",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert ok.status_code == 200
+    body = ok.json()["data"]
+    assert body["stream_id"] == stream_id
+    assert body["playlist_present"] is True
+    assert body["playlist_age_seconds"] is not None
+
+    denied = client.get(f"/v1/live/{stream_id}/health")
+    assert denied.status_code in (401, 403)
+
+
+def test_check_live_streams_marks_stale(test_user, db_session: Session, monkeypatch, tmp_path):
+    import os
+    import time
+
+    from src.infrastructure.live.health import check_live_streams
+
+    monkeypatch.setattr(settings, "LIVE_HEALTH_ENABLED", True)
+    monkeypatch.setattr(settings, "LIVE_STALE_SECONDS", 5)
+
+    token = _auth_token()
+    created = _create_stream(token)
+    key = created["stream_key"]
+    stream_id = created["stream_id"]
+
+    client.post(
+        "/v1/live/mediamtx-auth",
+        json={"action": "publish", "path": f"live/{key}"},
+    )
+    hls_dir = Path(settings.LIVE_HLS_DIR) / f"live/{key}"
+    hls_dir.mkdir(parents=True, exist_ok=True)
+    playlist = hls_dir / "index.m3u8"
+    playlist.write_text("#EXTM3U\n#EXTINF:2.0,\nseg0.ts\n", encoding="utf-8")
+    old = time.time() - 60
+    os.utime(playlist, (old, old))
+
+    n = check_live_streams(db_session)
+    assert n >= 1
+
+    got = client.get(
+        f"/v1/live/{stream_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert got.json()["data"]["status"] == "idle"

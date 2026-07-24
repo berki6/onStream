@@ -157,6 +157,17 @@ def delete_stream(db: Session, stream_id: str, user_id: int) -> dict:
     if stream.user_id != user_id:
         raise AppError("Access denied", code="forbidden", status_code=403)
 
+    # Kick publisher via MediaMTX API (soft-fail), then stop ABR
+    try:
+        from src.infrastructure.live import mediamtx_client
+
+        if stream.hls_path:
+            mediamtx_client.kick_publisher(stream.hls_path)
+        # Also try stream_id path variants
+        mediamtx_client.kick_publisher(f"live/{stream.stream_id}")
+    except Exception as exc:
+        logger.warning("MediaMTX kick on delete failed for %s: %s", stream_id, exc)
+
     live_abr.stop_abr(stream_id)
     stream = live_stream_repository.revoke(db, stream)
     return _to_response(stream)
@@ -185,6 +196,20 @@ def issue_live_token(
     }
 
 
+def get_stream_health(db: Session, stream_id: str, user_id: int) -> dict:
+    """Owner-only live health snapshot."""
+    _require_live_enabled()
+    validate_stream_id(stream_id)
+    stream = live_stream_repository.get_by_stream_id(db, stream_id)
+    if not stream or stream.status == "ended":
+        raise AppError("Live stream not found", code="not_found", status_code=404)
+    if stream.user_id != user_id:
+        raise AppError("Access denied", code="forbidden", status_code=403)
+    from src.infrastructure.live.health import get_health_snapshot
+
+    return get_health_snapshot(db, stream)
+
+
 def _check_auth_secret(provided: Optional[str]) -> None:
     expected = (settings.MEDIAMTX_AUTH_SECRET or "").strip()
     if not expected:
@@ -204,20 +229,31 @@ def authorize_publish(
     MediaMTX auth webhook handler.
 
     For ``publish``: validate stream key from path and mark live.
+    For ``unpublish``: mark idle and stop ABR.
     For ``read`` / ``playback``: allow if a matching non-ended stream exists
     (OnStream enforces viewer tokens on its own playback routes).
     """
+    from src.core import metrics as metrics_mod
+
     _require_live_enabled()
     _check_auth_secret(auth_secret)
 
     action = (action or "publish").lower()
     key = extract_stream_key_from_path(path)
     if not key:
+        try:
+            metrics_mod.LIVE_AUTH_TOTAL.labels(action=action, result="deny").inc()
+        except Exception:
+            pass
         raise AppError("Unauthorized", code="unauthorized", status_code=401)
 
     key_hash = hash_stream_key(key)
     stream = live_stream_repository.get_by_stream_key_hash(db, key_hash)
     if not stream or stream.status == "ended":
+        try:
+            metrics_mod.LIVE_AUTH_TOTAL.labels(action=action, result="deny").inc()
+        except Exception:
+            pass
         raise AppError("Unauthorized", code="unauthorized", status_code=401)
 
     if action == "publish":
@@ -232,9 +268,42 @@ def authorize_publish(
         stream = live_stream_repository.set_live(
             db, stream, hls_path=hls_path, abr_hls_path=abr_path
         )
+        try:
+            metrics_mod.LIVE_AUTH_TOTAL.labels(action=action, result="allow").inc()
+            metrics_mod.LIVE_STREAMS_ACTIVE.set(
+                live_stream_repository.count_by_status(db, "live")
+            )
+            metrics_mod.LIVE_ABR_ACTIVE.set(
+                1 if live_abr.abr_running(stream.stream_id) else 0
+            )
+        except Exception:
+            pass
+        return stream
+
+    if action in ("unpublish", "unpublish_all"):
+        live_abr.stop_abr(stream.stream_id)
+        stream = live_stream_repository.set_idle(db, stream)
+        try:
+            metrics_mod.LIVE_AUTH_TOTAL.labels(action="unpublish", result="allow").inc()
+            metrics_mod.LIVE_STREAMS_ACTIVE.set(
+                live_stream_repository.count_by_status(db, "live")
+            )
+            metrics_mod.LIVE_ABR_ACTIVE.set(
+                sum(
+                    1
+                    for s in live_stream_repository.list_by_status(db, "live")
+                    if live_abr.abr_running(s.stream_id)
+                )
+            )
+        except Exception:
+            pass
         return stream
 
     # read / playback / other: allow known keys so MediaMTX remux works
+    try:
+        metrics_mod.LIVE_AUTH_TOTAL.labels(action=action, result="allow").inc()
+    except Exception:
+        pass
     return stream
 
 

@@ -6,6 +6,7 @@ import signal
 
 from src.core.config import settings
 from src.core.logger import get_logger
+from src.infrastructure.db.session import SessionLocal
 from src.infrastructure.queue.job_queue import job_queue
 from src.infrastructure.webhooks.delivery import process_pending_deliveries
 from src.worker.handlers.captions_handler import process_captions
@@ -45,6 +46,29 @@ def dispatch_job(job: dict) -> None:
     handler(upload_id)
 
 
+def _tick_live_health() -> None:
+    from src.infrastructure.live.health import check_live_streams
+
+    db = SessionLocal()
+    try:
+        check_live_streams(db)
+    finally:
+        db.close()
+
+
+def _tick_qoe_canary() -> None:
+    try:
+        from src.infrastructure.live.qoe_canary import run_qoe_canary
+
+        db = SessionLocal()
+        try:
+            run_qoe_canary(db)
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning(f"QoE canary tick failed: {exc}")
+
+
 def run_worker():
     is_development = settings.ENV == "development"
     if is_development:
@@ -52,6 +76,13 @@ def run_worker():
         signal.signal(signal.SIGTERM, signal_handler)
     else:
         signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+    try:
+        from src.core.otel import setup_tracing
+
+        setup_tracing(service_name="onstream-worker")
+    except Exception as e:
+        logger.warning(f"Worker OTel setup skipped: {e}")
 
     logger.info("Video processing worker started (ABR + AI)")
     webhook_tick = 0
@@ -69,6 +100,14 @@ def run_worker():
                     process_pending_deliveries()
                 except Exception as we:
                     logger.warning(f"Webhook delivery tick failed: {we}")
+                try:
+                    _tick_live_health()
+                except Exception as he:
+                    logger.warning(f"Live health tick failed: {he}")
+                try:
+                    _tick_qoe_canary()
+                except Exception as qe:
+                    logger.warning(f"QoE canary tick failed: {qe}")
         except KeyboardInterrupt:
             if is_development:
                 break

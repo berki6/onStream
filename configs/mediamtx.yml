@@ -5,6 +5,12 @@ logLevel: info
 logDestinations: [stdout]
 
 ###############################################
+# Control API
+
+api: yes
+apiAddress: :9997
+
+###############################################
 # Authentication (HTTP webhook → OnStream API)
 
 authMethod: http

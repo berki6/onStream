@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from src.core.config import settings
 from src.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -42,19 +43,76 @@ def score_transcript(text: str) -> Tuple[float, List[str]]:
     return score, labels
 
 
+def _score_from_gray_values(values: List[int]) -> Tuple[float, List[str]]:
+    if not values:
+        return 0.0, []
+    mean = sum(values) / len(values)
+    variance = sum((v - mean) ** 2 for v in values) / len(values)
+    labels: List[str] = []
+    score = 0.0
+    if mean < 15:
+        score = 0.25
+        labels.append("low_luminance")
+    if variance < 5 and mean < 30:
+        score = max(score, 0.35)
+        labels.append("uniform_dark")
+    return score, labels
+
+
+def _score_numpy_frames(frames) -> Tuple[float, List[str]]:
+    """Score using numpy variance / optional OpenCV Laplacian."""
+    try:
+        import numpy as np
+    except ImportError:
+        return 0.0, []
+
+    if not frames:
+        return 0.0, []
+
+    all_vals = []
+    lap_scores = []
+    for frame in frames:
+        arr = np.asarray(frame).ravel()
+        all_vals.extend(arr.tolist())
+        try:
+            import cv2
+
+            gray = np.asarray(frame)
+            if gray.ndim == 3:
+                gray = cv2.cvtColor(gray.astype("uint8"), cv2.COLOR_RGB2GRAY)
+            lap_scores.append(float(cv2.Laplacian(gray.astype("uint8"), cv2.CV_64F).var()))
+        except Exception:
+            pass
+
+    score, labels = _score_from_gray_values([int(v) for v in all_vals[: 64 * 36 * 20]])
+    if lap_scores and sum(lap_scores) / len(lap_scores) < 5.0:
+        score = max(score, 0.3)
+        if "low_contrast" not in labels:
+            labels.append("low_contrast")
+    return score, labels
+
+
 def score_frames(video_path: str, sample_count: int = 5) -> Tuple[float, List[str]]:
     """
     Heuristic frame scoring via luminance variance sampling.
 
-    High variance alone is not flagged; extremely dark/near-black frames
-    contribute a mild score. Falls back to (0.0, []) on ffmpeg failure.
+    Prefers PyAV + numpy/OpenCV when enabled; falls back to ffmpeg rawvideo.
     """
     path = Path(video_path)
     if not path.exists():
         return 0.0, []
 
+    if settings.MEDIA_PYAV_ENABLED:
+        try:
+            from src.infrastructure.media import pyav_io
+
+            frames = pyav_io.sample_frames(str(path), sample_count=sample_count)
+            if frames:
+                return _score_numpy_frames(frames)
+        except Exception as e:
+            logger.debug("PyAV frame moderation fallback: %s", e)
+
     try:
-        # Sample a few frames as raw gray and measure mean intensity
         cmd = [
             "ffmpeg",
             "-i",
@@ -72,20 +130,7 @@ def score_frames(video_path: str, sample_count: int = 5) -> Tuple[float, List[st
         if not data:
             return 0.0, []
         values = list(data)
-        if not values:
-            return 0.0, []
-        mean = sum(values) / len(values)
-        variance = sum((v - mean) ** 2 for v in values) / len(values)
-        labels: List[str] = []
-        score = 0.0
-        # Near-black content is a weak signal only
-        if mean < 15:
-            score = 0.25
-            labels.append("low_luminance")
-        if variance < 5 and mean < 30:
-            score = max(score, 0.35)
-            labels.append("uniform_dark")
-        return score, labels
+        return _score_from_gray_values(values)
     except Exception as e:
         logger.warning(f"Frame moderation failed for {video_path}: {e}")
         return 0.0, []

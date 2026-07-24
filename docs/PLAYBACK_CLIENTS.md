@@ -104,4 +104,18 @@ LIVE_ABR_ENABLED=false
 LIVE_ABR_LADDER=360:800,720:2500,1080:5000
 PUBLIC_RTMP_BASE_URL=rtmp://localhost:1935/live
 LIVE_HLS_DIR=data/live
+LIVE_HEALTH_ENABLED=true
+LIVE_STALE_SECONDS=20
+PLAYBACK_CDN_HEADERS_ENABLED=true
 ```
+
+## CDN / edge cache headers
+
+When `PLAYBACK_CDN_HEADERS_ENABLED=true`, playback responses set `Cache-Control`:
+
+| Asset | VOD | Live |
+|-------|-----|------|
+| `.m3u8` | `max-age=3` | `no-cache` / `no-store` |
+| `.ts` | long `immutable` | `max-age=2` |
+
+Owner health: `GET /v1/live/{stream_id}/health` (stale playlist age, ABR status).

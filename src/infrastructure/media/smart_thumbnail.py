@@ -22,6 +22,26 @@ def _frame_contrast(raw_gray: bytes) -> float:
     return sum((v - mean) ** 2 for v in values) / len(values)
 
 
+def _numpy_contrast(frame) -> float:
+    """Prefer OpenCV Laplacian variance; fall back to numpy variance."""
+    try:
+        from src.infrastructure.media.pyav_io import frame_laplacian_variance
+
+        return frame_laplacian_variance(frame)
+    except Exception:
+        pass
+    try:
+        import numpy as np
+
+        arr = np.asarray(frame, dtype=np.float64).ravel()
+        if arr.size == 0:
+            return 0.0
+        mean = float(arr.mean())
+        return float(((arr - mean) ** 2).mean())
+    except Exception:
+        return 0.0
+
+
 def pick_best_frame_time(video_path: str, candidates: int = 8) -> float:
     """Pick a timestamp (seconds) with highest gray-scale contrast."""
     duration = probe_duration(video_path) or 10.0
@@ -30,6 +50,23 @@ def pick_best_frame_time(video_path: str, candidates: int = 8) -> float:
 
     best_t = max(0.5, duration * 0.1)
     best_score = -1.0
+
+    if settings.MEDIA_PYAV_ENABLED:
+        try:
+            from src.infrastructure.media import pyav_io
+
+            frames = pyav_io.sample_frames(video_path, sample_count=candidates)
+            if frames:
+                for i, frame in enumerate(frames):
+                    t = (duration * (i + 1)) / (candidates + 1)
+                    score = _numpy_contrast(frame)
+                    if score > best_score:
+                        best_score = score
+                        best_t = t
+                return best_t
+        except Exception as e:
+            logger.debug("PyAV smart thumbnail sampling fallback: %s", e)
+
     for i in range(candidates):
         t = (duration * (i + 1)) / (candidates + 1)
         cmd = [

@@ -5,6 +5,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from src.core.config import settings
+
 
 def extract_concise_error(stderr_text: str, max_lines=3, max_length=250) -> str:
     if not stderr_text:
@@ -37,7 +39,7 @@ def extract_concise_error(stderr_text: str, max_lines=3, max_length=250) -> str:
     return "Unknown error (no specific issue found)"
 
 
-def probe_height(video_path: str) -> int:
+def _shell_probe_height(video_path: str) -> int:
     try:
         cmd = [
             "ffprobe",
@@ -57,8 +59,7 @@ def probe_height(video_path: str) -> int:
         return 720
 
 
-def probe_duration(video_path: str) -> float:
-    """Return media duration in seconds, or 0.0 on failure."""
+def _shell_probe_duration(video_path: str) -> float:
     try:
         cmd = [
             "ffprobe",
@@ -74,6 +75,33 @@ def probe_duration(video_path: str) -> float:
         return float(result.stdout.strip().splitlines()[0])
     except Exception:
         return 0.0
+
+
+def probe_height(video_path: str) -> int:
+    if settings.MEDIA_PYAV_ENABLED:
+        try:
+            from src.infrastructure.media import pyav_io
+
+            h = pyav_io.probe_height(video_path)
+            if h and h > 0:
+                return h
+        except Exception:
+            pass
+    return _shell_probe_height(video_path)
+
+
+def probe_duration(video_path: str) -> float:
+    """Return media duration in seconds, or 0.0 on failure."""
+    if settings.MEDIA_PYAV_ENABLED:
+        try:
+            from src.infrastructure.media import pyav_io
+
+            d = pyav_io.probe_duration(video_path)
+            if d and d > 0:
+                return d
+        except Exception:
+            pass
+    return _shell_probe_duration(video_path)
 
 
 def encode_rendition(

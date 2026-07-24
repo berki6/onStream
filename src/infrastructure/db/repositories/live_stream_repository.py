@@ -50,6 +50,23 @@ def list_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 100):
     return rows, total
 
 
+def list_by_status(db: Session, status: str) -> list:
+    return (
+        db.query(models.LiveStream)
+        .filter(models.LiveStream.status == status)
+        .order_by(models.LiveStream.id)
+        .all()
+    )
+
+
+def count_by_status(db: Session, status: str) -> int:
+    return (
+        db.query(models.LiveStream)
+        .filter(models.LiveStream.status == status)
+        .count()
+    )
+
+
 def create(
     db: Session,
     *,

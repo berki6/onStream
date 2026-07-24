@@ -14,9 +14,20 @@ logger = get_logger(__name__)
 
 
 def extract_audio(video_path: str, audio_path: str) -> str:
-    """Extract mono 16kHz WAV audio via ffmpeg. Returns audio_path."""
+    """Extract mono 16kHz WAV audio. Prefers PyAV when enabled; falls back to ffmpeg."""
     out = Path(audio_path)
     out.parent.mkdir(parents=True, exist_ok=True)
+
+    if settings.MEDIA_PYAV_ENABLED:
+        try:
+            from src.infrastructure.media import pyav_io
+
+            return pyav_io.extract_audio_pcm_or_wav(
+                video_path, str(out), sample_rate=16000, channels=1
+            )
+        except Exception as exc:
+            logger.debug("PyAV audio extract failed, falling back to ffmpeg: %s", exc)
+
     cmd = [
         "ffmpeg",
         "-y",

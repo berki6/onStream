@@ -128,6 +128,20 @@ def get_live_stream(
     )
 
 
+@router.get("/{stream_id}/health", response_model=APIResponse)
+def get_live_stream_health(
+    request: Request,
+    stream_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    try:
+        data = live_service.get_stream_health(db, stream_id, current_user.id)
+    except AppError as e:
+        raise_app_error(e)
+    return api_ok(request, data, message="Live stream health")
+
+
 @router.delete("/{stream_id}", response_model=APIResponse)
 def delete_live_stream(
     request: Request,

@@ -155,20 +155,50 @@ def safe_asset_path(asset_path: str) -> str:
 
 
 def rewrite_playlist(content: str, token: Optional[str]) -> bytes:
+    """Rewrite media/playlist URIs to append a stream token query param."""
     if not token:
         return content.encode("utf-8")
     q = f"token={quote(token)}"
-    out_lines = []
-    for line in content.splitlines():
-        stripped = line.strip()
-        if stripped and not stripped.startswith("#"):
-            if "?" in stripped:
-                out_lines.append(f"{stripped}&{q}")
+
+    try:
+        import m3u8
+
+        playlist = m3u8.loads(content)
+        # Media segments
+        for seg in playlist.segments or []:
+            uri = seg.uri or ""
+            if not uri:
+                continue
+            seg.uri = f"{uri}&{q}" if "?" in uri else f"{uri}?{q}"
+        # Variant playlists (master)
+        for pl in playlist.playlists or []:
+            uri = pl.uri or ""
+            if not uri:
+                continue
+            pl.uri = f"{uri}&{q}" if "?" in uri else f"{uri}?{q}"
+        # Media tags (audio/subtitles)
+        for media in playlist.media or []:
+            uri = getattr(media, "uri", None) or ""
+            if not uri:
+                continue
+            media.uri = f"{uri}&{q}" if "?" in uri else f"{uri}?{q}"
+        dumped = playlist.dumps()
+        if not dumped.endswith("\n"):
+            dumped += "\n"
+        return dumped.encode("utf-8")
+    except Exception:
+        # Fallback: line-based rewrite
+        out_lines = []
+        for line in content.splitlines():
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#"):
+                if "?" in stripped:
+                    out_lines.append(f"{stripped}&{q}")
+                else:
+                    out_lines.append(f"{stripped}?{q}")
             else:
-                out_lines.append(f"{stripped}?{q}")
-        else:
-            out_lines.append(line)
-    return ("\n".join(out_lines) + "\n").encode("utf-8")
+                out_lines.append(line)
+        return ("\n".join(out_lines) + "\n").encode("utf-8")
 
 
 def prepare_master_playlist(video: models.Video, content: str) -> str:

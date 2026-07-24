@@ -12,6 +12,7 @@ WEBHOOK_EVENTS = {
     "video.deleted",
     "video.quarantined",
     "video.captions_ready",
+    "live.ended",
 }
 
 

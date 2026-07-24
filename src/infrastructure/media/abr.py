@@ -48,6 +48,44 @@ def inject_subtitle_track(playlist: str, captions_uri: str = "captions.vtt") -> 
     """Inject subtitle MEDIA tag into an existing master playlist if missing."""
     if "TYPE=SUBTITLES" in playlist:
         return playlist
+
+    try:
+        import m3u8
+
+        pl = m3u8.loads(playlist)
+        # Add subtitle media tag
+        media_tag = m3u8.Media(
+            type="SUBTITLES",
+            group_id="subs",
+            name="Captions",
+            default="YES",
+            autoselect="YES",
+            uri=captions_uri,
+        )
+        pl.add_media(media_tag)
+        for variant in pl.playlists or []:
+            stream_info = variant.stream_info
+            if stream_info is not None:
+                # Ensure SUBTITLES group is referenced
+                if not getattr(stream_info, "subtitles", None):
+                    stream_info.subtitles = "subs"
+        dumped = pl.dumps()
+        if not dumped.endswith("\n"):
+            dumped += "\n"
+        # Ensure SUBTITLES="subs" appears on STREAM-INF lines (m3u8 may not always emit)
+        if 'SUBTITLES="subs"' not in dumped:
+            lines = []
+            for line in dumped.splitlines():
+                if line.startswith("#EXT-X-STREAM-INF:") and 'SUBTITLES="subs"' not in line:
+                    lines.append(line.rstrip() + ',SUBTITLES="subs"')
+                else:
+                    lines.append(line)
+            dumped = "\n".join(lines) + "\n"
+        return dumped
+    except Exception:
+        pass
+
+    # Fallback: line-based injection
     lines = playlist.splitlines()
     out: List[str] = []
     media_inserted = False
@@ -69,7 +107,6 @@ def inject_subtitle_track(playlist: str, captions_uri: str = "captions.vtt") -> 
             continue
         out.append(line)
     if not media_inserted:
-        # No version tag — insert after EXTM3U
         rebuilt = []
         for i, line in enumerate(out):
             rebuilt.append(line)

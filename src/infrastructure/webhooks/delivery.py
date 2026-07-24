@@ -94,8 +94,26 @@ def _deliver_one(db: Session, delivery: models.WebhookDelivery) -> bool:
     }
     delivery.attempts = (delivery.attempts or 0) + 1
     try:
-        with httpx.Client(timeout=10.0) as client:
-            resp = client.post(endpoint.url, content=body, headers=headers)
+        from tenacity import (
+            retry,
+            retry_if_exception_type,
+            stop_after_attempt,
+            wait_exponential,
+        )
+
+        @retry(
+            reraise=True,
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=0.3, min=0.3, max=3),
+            retry=retry_if_exception_type(
+                (httpx.TransportError, httpx.TimeoutException)
+            ),
+        )
+        def _post() -> httpx.Response:
+            with httpx.Client(timeout=10.0) as client:
+                return client.post(endpoint.url, content=body, headers=headers)
+
+        resp = _post()
         if 200 <= resp.status_code < 300:
             delivery.status = "success"
             delivery.last_error = None
