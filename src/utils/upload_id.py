@@ -1,7 +1,7 @@
 import secrets
 import string
 from sqlalchemy.orm import Session
-from src.schema import models
+from src.infrastructure.db import models
 
 
 def generate_upload_id(length: int = 8) -> str:
