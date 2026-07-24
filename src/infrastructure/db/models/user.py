@@ -27,6 +27,9 @@ class User(Base):
     api_keys = relationship(
         "ApiKey", back_populates="owner", cascade="all, delete-orphan"
     )
+    live_streams = relationship(
+        "LiveStream", back_populates="owner", cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<User(username='{self.username}', id={self.id})>"

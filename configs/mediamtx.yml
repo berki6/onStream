@@ -1,0 +1,43 @@
+# MediaMTX — RTMP ingest + HLS remux for OnStream live
+# Docs: https://mediamtx.org/
+
+logLevel: info
+logDestinations: [stdout]
+
+###############################################
+# Authentication (HTTP webhook → OnStream API)
+
+authMethod: http
+authHTTPAddress: http://api:8000/v1/live/mediamtx-auth
+# Exclude control-plane actions; publish/read go through OnStream
+authHTTPExclude:
+  - action: api
+  - action: metrics
+  - action: pprof
+
+###############################################
+# RTMP
+
+rtmp: yes
+rtmpAddress: :1935
+
+###############################################
+# HLS (disk-backed for OnStream to serve)
+
+hls: yes
+hlsAddress: :8888
+hlsAlwaysRemux: yes
+hlsVariant: mpegts
+hlsSegmentCount: 7
+hlsSegmentDuration: 2s
+hlsDirectory: /hls
+hlsMuxerCloseAfter: 30s
+
+###############################################
+# Paths
+
+pathDefaults:
+  source: publisher
+
+paths:
+  all_others:

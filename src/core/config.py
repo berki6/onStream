@@ -101,6 +101,20 @@ class Settings(BaseSettings):
         "PUBLIC_API_BASE_URL", "http://localhost:8000"
     )
 
+    # Live streaming (MediaMTX RTMP → HLS)
+    LIVE_ENABLED: bool = _env_bool("LIVE_ENABLED", "true")
+    MEDIAMTX_RTMP_URL: str = os.environ.get(
+        "MEDIAMTX_RTMP_URL", "rtmp://localhost:1935/live"
+    )
+    MEDIAMTX_HLS_URL: str = os.environ.get("MEDIAMTX_HLS_URL", "http://localhost:8888")
+    LIVE_HLS_DIR: Path = PROJECT_ROOT / os.environ.get("LIVE_HLS_DIR", "data/live")
+    LIVE_ABR_ENABLED: bool = _env_bool("LIVE_ABR_ENABLED", "false")
+    LIVE_ABR_LADDER: str = os.environ.get("LIVE_ABR_LADDER", "360:800,720:2500,1080:5000")
+    MEDIAMTX_AUTH_SECRET: str = os.environ.get("MEDIAMTX_AUTH_SECRET", "")
+    PUBLIC_RTMP_BASE_URL: str = os.environ.get(
+        "PUBLIC_RTMP_BASE_URL", "rtmp://localhost:1935/live"
+    )
+
     # AI media intelligence (off by default for CI)
     AI_ENABLED: bool = _env_bool("AI_ENABLED", "false")
     AI_CAPTIONS_ENABLED: bool = _env_bool("AI_CAPTIONS_ENABLED", "true")
@@ -129,6 +143,18 @@ class Settings(BaseSettings):
         """Parse ABR_LADDER into [{height, bitrate_k}]."""
         rungs = []
         for part in self.ABR_LADDER.split(","):
+            part = part.strip()
+            if not part or ":" not in part:
+                continue
+            height_s, br_s = part.split(":", 1)
+            rungs.append({"height": int(height_s), "bitrate_k": int(br_s)})
+        return rungs
+
+    @property
+    def live_abr_ladder_list(self) -> List[dict]:
+        """Parse LIVE_ABR_LADDER into [{height, bitrate_k}]."""
+        rungs = []
+        for part in self.LIVE_ABR_LADDER.split(","):
             part = part.strip()
             if not part or ":" not in part:
                 continue

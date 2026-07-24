@@ -42,6 +42,14 @@ from src.schemas.moderation import (
     SearchResponse,
     SearchResultItem,
 )
+from src.schemas.live import (
+    LivePlaybackTokenCreate,
+    LivePlaybackTokenResponse,
+    LiveStreamCreate,
+    LiveStreamCreateResponse,
+    LiveStreamResponse,
+    MediaMTXAuthRequest,
+)
 
 __all__ = [
     "APIResponse",
@@ -82,4 +90,10 @@ __all__ = [
     "ModerationReviewRequest",
     "SearchResponse",
     "SearchResultItem",
+    "LiveStreamCreate",
+    "LiveStreamResponse",
+    "LiveStreamCreateResponse",
+    "LivePlaybackTokenCreate",
+    "LivePlaybackTokenResponse",
+    "MediaMTXAuthRequest",
 ]

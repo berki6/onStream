@@ -138,15 +138,17 @@ The API will be available at: [http://localhost:8000](http://localhost:8000)
 
 ### Docker Compose
 
-Full local stack: Postgres, Redis, MinIO, API, and worker.
+Full local stack: Postgres, Redis, MinIO, API, worker, and MediaMTX (RTMP :1935).
 
 ```bash
 docker compose up --build
 ```
 
-Uses [`.env.docker`](.env.docker). API: http://localhost:8000 — MinIO console: http://localhost:9001.
+Uses [`.env.docker`](.env.docker). API: http://localhost:8000 — MinIO console: http://localhost:9001 — OBS RTMP: `rtmp://localhost:1935/live`.
 
 See [`docs/FOUNDATION.md`](docs/FOUNDATION.md) for the production foundation scope.
+
+Playback in VLC/OBS (VOD + live): [`docs/PLAYBACK_CLIENTS.md`](docs/PLAYBACK_CLIENTS.md).
 
 ### Background Worker
 

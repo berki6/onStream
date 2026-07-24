@@ -4,6 +4,8 @@ from src.api.v1.routes import (
     api_keys,
     auth,
     jobs,
+    live,
+    live_playback,
     moderation,
     playback,
     playlists,
@@ -19,7 +21,12 @@ api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(videos.router, prefix="/videos", tags=["videos"])
 api_router.include_router(jobs.router, prefix="/videos", tags=["jobs"])
 api_router.include_router(uploads.router, prefix="/uploads", tags=["uploads"])
+# Live playback before generic /playback/{video_id} so "live" is not captured
+api_router.include_router(
+    live_playback.router, prefix="/playback/live", tags=["live-playback"]
+)
 api_router.include_router(playback.router, prefix="/playback", tags=["playback"])
+api_router.include_router(live.router, prefix="/live", tags=["live"])
 api_router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
 api_router.include_router(api_keys.router, prefix="/api-keys", tags=["api-keys"])
 api_router.include_router(playlists.router, prefix="/playlists", tags=["playlists"])
