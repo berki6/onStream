@@ -192,7 +192,7 @@ class TestEndToEndVideoWorkflow:
             headers=headers,
         )
         assert response.status_code == 400
-        assert "Invalid file type" in response.json()["detail"]
+        assert "Invalid file type" in response.json()["error"]["message"]
 
         # Test 2: File too large (mock large file)
         mocker.patch("fastapi.UploadFile.__init__", return_value=None)
@@ -229,7 +229,7 @@ class TestEndToEndVideoWorkflow:
             headers=headers,
         )
         assert response.status_code == 400
-        assert "Title must be" in response.json()["detail"]
+        assert "Title must be" in response.json()["error"]["message"]
 
         # Clean up
         db_session.delete(test_user)
@@ -297,22 +297,22 @@ class TestEndToEndVideoWorkflow:
         headers2 = {"Authorization": f"Bearer {token2}"}
         response = client.get(f"/v1/videos/{upload_id}", headers=headers2)
         assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert "Access denied" in response.json()["error"]["message"]
 
         # Test 2: User2 tries to access user1's job status
         response = client.get(f"/v1/videos/{upload_id}/jobs/latest", headers=headers2)
         assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert "Access denied" in response.json()["error"]["message"]
 
         # Test 3: User2 tries to stream user1's video
         response = client.get(f"/v1/playback/{upload_id}/master.m3u8", headers=headers2)
         assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert "Access denied" in response.json()["error"]["message"]
 
         # Test 4: User2 tries to delete user1's video
         response = client.delete(f"/v1/videos/{upload_id}", headers=headers2)
         assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert "Access denied" in response.json()["error"]["message"]
 
         # Test 5: No token provided
         response = client.get("/v1/videos/")
@@ -403,15 +403,15 @@ class TestEndToEndVideoWorkflow:
         # Test invalid pagination parameters
         response = client.get("/v1/videos/?skip=-1", headers=headers)
         assert response.status_code == 400
-        assert "must be non-negative" in response.json()["detail"]
+        assert "must be non-negative" in response.json()["error"]["message"]
 
         response = client.get("/v1/videos/?limit=0", headers=headers)
         assert response.status_code == 400
-        assert "must be between 1 and" in response.json()["detail"]
+        assert "must be between 1 and" in response.json()["error"]["message"]
 
         response = client.get("/v1/videos/?limit=200", headers=headers)
         assert response.status_code == 400
-        assert "must be between 1 and" in response.json()["detail"]
+        assert "must be between 1 and" in response.json()["error"]["message"]
 
         # Clean up
         db_session.delete(test_user)

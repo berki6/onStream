@@ -174,6 +174,7 @@ class VideoJobBase(BaseModel):
     progress: int = 0
     eta: int = 0
     message: Optional[str] = None
+    error_code: Optional[str] = None
 
 
 class VideoJobCreate(VideoJobBase):

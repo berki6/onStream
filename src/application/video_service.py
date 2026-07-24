@@ -14,6 +14,7 @@ from typing import Any, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
+from src.application.error_codes import ErrorCode
 from src.application.errors import AppError
 from src.application.ids import validate_public_video_id
 from src.core.config import settings
@@ -33,9 +34,9 @@ def _owned_video(db: Session, video_id: str, user_id: int):
     validate_public_video_id(video_id)
     video = video_repository.get_by_upload_id(db, video_id)
     if not video:
-        raise AppError("Video not found", code="not_found", status_code=404)
+        raise AppError("Video not found", code=ErrorCode.VIDEO_NOT_FOUND, status_code=404)
     if video.user_id != user_id:
-        raise AppError("Access denied", code="forbidden", status_code=403)
+        raise AppError("Access denied", code=ErrorCode.VIDEO_FORBIDDEN, status_code=403)
     return video
 
 
@@ -43,11 +44,11 @@ def list_videos(
     db: Session, user_id: int, skip: int = 0, limit: int = 100
 ) -> Tuple[list, int]:
     if skip < 0:
-        raise AppError("Skip parameter must be non-negative", code="bad_request", status_code=400)
+        raise AppError("Skip parameter must be non-negative", code=ErrorCode.VIDEO_BAD_REQUEST, status_code=400)
     if limit < 1 or limit > settings.MAX_LIST_LIMIT:
         raise AppError(
             f"Limit must be between 1 and {settings.MAX_LIST_LIMIT}",
-            code="bad_request",
+            code=ErrorCode.VIDEO_BAD_REQUEST,
             status_code=400,
         )
     return video_repository.list_by_user(db, user_id, skip=skip, limit=limit)
@@ -146,26 +147,26 @@ def create_multipart_upload(
         title = "Untitled Video"
 
     if file_size is None:
-        raise AppError("File size cannot be determined", code="bad_request", status_code=400)
+        raise AppError("File size cannot be determined", code=ErrorCode.VIDEO_BAD_REQUEST, status_code=400)
     if file_size > settings.MAX_UPLOAD_SIZE:
         max_size_mb = settings.MAX_UPLOAD_SIZE // (1024 * 1024)
         raise AppError(
             f"File too large. Maximum size is {max_size_mb}MB",
-            code="too_large",
+            code=ErrorCode.VIDEO_TOO_LARGE,
             status_code=413,
         )
     if not content_type or not content_type.startswith("video/"):
         raise AppError(
             "Invalid file type. Only video files are allowed",
-            code="bad_request",
+            code=ErrorCode.VIDEO_BAD_REQUEST,
             status_code=400,
         )
     if not filename:
-        raise AppError("Filename is required", code="bad_request", status_code=400)
+        raise AppError("Filename is required", code=ErrorCode.VIDEO_BAD_REQUEST, status_code=400)
     if title and len(title.strip()) > settings.MAX_TITLE_LENGTH:
         raise AppError(
             f"Title must be {settings.MAX_TITLE_LENGTH} characters or less",
-            code="bad_request",
+            code=ErrorCode.VIDEO_BAD_REQUEST,
             status_code=400,
         )
 
@@ -182,13 +183,13 @@ def create_multipart_upload(
         if duration is None or duration <= 0.0:
             temp_path.unlink(missing_ok=True)
             raise AppError(
-                "Invalid or corrupt video file", code="bad_request", status_code=400
+                "Invalid or corrupt video file", code=ErrorCode.VIDEO_INVALID_FILE, status_code=400
             )
         if duration < 1:
             temp_path.unlink(missing_ok=True)
             raise AppError(
                 "Video is too short (minimum 1 second)",
-                code="bad_request",
+                code=ErrorCode.VIDEO_BAD_REQUEST,
                 status_code=400,
             )
         if duration > settings.MAX_VIDEO_DURATION_SECONDS:
@@ -196,7 +197,7 @@ def create_multipart_upload(
             temp_path.unlink(missing_ok=True)
             raise AppError(
                 f"Video is too long (maximum {max_duration_minutes} minutes)",
-                code="bad_request",
+                code=ErrorCode.VIDEO_BAD_REQUEST,
                 status_code=400,
             )
 
@@ -215,7 +216,7 @@ def create_multipart_upload(
             temp_path.unlink(missing_ok=True)
             logger.error(f"Failed to create video record: {e}")
             raise AppError(
-                "Failed to create video record", code="server_error", status_code=500
+                "Failed to create video record", code=ErrorCode.INTERNAL_SERVER_ERROR, status_code=500
             ) from e
 
         try:
@@ -227,7 +228,7 @@ def create_multipart_upload(
             temp_path.unlink(missing_ok=True)
             logger.error(f"Failed to create video job: {e}")
             raise AppError(
-                "Failed to create processing job", code="server_error", status_code=500
+                "Failed to create processing job", code=ErrorCode.INTERNAL_SERVER_ERROR, status_code=500
             ) from e
 
         final_filename = f"{temp_video.id}_{uuid.uuid4().hex}_{filename}"
@@ -239,7 +240,7 @@ def create_multipart_upload(
             temp_path.unlink(missing_ok=True)
             logger.error(f"Failed to move video file: {e}")
             raise AppError(
-                "Failed to save video file", code="server_error", status_code=500
+                "Failed to save video file", code=ErrorCode.INTERNAL_STORAGE_FAILURE, status_code=500
             ) from e
 
         try:
@@ -254,14 +255,15 @@ def create_multipart_upload(
             file_path.unlink(missing_ok=True)
             logger.error(f"Failed to update video record: {e}")
             raise AppError(
-                "Failed to update video record", code="server_error", status_code=500
+                "Failed to update video record", code=ErrorCode.INTERNAL_SERVER_ERROR, status_code=500
             ) from e
 
-        try:
-            job_queue.enqueue_job(temp_video.upload_id, db)
-            emit_video_event(db, temp_video, "video.created")
-        except Exception as e:
-            logger.warning(f"Failed to queue video for processing: {e}")
+        if not job_queue.enqueue_job(temp_video.upload_id, db):
+            raise AppError(
+                "Failed to enqueue job for processing",
+                code=ErrorCode.INTERNAL_QUEUE_FAILURE,
+            )
+        emit_video_event(db, temp_video, "video.created")
 
         return temp_video
     except AppError:
@@ -274,4 +276,4 @@ def create_multipart_upload(
                     path.unlink()
                 except OSError:
                     pass
-        raise AppError("Video upload failed", code="server_error", status_code=500) from e
+        raise AppError("Video upload failed", code=ErrorCode.INTERNAL_SERVER_ERROR, status_code=500) from e

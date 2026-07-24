@@ -25,11 +25,15 @@ class PaginatedResponse(APIResponse):
     )
 
 
+class ErrorBody(BaseModel):
+    code: str
+    message: str
+    details: Optional[List[dict]] = None
+
+
 class ErrorResponse(BaseModel):
     success: bool = False
-    error: str
-    message: Optional[str] = None
+    error: ErrorBody
     request_id: str
     timestamp: datetime
     api_version: str = "v1"
-    details: Optional[List[dict]] = None

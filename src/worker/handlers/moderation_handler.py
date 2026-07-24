@@ -8,6 +8,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import sessionmaker
 
+from src.application.error_codes import ErrorCode
 from src.core.config import settings
 from src.core.logger import get_logger
 from src.infrastructure.db import models
@@ -31,7 +32,10 @@ def process_moderation(upload_id: str) -> None:
         )
         if not video:
             job_queue.mark_job_failed(
-                upload_id, "Video not found", job_type="moderation"
+                upload_id,
+                "Video not found",
+                job_type="moderation",
+                error_code=ErrorCode.VIDEO_NOT_FOUND,
             )
             return
 
@@ -93,6 +97,11 @@ def process_moderation(upload_id: str) -> None:
         job_queue.mark_job_completed(upload_id, job_type="moderation")
     except Exception as e:
         logger.error(f"Moderation failed for {upload_id}: {e}")
-        job_queue.mark_job_failed(upload_id, str(e), job_type="moderation")
+        job_queue.mark_job_failed(
+            upload_id,
+            str(e),
+            job_type="moderation",
+            error_code=ErrorCode.JOB_FAILED,
+        )
     finally:
         session.close()

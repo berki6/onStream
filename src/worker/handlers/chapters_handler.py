@@ -7,6 +7,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import sessionmaker
 
+from src.application.error_codes import ErrorCode
 from src.core.logger import get_logger
 from src.infrastructure.db import models
 from src.infrastructure.db.session import engine
@@ -27,7 +28,12 @@ def process_chapters(upload_id: str) -> None:
             .first()
         )
         if not video:
-            job_queue.mark_job_failed(upload_id, "Video not found", job_type="chapters")
+            job_queue.mark_job_failed(
+                upload_id,
+                "Video not found",
+                job_type="chapters",
+                error_code=ErrorCode.VIDEO_NOT_FOUND,
+            )
             return
 
         segments = []
@@ -54,6 +60,11 @@ def process_chapters(upload_id: str) -> None:
         logger.info(f"Chapters ready for {upload_id} ({len(chapters)} chapters)")
     except Exception as e:
         logger.error(f"Chapters failed for {upload_id}: {e}")
-        job_queue.mark_job_failed(upload_id, str(e), job_type="chapters")
+        job_queue.mark_job_failed(
+            upload_id,
+            str(e),
+            job_type="chapters",
+            error_code=ErrorCode.JOB_FAILED,
+        )
     finally:
         session.close()

@@ -121,12 +121,12 @@ segment_000.ts
         # Test invalid upload ID (too short)
         response = client.get("/v1/playback/abc/master.m3u8", headers=headers)
         assert response.status_code == 400
-        assert "Invalid upload ID format" in response.json()["detail"]
+        assert "Invalid upload ID format" in response.json()["error"]["message"]
 
         # Test invalid upload ID (wrong characters)
         response = client.get("/v1/playback/abcO1234/master.m3u8", headers=headers)
         assert response.status_code == 400
-        assert "Invalid upload ID format" in response.json()["detail"]
+        assert "Invalid upload ID format" in response.json()["error"]["message"]
 
         # Cleanup
         db_session.delete(user)
@@ -156,7 +156,7 @@ segment_000.ts
 
         response = client.get("/v1/playback/abcdefgh/master.m3u8", headers=headers)
         assert response.status_code == 404
-        assert "Video not found" in response.json()["detail"]
+        assert "Video not found" in response.json()["error"]["message"]
 
         # Cleanup
         db_session.delete(user)
@@ -213,7 +213,7 @@ segment_000.ts
         # Try to access with user2
         response = client.get(f"/v1/playback/{upload_id}/master.m3u8", headers=headers2)
         assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert "Access denied" in response.json()["error"]["message"]
 
         # Cleanup
         video = (
@@ -262,7 +262,7 @@ segment_000.ts
         # Try to stream before processing
         response = client.get(f"/v1/playback/{upload_id}/master.m3u8", headers=headers)
         assert response.status_code == 409
-        assert "Video is not ready for streaming" in response.json()["detail"]
+        assert "Video is not ready for streaming" in response.json()["error"]["message"]
 
         # Cleanup
         video = (
@@ -319,7 +319,7 @@ segment_000.ts
 
         response = client.get(f"/v1/playback/{upload_id}/master.m3u8", headers=headers)
         assert response.status_code == 404
-        assert "Stream playlist not available" in response.json()["detail"]
+        assert "Stream playlist not available" in response.json()["error"]["message"]
 
         # Cleanup
         db_session.delete(video)
@@ -507,12 +507,12 @@ segment_000.ts
         # User2 tries to access User1's playlist
         response = client.get(f"/v1/playback/{upload_id}/master.m3u8", headers=headers2)
         assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert "Access denied" in response.json()["error"]["message"]
 
         # User2 tries to access User1's segment
         response = client.get(f"/v1/playback/{upload_id}/segment_000.ts", headers=headers2)
         assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert "Access denied" in response.json()["error"]["message"]
 
         # User1 can access their own stream
         response = client.get(f"/v1/playback/{upload_id}/master.m3u8", headers=headers1)
@@ -729,7 +729,7 @@ segment_000.ts
         # Try to stream non-existent segment
         response = client.get(f"/v1/playback/{upload_id}/nonexistent.ts", headers=headers)
         assert response.status_code == 404
-        assert "Stream segment not found" in response.json()["detail"]
+        assert "Stream segment not found" in response.json()["error"]["message"]
 
         # Cleanup
         import shutil

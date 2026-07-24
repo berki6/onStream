@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 
 from sqlalchemy.orm import Session
 
+from src.application.error_codes import ErrorCode
 from src.application.errors import AppError
 from src.core.security.api_keys import generate_api_key
 from src.infrastructure.db import models
@@ -57,6 +58,6 @@ def revoke_key(db: Session, user_id: int, key_id: int) -> None:
         .first()
     )
     if not record:
-        raise AppError("API key not found", code="not_found", status_code=404)
+        raise AppError("API key not found", code=ErrorCode.API_KEY_NOT_FOUND, status_code=404)
     record.is_active = False
     db.commit()

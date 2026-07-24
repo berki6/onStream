@@ -210,6 +210,7 @@ class JobQueueService:
         upload_id: str,
         error_message: Optional[str] = None,
         job_type: str = "transcode",
+        error_code: Optional[str] = None,
     ):
         """Mark a job as failed in database."""
         db = next(get_db())
@@ -226,10 +227,17 @@ class JobQueueService:
                 queued_job.status = "failed"
                 if error_message:
                     queued_job.error_message = error_message
+                if error_code is not None:
+                    queued_job.error_code = (
+                        error_code.value
+                        if hasattr(error_code, "value")
+                        else str(error_code)
+                    )
                 queued_job.retry_count += 1
                 db.commit()
                 logger.warning(
-                    f"Job {upload_id}/{job_type} marked as failed: {error_message}"
+                    f"Job {upload_id}/{job_type} marked as failed: "
+                    f"{error_code or ''} {error_message}"
                 )
         except Exception as e:
             logger.error(f"Failed to mark job {upload_id}/{job_type} as failed: {e}")

@@ -6,6 +6,7 @@ import json
 
 from sqlalchemy.orm import sessionmaker
 
+from src.application.error_codes import ErrorCode
 from src.core.config import settings
 from src.core.logger import get_logger
 from src.infrastructure.db import models
@@ -29,7 +30,12 @@ def process_captions(upload_id: str) -> None:
         )
         if not video:
             logger.error(f"Captions: video not found for {upload_id}")
-            job_queue.mark_job_failed(upload_id, "Video not found", job_type="captions")
+            job_queue.mark_job_failed(
+                upload_id,
+                "Video not found",
+                job_type="captions",
+                error_code=ErrorCode.VIDEO_NOT_FOUND,
+            )
             return
 
         from src.infrastructure.storage import get_storage
@@ -38,7 +44,12 @@ def process_captions(upload_id: str) -> None:
         try:
             local_path = storage.ensure_local(video.file_path)
         except Exception as e:
-            job_queue.mark_job_failed(upload_id, str(e), job_type="captions")
+            job_queue.mark_job_failed(
+                upload_id,
+                str(e),
+                job_type="captions",
+                error_code=ErrorCode.INTERNAL_STORAGE_FAILURE,
+            )
             return
 
         hls_dir = settings.VIDEO_HLS_DIR / upload_id
@@ -85,6 +96,11 @@ def process_captions(upload_id: str) -> None:
         logger.info(f"Captions ready for {upload_id} ({len(segments)} segments)")
     except Exception as e:
         logger.error(f"Captions failed for {upload_id}: {e}")
-        job_queue.mark_job_failed(upload_id, str(e), job_type="captions")
+        job_queue.mark_job_failed(
+            upload_id,
+            str(e),
+            job_type="captions",
+            error_code=ErrorCode.JOB_FAILED,
+        )
     finally:
         session.close()

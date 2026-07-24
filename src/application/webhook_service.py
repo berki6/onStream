@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 
 from sqlalchemy.orm import Session
 
+from src.application.error_codes import ErrorCode
 from src.application.errors import AppError
 from src.infrastructure.db import models
 from src.schemas.webhook import WebhookEndpointCreate
@@ -62,6 +63,6 @@ def delete_endpoint(db: Session, user_id: int, endpoint_id: int) -> None:
         .first()
     )
     if not ep:
-        raise AppError("Webhook not found", code="not_found", status_code=404)
+        raise AppError("Webhook not found", code=ErrorCode.WEBHOOK_NOT_FOUND, status_code=404)
     db.delete(ep)
     db.commit()

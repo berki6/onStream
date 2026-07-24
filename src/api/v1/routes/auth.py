@@ -48,12 +48,9 @@ def login_for_access_token(
     try:
         tokens = auth_service.login(db, form_data.username, form_data.password)
     except AppError as e:
-        headers = {"WWW-Authenticate": "Bearer"} if e.status_code == 401 else None
-        from fastapi import HTTPException
-
-        raise HTTPException(
-            status_code=e.status_code, detail=e.message, headers=headers
-        )
+        if e.status_code == 401 and not e.headers:
+            e.headers = {"WWW-Authenticate": "Bearer"}
+        raise_app_error(e)
     logger.info(
         f"User '{form_data.username}' logged in successfully with request_id={request.state.request_id}"
     )

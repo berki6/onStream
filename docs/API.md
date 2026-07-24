@@ -12,7 +12,81 @@ This document is the route catalogue for OnStream’s public HTTP surface. Inter
 
 Architectural context lives in [`FOUNDATION.md`](FOUNDATION.md); behavioral detail for media and live flows lives in the sibling design documents.
 
-Unless noted, JSON responses use the standard envelope `{ success, data, message, request_id, timestamp, api_version }`. List endpoints may add `pagination`. Authenticate with `Authorization: Bearer <access_token>` or, where supported, `X-API-Key: <key>`.
+Unless noted, JSON **success** responses use `{ success, data, message, request_id, timestamp, api_version }`. List endpoints may add `pagination`. Authenticate with `Authorization: Bearer <access_token>` or, where supported, `X-API-Key: <key>`.
+
+## Error envelope (breaking)
+
+All `/v1` errors (except MediaMTX auth webhook, which returns bare status) use:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "AUTH_INVALID_CREDENTIALS",
+    "message": "Incorrect username or password",
+    "details": null
+  },
+  "request_id": "...",
+  "timestamp": "...",
+  "api_version": "v1"
+}
+```
+
+`422` validation failures set `error.code` to `VALIDATION_FAILED` and populate `details` with `{field, message, code}` entries. There is no FastAPI `detail` key.
+
+### Error code catalogue
+
+| Code | HTTP | Meaning |
+|------|------|---------|
+| `AUTH_USERNAME_TAKEN` | 400 | Register username conflict |
+| `AUTH_EMAIL_TAKEN` | 400 | Register email conflict |
+| `AUTH_INVALID_CREDENTIALS` | 401 | Bad login |
+| `AUTH_INVALID_TOKEN` | 401/400 | Refresh or password-reset token |
+| `AUTH_UNAUTHORIZED` | 401 | Missing/invalid access credentials |
+| `VIDEO_NOT_FOUND` | 404 | Video missing |
+| `VIDEO_FORBIDDEN` | 403 | Not owner / no access |
+| `VIDEO_BAD_REQUEST` | 400 | Invalid validation |
+| `VIDEO_TOO_LARGE` | 413 | Upload size |
+| `VIDEO_INVALID_FILE` | 400 | Corrupt / unreadable media |
+| `UPLOAD_SESSION_NOT_FOUND` | 404 | Direct upload session |
+| `UPLOAD_SESSION_GONE` | 410 | Session expired |
+| `UPLOAD_BAD_REQUEST` | 400 | Empty/invalid chunk |
+| `UPLOAD_TOO_LARGE` | 413 | Chunk exceeds limit |
+| `UPLOAD_OBJECT_MISSING` | 400 | Object not in storage |
+| `PLAYBACK_NOT_READY` | 409 | ABR not ready |
+| `PLAYBACK_FORBIDDEN` | 403 | Playback denied |
+| `PLAYBACK_UNAUTHORIZED` | 401 | Missing stream token |
+| `PLAYBACK_NOT_FOUND` | 404 | Playlist/segment missing |
+| `PLAYBACK_BAD_REQUEST` | 400 | Bad segment name |
+| `LIVE_DISABLED` | 403 | Live feature off |
+| `LIVE_NOT_FOUND` | 404 | Stream missing |
+| `LIVE_FORBIDDEN` | 403 | Live access denied |
+| `LIVE_UNAUTHORIZED` | 401 | Live playback auth |
+| `JOB_NOT_FOUND` | 404 | Job missing |
+| `JOB_CONFLICT` | 409 | Retry/cancel not allowed |
+| `JOB_BAD_REQUEST` | 400 | Unknown job action/type |
+| `JOB_FAILED` | 500 | Worker processing failure |
+| `PLAYLIST_NOT_FOUND` | 404 | Playlist missing |
+| `PLAYLIST_FORBIDDEN` | 403 | Playlist access |
+| `PLAYLIST_CONFLICT` | 409/400 | Name taken / state conflict |
+| `PLAYLIST_BAD_REQUEST` | 400 | Playlist params |
+| `WEBHOOK_NOT_FOUND` | 404 | Webhook missing |
+| `API_KEY_NOT_FOUND` | 404 | API key missing |
+| `SEARCH_BAD_REQUEST` | 400 | Search params |
+| `MODERATION_CONFLICT` | 409 | Not quarantined |
+| `MODERATION_BAD_REQUEST` | 400 | Moderation input |
+| `MODERATION_FORBIDDEN` | 403 | Moderation access |
+| `CAPTION_NOT_FOUND` | 404 | Caption asset |
+| `CAPTION_FORBIDDEN` | 403 | Caption access |
+| `VALIDATION_FAILED` | 422 | Request body/schema |
+| `VALIDATION_INVALID_ID` | 400 | Public id format |
+| `VALIDATION_BAD_REQUEST` | 400 | Generic validation |
+| `RATE_LIMIT_EXCEEDED` | 429 | Auth rate limit |
+| `INTERNAL_SERVER_ERROR` | 500 | Unhandled / generic server |
+| `INTERNAL_STORAGE_FAILURE` | 500 | Object storage I/O |
+| `INTERNAL_QUEUE_FAILURE` | 500 | Queue bookkeeping |
+
+Job rows (`video_jobs` / `queued_jobs`) and `video.failed` webhooks also carry `error_code` when a worker fails.
 
 ```mermaid
 flowchart TB

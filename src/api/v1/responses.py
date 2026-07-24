@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import HTTPException, Request
+from fastapi import Request
 
 from src.application.errors import AppError
 from src.schemas.common import APIResponse, PaginatedResponse
 
 
 def raise_app_error(exc: AppError) -> None:
-    raise HTTPException(status_code=exc.status_code, detail=exc.message)
+    """Re-raise AppError so the global structured error handler formats it."""
+    raise exc
 
 
 def api_ok(request: Request, data, message: str | None = None) -> APIResponse:

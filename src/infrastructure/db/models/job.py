@@ -21,6 +21,7 @@ class VideoJob(Base):
     progress = Column(Integer, default=0)
     eta = Column(Integer, default=0)
     message = Column(Text, nullable=True)
+    error_code = Column(String(64), nullable=True)
     cancel_requested = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -42,6 +43,7 @@ class QueuedJob(Base):
     job_type = Column(String(32), default="transcode", nullable=False, index=True)
     retry_count = Column(Integer, default=0)
     error_message = Column(Text, nullable=True)
+    error_code = Column(String(64), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import signal
 
+from src.application.error_codes import ErrorCode
 from src.core.config import settings
 from src.core.logger import bind_context, clear_context, get_logger
 from src.infrastructure.db.session import SessionLocal
@@ -42,7 +43,10 @@ def dispatch_job(job: dict) -> None:
         if not handler:
             logger.error(f"Unknown job_type '{job_type}' for {upload_id}")
             job_queue.mark_job_failed(
-                upload_id or "", f"Unknown job_type: {job_type}", job_type=job_type
+                upload_id or "",
+                f"Unknown job_type: {job_type}",
+                job_type=job_type,
+                error_code=ErrorCode.JOB_BAD_REQUEST,
             )
             return
         handler(upload_id)

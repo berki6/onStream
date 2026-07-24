@@ -7,6 +7,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from src.application.error_codes import ErrorCode
 from src.application.errors import AppError
 from src.application.ids import validate_public_video_id
 from src.infrastructure.db import models
@@ -33,12 +34,12 @@ def review(
     validate_public_video_id(video_id)
     video = video_repository.get_by_upload_id(db, video_id)
     if not video:
-        raise AppError("Video not found", code="not_found", status_code=404)
+        raise AppError("Video not found", code=ErrorCode.VIDEO_NOT_FOUND, status_code=404)
     if video.user_id != user_id:
-        raise AppError("Access denied", code="forbidden", status_code=403)
+        raise AppError("Access denied", code=ErrorCode.MODERATION_FORBIDDEN, status_code=403)
     if video.status != models.VideoStatus.QUARANTINED:
         raise AppError(
-            "Video is not quarantined", code="conflict", status_code=409
+            "Video is not quarantined", code=ErrorCode.MODERATION_CONFLICT, status_code=409
         )
 
     action = (action or "").lower().strip()
@@ -63,6 +64,6 @@ def review(
 
     raise AppError(
         "action must be 'approve' or 'reject'",
-        code="bad_request",
+        code=ErrorCode.MODERATION_BAD_REQUEST,
         status_code=400,
     )

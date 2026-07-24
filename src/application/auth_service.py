@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 from jose import JWTError
 from sqlalchemy.orm import Session
 
+from src.application.error_codes import ErrorCode
 from src.application.errors import AppError
 from src.core.config import settings
 from src.core.security.passwords import get_password_hash, verify_password
@@ -23,9 +24,9 @@ from src.schemas.auth import UserCreate
 
 def register(db: Session, user: UserCreate):
     if user_repository.get_by_username(db, username=user.username):
-        raise AppError("Username already registered", code="username_taken", status_code=400)
+        raise AppError("Username already registered", code=ErrorCode.AUTH_USERNAME_TAKEN, status_code=400)
     if user_repository.get_by_email(db, email=user.email):
-        raise AppError("Email already registered", code="email_taken", status_code=400)
+        raise AppError("Email already registered", code=ErrorCode.AUTH_EMAIL_TAKEN, status_code=400)
     return user_repository.create(db, user)
 
 
@@ -34,7 +35,7 @@ def login(db: Session, username: str, password: str) -> Dict[str, Any]:
     if not user or not verify_password(password, user.hashed_password):
         raise AppError(
             "Incorrect username or password",
-            code="invalid_credentials",
+            code=ErrorCode.AUTH_INVALID_CREDENTIALS,
             status_code=401,
         )
     access_token = create_access_token(
@@ -55,13 +56,13 @@ def refresh(db: Session, refresh_token: str) -> Dict[str, Any]:
         payload = decode_token(refresh_token, expected_type="refresh")
         username = payload.get("sub")
         if not username:
-            raise AppError("Invalid refresh token", code="invalid_token", status_code=401)
+            raise AppError("Invalid refresh token", code=ErrorCode.AUTH_INVALID_TOKEN, status_code=401)
     except JWTError as e:
-        raise AppError("Invalid refresh token", code="invalid_token", status_code=401) from e
+        raise AppError("Invalid refresh token", code=ErrorCode.AUTH_INVALID_TOKEN, status_code=401) from e
 
     user = user_repository.get_by_username(db, username=str(username))
     if not user or not user.is_active:
-        raise AppError("Invalid refresh token", code="invalid_token", status_code=401)
+        raise AppError("Invalid refresh token", code=ErrorCode.AUTH_INVALID_TOKEN, status_code=401)
 
     access_token = create_access_token(data={"sub": user.username})
     return {
@@ -112,16 +113,16 @@ def confirm_password_reset(db: Session, token: str, new_password: str) -> Dict[s
         payload = decode_token(token, expected_type="password_reset")
         email = payload.get("sub")
         if not email:
-            raise AppError("Invalid reset token", code="invalid_token", status_code=400)
+            raise AppError("Invalid reset token", code=ErrorCode.AUTH_INVALID_TOKEN, status_code=400)
     except JWTError as e:
         raise AppError(
-            "Invalid or expired reset token", code="invalid_token", status_code=400
+            "Invalid or expired reset token", code=ErrorCode.AUTH_INVALID_TOKEN, status_code=400
         ) from e
 
     user = user_repository.get_by_email(db, email=str(email))
     if not user:
         raise AppError(
-            "Invalid or expired reset token", code="invalid_token", status_code=400
+            "Invalid or expired reset token", code=ErrorCode.AUTH_INVALID_TOKEN, status_code=400
         )
 
     user.hashed_password = get_password_hash(new_password)

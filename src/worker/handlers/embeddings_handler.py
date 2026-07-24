@@ -7,6 +7,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import sessionmaker
 
+from src.application.error_codes import ErrorCode
 from src.core.config import settings
 from src.core.logger import get_logger
 from src.infrastructure.db import models
@@ -30,7 +31,10 @@ def process_embeddings(upload_id: str) -> None:
         )
         if not video:
             job_queue.mark_job_failed(
-                upload_id, "Video not found", job_type="embeddings"
+                upload_id,
+                "Video not found",
+                job_type="embeddings",
+                error_code=ErrorCode.VIDEO_NOT_FOUND,
             )
             return
 
@@ -58,6 +62,11 @@ def process_embeddings(upload_id: str) -> None:
         logger.info(f"Embeddings ready for {upload_id} ({len(chunks)} chunks)")
     except Exception as e:
         logger.error(f"Embeddings failed for {upload_id}: {e}")
-        job_queue.mark_job_failed(upload_id, str(e), job_type="embeddings")
+        job_queue.mark_job_failed(
+            upload_id,
+            str(e),
+            job_type="embeddings",
+            error_code=ErrorCode.JOB_FAILED,
+        )
     finally:
         session.close()

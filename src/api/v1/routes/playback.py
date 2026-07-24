@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from src.api.v1.deps import get_optional_user
 from src.api.v1.responses import raise_app_error
 from src.application import playback_service
+from src.application.error_codes import ErrorCode
 from src.application.errors import AppError
 from src.application.playback_headers import cache_headers
 from src.infrastructure.db.session import get_db
@@ -57,7 +58,7 @@ async def master_playlist(
         validate_public_video_id(video_id)
         video = video_repository.get_by_upload_id(db, video_id)
         if not video:
-            raise AppError("Video not found", code="not_found", status_code=404)
+            raise AppError("Video not found", code=ErrorCode.PLAYBACK_NOT_FOUND, status_code=404)
         stream_token = playback_service.authorize_access(
             video,
             token,
@@ -97,7 +98,7 @@ async def playback_asset(
         validate_public_video_id(video_id)
         video = video_repository.get_by_upload_id(db, video_id)
         if not video:
-            raise AppError("Video not found", code="not_found", status_code=404)
+            raise AppError("Video not found", code=ErrorCode.PLAYBACK_NOT_FOUND, status_code=404)
         stream_token = playback_service.authorize_access(
             video,
             token,

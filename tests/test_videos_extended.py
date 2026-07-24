@@ -74,7 +74,7 @@ class TestVideoRouterExtended:
             headers=headers,
         )
         assert response.status_code == 400
-        assert "Invalid file type" in response.json()["detail"]
+        assert "Invalid file type" in response.json()["error"]["message"]
 
         # Cleanup
         db_session.delete(user)
@@ -113,7 +113,7 @@ class TestVideoRouterExtended:
             headers=headers,
         )
         assert response.status_code == 400
-        assert "Title must be" in response.json()["detail"]
+        assert "Title must be" in response.json()["error"]["message"]
 
         # Cleanup
         db_session.delete(user)
@@ -151,7 +151,7 @@ class TestVideoRouterExtended:
             headers=headers,
         )
         assert response.status_code == 400
-        assert "Invalid or corrupt video file" in response.json()["detail"]
+        assert "Invalid or corrupt video file" in response.json()["error"]["message"]
 
         # Cleanup
         db_session.delete(user)
@@ -189,7 +189,7 @@ class TestVideoRouterExtended:
             headers=headers,
         )
         assert response.status_code == 400
-        assert "Video is too short" in response.json()["detail"]
+        assert "Video is too short" in response.json()["error"]["message"]
 
         # Cleanup
         db_session.delete(user)
@@ -227,7 +227,7 @@ class TestVideoRouterExtended:
             headers=headers,
         )
         assert response.status_code == 400
-        assert "Video is too long" in response.json()["detail"]
+        assert "Video is too long" in response.json()["error"]["message"]
 
         # Cleanup
         db_session.delete(user)
@@ -261,12 +261,12 @@ class TestVideoRouterExtended:
         # Test negative skip
         response = client.get("/v1/videos/?skip=-1", headers=headers)
         assert response.status_code == 400
-        assert "must be non-negative" in response.json()["detail"]
+        assert "must be non-negative" in response.json()["error"]["message"]
 
         # Test zero limit
         response = client.get("/v1/videos/?limit=0", headers=headers)
         assert response.status_code == 400
-        assert "must be between 1 and" in response.json()["detail"]
+        assert "must be between 1 and" in response.json()["error"]["message"]
 
         # Test negative limit
         response = client.get("/v1/videos/?limit=-1", headers=headers)
@@ -275,7 +275,7 @@ class TestVideoRouterExtended:
         # Test limit exceeding maximum
         response = client.get("/v1/videos/?limit=200", headers=headers)
         assert response.status_code == 400
-        assert "must be between 1 and" in response.json()["detail"]
+        assert "must be between 1 and" in response.json()["error"]["message"]
 
         # Cleanup
         db_session.delete(user)
@@ -305,12 +305,12 @@ class TestVideoRouterExtended:
         # Test upload ID too short
         response = client.get("/v1/videos/abc/", headers=headers)
         assert response.status_code == 400
-        assert "Invalid upload ID format" in response.json()["detail"]
+        assert "Invalid upload ID format" in response.json()["error"]["message"]
 
         # Test upload ID with invalid characters
         response = client.get("/v1/videos/abcO1234/", headers=headers)
         assert response.status_code == 400
-        assert "Invalid upload ID format" in response.json()["detail"]
+        assert "Invalid upload ID format" in response.json()["error"]["message"]
 
         # Cleanup
         db_session.delete(user)
@@ -339,7 +339,7 @@ class TestVideoRouterExtended:
 
         response = client.delete("/v1/videos/abcdefgh/", headers=headers)
         assert response.status_code == 404
-        assert "Video not found" in response.json()["detail"]
+        assert "Video not found" in response.json()["error"]["message"]
 
         # Cleanup
         db_session.delete(user)
@@ -396,7 +396,7 @@ class TestVideoRouterExtended:
 
         response = client.delete(f"/v1/videos/{upload_id}/", headers=headers2)
         assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert "Access denied" in response.json()["error"]["message"]
 
         # Cleanup
         video = (
@@ -568,7 +568,7 @@ class TestVideoRouterExtended:
         # Try to access the deleted video
         response = client.get(f"/v1/videos/{upload_id}/", headers=headers)
         assert response.status_code == 404
-        assert "Video not found" in response.json()["detail"]
+        assert "Video not found" in response.json()["error"]["message"]
 
         # Cleanup
         # The video is already soft deleted, just remove the user
@@ -611,7 +611,7 @@ class TestVideoRouterExtended:
             headers=headers,
         )
         assert response.status_code == 500
-        assert "Failed to create video record" in response.json()["detail"]
+        assert "Failed to create video record" in response.json()["error"]["message"]
 
         # Cleanup - don't use commit since it's mocked
         try:
@@ -656,7 +656,7 @@ class TestVideoRouterExtended:
             headers=headers,
         )
         assert response.status_code == 500
-        assert "Failed to create processing job" in response.json()["detail"]
+        assert "Failed to create processing job" in response.json()["error"]["message"]
 
         # Cleanup
         db_session.delete(user)
@@ -698,7 +698,7 @@ class TestVideoRouterExtended:
             headers=headers,
         )
         assert response.status_code == 500
-        assert "Failed to save video file" in response.json()["detail"]
+        assert "Failed to save video file" in response.json()["error"]["message"]
 
         # Cleanup
         db_session.delete(user)
@@ -741,21 +741,11 @@ class TestVideoRouterExtended:
             files={"file": ("redis_fail.mp4", b"content", "video/mp4")},
             headers=headers,
         )
-        # Should still succeed since Redis failure is non-critical
-        assert response.status_code == 201
-        data = response.json()
-        assert "upload_id" in data["data"]
+        # Enqueue failure after Redis+DB fallback is fail-closed
+        assert response.status_code == 500
+        body = response.json()
+        assert body["error"]["code"] == "INTERNAL_QUEUE_FAILURE"
 
-        upload_id = data["data"]["upload_id"]
-
-        # Cleanup
-        video = (
-            db_session.query(models.Video)
-            .filter(models.Video.upload_id == upload_id)
-            .first()
-        )
-        if video:
-            db_session.delete(video)
         db_session.delete(user)
         db_session.commit()
 
@@ -795,7 +785,7 @@ class TestVideoRouterExtended:
             headers=headers,
         )
         assert response.status_code == 500
-        assert "Failed to create video record" in response.json()["detail"]
+        assert "Failed to create video record" in response.json()["error"]["message"]
 
         # Cleanup - don't use commit since it's mocked
         try:

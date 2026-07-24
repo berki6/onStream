@@ -56,7 +56,7 @@ def test_register_duplicate_username(db_session: Session):
         },
     )
     assert response.status_code == 400
-    assert "Username already registered" in response.json()["detail"]
+    assert "Username already registered" in response.json()["error"]["message"]
 
 
 def test_register_duplicate_email(db_session: Session):
@@ -81,7 +81,7 @@ def test_register_duplicate_email(db_session: Session):
         },
     )
     assert response.status_code == 400
-    assert "Email already registered" in response.json()["detail"]
+    assert "Email already registered" in response.json()["error"]["message"]
 
 
 def test_login(test_user):
@@ -103,7 +103,7 @@ def test_login_invalid_credentials():
         data={"username": "nonexistent", "password": "wrongpass"},
     )
     assert response.status_code == 401
-    assert "Incorrect username or password" in response.json()["detail"]
+    assert "Incorrect username or password" in response.json()["error"]["message"]
 
 
 def test_register_empty_fields(db_session: Session):
@@ -379,7 +379,7 @@ def test_token_expiration():
     headers = {"Authorization": f"Bearer {token}"}
     response = client.get("/v1/videos/", headers=headers)
     assert response.status_code == 401
-    assert "Could not validate credentials" in response.json()["detail"]
+    assert "Could not validate credentials" in response.json()["error"]["message"]
 
 
 def test_malformed_jwt_token():

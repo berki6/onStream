@@ -12,6 +12,7 @@ from typing import Optional, Tuple
 from jose import JWTError
 from sqlalchemy.orm import Session
 
+from src.application.error_codes import ErrorCode
 from src.application.errors import AppError
 from src.application import playback_service
 from src.core.config import settings
@@ -30,14 +31,14 @@ _SAFE_CHARS = "".join(
 
 def _require_live_enabled() -> None:
     if not settings.LIVE_ENABLED:
-        raise AppError("Live streaming is disabled", code="forbidden", status_code=403)
+        raise AppError("Live streaming is disabled", code=ErrorCode.LIVE_DISABLED, status_code=403)
 
 
 def validate_stream_id(stream_id: str) -> str:
     if not stream_id or len(stream_id) != 12:
-        raise AppError("Invalid stream ID format", code="invalid_id", status_code=400)
+        raise AppError("Invalid stream ID format", code=ErrorCode.VALIDATION_INVALID_ID, status_code=400)
     if not all(c in _SAFE_CHARS for c in stream_id):
-        raise AppError("Invalid stream ID format", code="invalid_id", status_code=400)
+        raise AppError("Invalid stream ID format", code=ErrorCode.VALIDATION_INVALID_ID, status_code=400)
     return stream_id
 
 
@@ -160,9 +161,9 @@ def get_stream(db: Session, stream_id: str, user_id: int) -> dict:
     bind_context(stream_id=stream_id, user_id=user_id)
     stream = live_stream_repository.get_by_stream_id(db, stream_id)
     if not stream or stream.status == "ended":
-        raise AppError("Live stream not found", code="not_found", status_code=404)
+        raise AppError("Live stream not found", code=ErrorCode.LIVE_NOT_FOUND, status_code=404)
     if stream.user_id != user_id:
-        raise AppError("Access denied", code="forbidden", status_code=403)
+        raise AppError("Access denied", code=ErrorCode.LIVE_FORBIDDEN, status_code=403)
     return _to_response(stream)
 
 
@@ -172,9 +173,9 @@ def delete_stream(db: Session, stream_id: str, user_id: int) -> dict:
     bind_context(stream_id=stream_id, user_id=user_id)
     stream = live_stream_repository.get_by_stream_id(db, stream_id)
     if not stream or stream.status == "ended":
-        raise AppError("Live stream not found", code="not_found", status_code=404)
+        raise AppError("Live stream not found", code=ErrorCode.LIVE_NOT_FOUND, status_code=404)
     if stream.user_id != user_id:
-        raise AppError("Access denied", code="forbidden", status_code=403)
+        raise AppError("Access denied", code=ErrorCode.LIVE_FORBIDDEN, status_code=403)
 
     # Kick publisher via MediaMTX API (soft-fail), then stop ABR
     try:
@@ -216,9 +217,9 @@ def issue_live_token(
     validate_stream_id(stream_id)
     stream = live_stream_repository.get_by_stream_id(db, stream_id)
     if not stream or stream.status == "ended":
-        raise AppError("Live stream not found", code="not_found", status_code=404)
+        raise AppError("Live stream not found", code=ErrorCode.LIVE_NOT_FOUND, status_code=404)
     if stream.user_id != user_id:
-        raise AppError("Access denied", code="forbidden", status_code=403)
+        raise AppError("Access denied", code=ErrorCode.LIVE_FORBIDDEN, status_code=403)
 
     ttl = expires_in if expires_in is not None else settings.STREAM_TOKEN_EXPIRE_SECONDS
     token = create_stream_token(stream_id, expires_delta=timedelta(seconds=ttl))
@@ -235,9 +236,9 @@ def get_stream_health(db: Session, stream_id: str, user_id: int) -> dict:
     validate_stream_id(stream_id)
     stream = live_stream_repository.get_by_stream_id(db, stream_id)
     if not stream or stream.status == "ended":
-        raise AppError("Live stream not found", code="not_found", status_code=404)
+        raise AppError("Live stream not found", code=ErrorCode.LIVE_NOT_FOUND, status_code=404)
     if stream.user_id != user_id:
-        raise AppError("Access denied", code="forbidden", status_code=403)
+        raise AppError("Access denied", code=ErrorCode.LIVE_FORBIDDEN, status_code=403)
     from src.infrastructure.live.health import get_health_snapshot
 
     return get_health_snapshot(db, stream)
@@ -248,7 +249,7 @@ def _check_auth_secret(provided: Optional[str]) -> None:
     if not expected:
         return
     if not provided or provided != expected:
-        raise AppError("Unauthorized", code="unauthorized", status_code=401)
+        raise AppError("Unauthorized", code=ErrorCode.LIVE_UNAUTHORIZED, status_code=401)
 
 
 def authorize_publish(
@@ -278,7 +279,7 @@ def authorize_publish(
             metrics_mod.LIVE_AUTH_TOTAL.labels(action=action, result="deny").inc()
         except Exception:
             pass
-        raise AppError("Unauthorized", code="unauthorized", status_code=401)
+        raise AppError("Unauthorized", code=ErrorCode.LIVE_UNAUTHORIZED, status_code=401)
 
     key_hash = hash_stream_key(key)
     stream = live_stream_repository.get_by_stream_key_hash(db, key_hash)
@@ -287,7 +288,7 @@ def authorize_publish(
             metrics_mod.LIVE_AUTH_TOTAL.labels(action=action, result="deny").inc()
         except Exception:
             pass
-        raise AppError("Unauthorized", code="unauthorized", status_code=401)
+        raise AppError("Unauthorized", code=ErrorCode.LIVE_UNAUTHORIZED, status_code=401)
 
     if action == "publish":
         # MediaMTX layout: hlsDirectory/{path}/index.m3u8
@@ -351,7 +352,7 @@ def authorize_playback(
     playback_service.check_origin(origin_or_referer)
 
     if stream.status == "ended":
-        raise AppError("Live stream not found", code="not_found", status_code=404)
+        raise AppError("Live stream not found", code=ErrorCode.LIVE_NOT_FOUND, status_code=404)
 
     is_owner = current_user is not None and stream.user_id == current_user.id
 
@@ -378,11 +379,11 @@ def authorize_playback(
         return None
 
     if current_user:
-        raise AppError("Access denied", code="forbidden", status_code=403)
+        raise AppError("Access denied", code=ErrorCode.LIVE_FORBIDDEN, status_code=403)
 
     raise AppError(
         "Stream token required for private live stream",
-        code="unauthorized",
+        code=ErrorCode.LIVE_UNAUTHORIZED,
         status_code=401,
     )
 
@@ -391,7 +392,7 @@ def get_playable_stream(db: Session, stream_id: str) -> models.LiveStream:
     validate_stream_id(stream_id)
     stream = live_stream_repository.get_by_stream_id(db, stream_id)
     if not stream or stream.status == "ended":
-        raise AppError("Live stream not found", code="not_found", status_code=404)
+        raise AppError("Live stream not found", code=ErrorCode.LIVE_NOT_FOUND, status_code=404)
     return stream
 
 
@@ -432,7 +433,7 @@ def resolve_master(stream: models.LiveStream) -> Path:
             return path
 
     raise AppError(
-        "Live playlist not available", code="not_found", status_code=404
+        "Live playlist not available", code=ErrorCode.LIVE_NOT_FOUND, status_code=404
     )
 
 
@@ -457,4 +458,4 @@ def resolve_asset(stream: models.LiveStream, asset_path: str) -> Tuple[Path, str
         if safe.endswith(".ts")
         else "Stream asset not found"
     )
-    raise AppError(detail, code="not_found", status_code=404)
+    raise AppError(detail, code=ErrorCode.LIVE_NOT_FOUND, status_code=404)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import sessionmaker
 
+from src.application.error_codes import ErrorCode
 from src.core.logger import get_logger
 from src.infrastructure.db import models
 from src.infrastructure.db.session import engine
@@ -24,7 +25,10 @@ def process_smart_thumbnail(upload_id: str) -> None:
         )
         if not video:
             job_queue.mark_job_failed(
-                upload_id, "Video not found", job_type="smart_thumbnail"
+                upload_id,
+                "Video not found",
+                job_type="smart_thumbnail",
+                error_code=ErrorCode.VIDEO_NOT_FOUND,
             )
             return
 
@@ -34,7 +38,12 @@ def process_smart_thumbnail(upload_id: str) -> None:
         try:
             local = storage.ensure_local(video.file_path)
         except Exception as e:
-            job_queue.mark_job_failed(upload_id, str(e), job_type="smart_thumbnail")
+            job_queue.mark_job_failed(
+                upload_id,
+                str(e),
+                job_type="smart_thumbnail",
+                error_code=ErrorCode.INTERNAL_STORAGE_FAILURE,
+            )
             return
 
         thumb, preview = generate_smart_assets(str(local), video.id, upload_id)
@@ -47,6 +56,11 @@ def process_smart_thumbnail(upload_id: str) -> None:
         logger.info(f"Smart thumbnail ready for {upload_id}")
     except Exception as e:
         logger.error(f"Smart thumbnail failed for {upload_id}: {e}")
-        job_queue.mark_job_failed(upload_id, str(e), job_type="smart_thumbnail")
+        job_queue.mark_job_failed(
+            upload_id,
+            str(e),
+            job_type="smart_thumbnail",
+            error_code=ErrorCode.JOB_FAILED,
+        )
     finally:
         session.close()

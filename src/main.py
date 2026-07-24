@@ -101,25 +101,113 @@ def create_app() -> FastAPI:
 
     @application.exception_handler(RequestValidationError)
     async def validation_exception_handler(request, exc):
+        from src.application.error_codes import ErrorCode
+        from src.application.error_envelope import error_body
+
         errors = []
         for error in exc.errors():
             field = "unknown"
-            if error.get("loc") and len(error["loc"]) > 1:
-                field = error["loc"][1]
+            loc = error.get("loc") or ()
+            if len(loc) > 1:
+                field = str(loc[-1])
             msg = error.get("msg", "Validation error")
             if msg.startswith("Value error, "):
                 msg = msg.replace("Value error, ", "")
-            errors.append({"field": field, "message": msg})
+            errors.append(
+                {
+                    "field": field,
+                    "message": msg,
+                    "code": ErrorCode.VALIDATION_FAILED.value,
+                }
+            )
 
         return JSONResponse(
-            status_code=422, content={"error": "Validation failed", "details": errors}
+            status_code=422,
+            content=error_body(
+                request=request,
+                code=ErrorCode.VALIDATION_FAILED,
+                message="Validation failed",
+                details=errors,
+            ),
         )
 
     @application.exception_handler(AppError)
     async def app_error_handler(request, exc: AppError):
+        from src.application.error_envelope import error_body
+
+        headers = exc.headers or None
         return JSONResponse(
             status_code=exc.status_code,
-            content={"detail": exc.message, "code": exc.code},
+            content=error_body(
+                request=request,
+                code=exc.code,
+                message=exc.message,
+                details=exc.details,
+            ),
+            headers=headers,
+        )
+
+    from fastapi import HTTPException
+
+    @application.exception_handler(HTTPException)
+    async def http_exception_handler(request, exc: HTTPException):
+        from src.application.error_codes import ErrorCode
+        from src.application.error_envelope import error_body
+
+        # Prefer structured AppError path; map leftover HTTPException.
+        if isinstance(exc.detail, dict) and "code" in exc.detail:
+            code = exc.detail.get("code", ErrorCode.INTERNAL_SERVER_ERROR.value)
+            message = exc.detail.get("message", str(exc.detail))
+            details = exc.detail.get("details")
+        else:
+            message = (
+                exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+            )
+            if exc.status_code == 401:
+                code = ErrorCode.AUTH_UNAUTHORIZED
+            elif exc.status_code == 403:
+                code = ErrorCode.VIDEO_FORBIDDEN
+            elif exc.status_code == 404:
+                code = ErrorCode.VIDEO_NOT_FOUND
+            elif exc.status_code == 429:
+                code = ErrorCode.RATE_LIMIT_EXCEEDED
+            elif exc.status_code == 422:
+                code = ErrorCode.VALIDATION_FAILED
+            elif exc.status_code >= 500:
+                code = ErrorCode.INTERNAL_SERVER_ERROR
+            else:
+                code = ErrorCode.VALIDATION_BAD_REQUEST
+            details = None
+
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=error_body(
+                request=request,
+                code=code,
+                message=message,
+                details=details,
+            ),
+            headers=getattr(exc, "headers", None),
+        )
+
+    @application.exception_handler(Exception)
+    async def unhandled_exception_handler(request, exc: Exception):
+        from src.application.error_codes import ErrorCode
+        from src.application.error_envelope import error_body
+
+        logger.exception("Unhandled exception: %s", exc)
+        message = (
+            "Internal server error"
+            if settings.ENV == "production"
+            else str(exc) or "Internal server error"
+        )
+        return JSONResponse(
+            status_code=500,
+            content=error_body(
+                request=request,
+                code=ErrorCode.INTERNAL_SERVER_ERROR,
+                message=message,
+            ),
         )
 
     application.include_router(api_router, prefix="/v1")

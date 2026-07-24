@@ -118,7 +118,7 @@ def test_get_video_job_not_found(db_session: Session, test_user):
     )
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Video not found"
+    assert response.json()["error"]["message"] == "Video not found"
 
 
 def test_get_video_job_unauthorized(db_session: Session, test_user, mocker):
@@ -174,7 +174,7 @@ def test_get_video_job_unauthorized(db_session: Session, test_user, mocker):
     )
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "Access denied"
+    assert response.json()["error"]["message"] == "Access denied"
 
     # Clean up
     db_session.delete(user2)

@@ -111,7 +111,7 @@ class TestPlaylistRouterExtended:
             "/v1/playlists/", json={"name": "My Playlist"}, headers=headers
         )
         assert response.status_code == 400
-        assert "already exists" in response.json()["detail"]
+        assert "already exists" in response.json()["error"]["message"]
 
         # Cleanup
         playlists = (
@@ -151,7 +151,7 @@ class TestPlaylistRouterExtended:
             headers=headers,
         )
         assert response.status_code == 404
-        assert "Playlist not found" in response.json()["detail"]
+        assert "Playlist not found" in response.json()["error"]["message"]
 
         # Cleanup
         db_session.delete(user)
@@ -205,7 +205,7 @@ class TestPlaylistRouterExtended:
             headers=headers2,
         )
         assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert "Access denied" in response.json()["error"]["message"]
 
         # Cleanup
         playlist = (
@@ -257,7 +257,7 @@ class TestPlaylistRouterExtended:
             headers=headers,
         )
         assert response.status_code == 404
-        assert "Video not found" in response.json()["detail"]
+        assert "Video not found" in response.json()["error"]["message"]
 
         # Cleanup
         playlist = (
@@ -331,7 +331,7 @@ class TestPlaylistRouterExtended:
             headers=headers2,
         )
         assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert "Access denied" in response.json()["error"]["message"]
 
         # Cleanup
         video = (
@@ -407,7 +407,7 @@ class TestPlaylistRouterExtended:
             headers=headers,
         )
         assert response.status_code == 400
-        assert "already in playlist" in response.json()["detail"]
+        assert "already in playlist" in response.json()["error"]["message"]
 
         # Cleanup
         video = (
@@ -472,7 +472,7 @@ class TestPlaylistRouterExtended:
             f"/v1/playlists/{playlist_id}/videos/{upload_id}/", headers=headers
         )
         assert response.status_code == 404
-        assert "not in playlist" in response.json()["detail"]
+        assert "not in playlist" in response.json()["error"]["message"]
 
         # Cleanup
         video = (
@@ -560,12 +560,12 @@ class TestPlaylistRouterExtended:
         # Test negative skip
         response = client.get("/v1/playlists/?skip=-1", headers=headers)
         assert response.status_code == 400
-        assert "must be non-negative" in response.json()["detail"]
+        assert "must be non-negative" in response.json()["error"]["message"]
 
         # Test zero limit
         response = client.get("/v1/playlists/?limit=0", headers=headers)
         assert response.status_code == 400
-        assert "must be between 1 and" in response.json()["detail"]
+        assert "must be between 1 and" in response.json()["error"]["message"]
 
         # Test negative limit
         response = client.get("/v1/playlists/?limit=-1", headers=headers)
@@ -574,7 +574,7 @@ class TestPlaylistRouterExtended:
         # Test limit exceeding maximum
         response = client.get("/v1/playlists/?limit=200", headers=headers)
         assert response.status_code == 400
-        assert "must be between 1 and" in response.json()["detail"]
+        assert "must be between 1 and" in response.json()["error"]["message"]
 
         # Cleanup
         db_session.delete(user)
@@ -603,7 +603,7 @@ class TestPlaylistRouterExtended:
 
         response = client.delete("/v1/playlists/999/", headers=headers)
         assert response.status_code == 404
-        assert "Playlist not found" in response.json()["detail"]
+        assert "Playlist not found" in response.json()["error"]["message"]
 
         # Cleanup
         db_session.delete(user)
@@ -655,7 +655,7 @@ class TestPlaylistRouterExtended:
 
         response = client.delete(f"/v1/playlists/{playlist_id}/", headers=headers2)
         assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert "Access denied" in response.json()["error"]["message"]
 
         # Cleanup
         playlist = (
@@ -827,7 +827,7 @@ class TestPlaylistRouterExtended:
             headers=headers2,
         )
         assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert "Access denied" in response.json()["error"]["message"]
 
         # Cleanup
         video = (
@@ -880,7 +880,7 @@ class TestPlaylistRouterExtended:
             "/v1/playlists/", json={"name": "Duplicate Name"}, headers=headers
         )
         assert response.status_code == 400
-        assert "already exists" in response.json()["detail"]
+        assert "already exists" in response.json()["error"]["message"]
 
         # Cleanup
         playlists = (

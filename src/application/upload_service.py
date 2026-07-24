@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
+from src.application.error_codes import ErrorCode
 from src.application.errors import AppError
 from src.core.config import settings
 from src.core.logger import get_logger
@@ -173,7 +174,7 @@ def append_content(
         .first()
     )
     if not session or session.user_id != user_id:
-        raise AppError("Upload session not found", code="not_found", status_code=404)
+        raise AppError("Upload session not found", code=ErrorCode.UPLOAD_SESSION_NOT_FOUND, status_code=404)
 
     expires = session.expires_at
     if expires is not None and expires.tzinfo is None:
@@ -181,12 +182,12 @@ def append_content(
     if expires is not None and expires < datetime.now(timezone.utc):
         session.status = models.UploadSessionStatus.EXPIRED.value
         db.commit()
-        raise AppError("Upload session expired", code="gone", status_code=410)
+        raise AppError("Upload session expired", code=ErrorCode.UPLOAD_SESSION_GONE, status_code=410)
 
     if not body:
-        raise AppError("Empty body", code="bad_request", status_code=400)
+        raise AppError("Empty body", code=ErrorCode.UPLOAD_BAD_REQUEST, status_code=400)
     if (session.bytes_received or 0) + len(body) > settings.MAX_UPLOAD_SIZE:
-        raise AppError("File too large", code="too_large", status_code=413)
+        raise AppError("File too large", code=ErrorCode.UPLOAD_TOO_LARGE, status_code=413)
 
     storage = get_storage()
     if content_range and session.bytes_received and session.bytes_received > 0:
@@ -216,17 +217,17 @@ def complete(db: Session, user_id: int, session_id: str):
         .first()
     )
     if not session or session.user_id != user_id:
-        raise AppError("Upload session not found", code="not_found", status_code=404)
+        raise AppError("Upload session not found", code=ErrorCode.UPLOAD_SESSION_NOT_FOUND, status_code=404)
 
     storage = get_storage()
     if not storage.exists(session.storage_key):
         raise AppError(
-            "Upload object not found in storage", code="bad_request", status_code=400
+            "Upload object not found in storage", code=ErrorCode.UPLOAD_OBJECT_MISSING, status_code=400
         )
 
     video = db.query(models.Video).filter(models.Video.id == session.video_id).first()
     if not video:
-        raise AppError("Video not found", code="not_found", status_code=404)
+        raise AppError("Video not found", code=ErrorCode.VIDEO_NOT_FOUND, status_code=404)
 
     local_path = storage.ensure_local(session.storage_key)
     try:
@@ -244,12 +245,12 @@ def complete(db: Session, user_id: int, session_id: str):
         duration = float(result.stdout.strip())
     except Exception as e:
         raise AppError(
-            "Invalid or corrupt video file", code="bad_request", status_code=400
+            "Invalid or corrupt video file", code=ErrorCode.VIDEO_INVALID_FILE, status_code=400
         ) from e
 
     if duration < 1 or duration > settings.MAX_VIDEO_DURATION_SECONDS:
         raise AppError(
-            "Video duration out of allowed range", code="bad_request", status_code=400
+            "Video duration out of allowed range", code=ErrorCode.UPLOAD_BAD_REQUEST, status_code=400
         )
 
     video.duration = duration
@@ -265,6 +266,10 @@ def complete(db: Session, user_id: int, session_id: str):
         job.message = "Queued for processing"
 
     db.commit()
-    job_queue.enqueue_job(video.upload_id, db)
+    if not job_queue.enqueue_job(video.upload_id, db):
+        raise AppError(
+            "Failed to enqueue job for processing",
+            code=ErrorCode.INTERNAL_QUEUE_FAILURE,
+        )
     emit_video_event(db, video, "video.created")
     return video

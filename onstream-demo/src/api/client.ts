@@ -13,14 +13,31 @@ export type ApiEnvelope<T> = {
   };
 };
 
+export type ApiErrorBody = {
+  success?: boolean;
+  error?: {
+    code?: string;
+    message?: string;
+    details?: Array<{ field?: string; message?: string; code?: string }> | null;
+  };
+  request_id?: string;
+};
+
 export class ApiError extends Error {
   status: number;
+  code: string | null;
   body: unknown;
 
-  constructor(message: string, status: number, body?: unknown) {
+  constructor(
+    message: string,
+    status: number,
+    body?: unknown,
+    code: string | null = null
+  ) {
     super(message);
     this.status = status;
     this.body = body;
+    this.code = code;
   }
 }
 
@@ -72,6 +89,21 @@ async function refreshAccessToken(): Promise<string | null> {
   return json.data.access_token;
 }
 
+function parseApiError(json: unknown, status: number): ApiError {
+  if (typeof json === "object" && json) {
+    const body = json as ApiErrorBody;
+    const code = body.error?.code ?? null;
+    const message =
+      body.error?.message ||
+      (typeof (json as { message?: unknown }).message === "string"
+        ? (json as { message: string }).message
+        : null) ||
+      `Request failed (${status})`;
+    return new ApiError(message, status, json, code);
+  }
+  return new ApiError(`Request failed (${status})`, status, json, null);
+}
+
 export async function apiRequest<T>(
   path: string,
   options: RequestOptions = {}
@@ -118,19 +150,7 @@ export async function apiRequest<T>(
   }
 
   if (!res.ok) {
-    const detail =
-      typeof json === "object" &&
-      json &&
-      "detail" in json &&
-      typeof (json as { detail: unknown }).detail === "string"
-        ? (json as { detail: string }).detail
-        : typeof json === "object" &&
-            json &&
-            "message" in json &&
-            typeof (json as { message: unknown }).message === "string"
-          ? (json as { message: string }).message
-          : `Request failed (${res.status})`;
-    throw new ApiError(detail, res.status, json);
+    throw parseApiError(json, res.status);
   }
 
   return json as T;

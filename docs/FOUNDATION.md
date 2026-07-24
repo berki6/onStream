@@ -107,6 +107,8 @@ OnStream separates **control-plane auth** (who may call `/v1/videos`, `/v1/live`
 
 API keys (`X-API-Key`) exist for machine-to-machine control-plane calls (CI, backends) without pretending to be a browser user session.
 
+Errors use the same envelope shape as successes (`success: false`) with a nested `error.code` in SCREAMING_SNAKE form — see [`API.md`](API.md). There is no FastAPI `{detail}` body on `/v1`.
+
 ```mermaid
 flowchart LR
   Login[POST /v1/auth/login] --> Access[JWT type=access sub=username]

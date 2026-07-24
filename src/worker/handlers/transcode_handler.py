@@ -8,6 +8,7 @@ from typing import Dict, List
 
 from sqlalchemy.orm import sessionmaker
 
+from src.application.error_codes import ErrorCode
 from src.core.config import settings
 from src.core.logger import get_logger
 from src.infrastructure.db.session import engine
@@ -37,6 +38,7 @@ def update_job_progress(
     message=None,
     status=None,
     stage=None,
+    error_code=None,
 ):
     job.progress = progress
     job.eta = eta
@@ -47,6 +49,10 @@ def update_job_progress(
     if stage:
         job.stage = stage
         job.status = stage
+    if error_code is not None:
+        job.error_code = (
+            error_code.value if hasattr(error_code, "value") else str(error_code)
+        )
     session.commit()
 
 
@@ -71,7 +77,13 @@ def process_video(session, job):
     )
     if not video:
         update_job_progress(
-            session, job, 0, status="error", stage="error", message="Video not found"
+            session,
+            job,
+            0,
+            status="error",
+            stage="error",
+            message="Video not found",
+            error_code=ErrorCode.VIDEO_NOT_FOUND,
         )
         return
 
@@ -99,10 +111,19 @@ def process_video(session, job):
             status="error",
             stage="error",
             message=f"Input missing: {e}",
+            error_code=ErrorCode.INTERNAL_STORAGE_FAILURE,
         )
         video.status = models.VideoStatus.ERROR
         session.commit()
-        emit_video_event(session, video, "video.failed", {"error": str(e)})
+        emit_video_event(
+            session,
+            video,
+            "video.failed",
+            {
+                "error": str(e),
+                "error_code": ErrorCode.INTERNAL_STORAGE_FAILURE.value,
+            },
+        )
         return
 
     file_size = upload_file.stat().st_size
@@ -264,11 +285,25 @@ def process_video(session, job):
             status="error",
             stage=models.JobStage.ERROR.value,
             message=f"Processing failed: {short_error}",
+            error_code=ErrorCode.JOB_FAILED,
         )
         video.status = models.VideoStatus.ERROR
         session.commit()
-        job_queue.mark_job_failed(job.upload_id, short_error, job_type="transcode")
-        emit_video_event(session, video, "video.failed", {"error": short_error})
+        job_queue.mark_job_failed(
+            job.upload_id,
+            short_error,
+            job_type="transcode",
+            error_code=ErrorCode.JOB_FAILED,
+        )
+        emit_video_event(
+            session,
+            video,
+            "video.failed",
+            {
+                "error": short_error,
+                "error_code": ErrorCode.JOB_FAILED.value,
+            },
+        )
 
 
 def _enqueue_ai_jobs(session, upload_id: str) -> None:

@@ -6,6 +6,7 @@ from typing import Any, Dict
 
 from sqlalchemy.orm import Session
 
+from src.application.error_codes import ErrorCode
 from src.application.errors import AppError
 from src.infrastructure.db import models
 from src.infrastructure.db.repositories import video_repository
@@ -25,7 +26,7 @@ def search(
 ) -> Dict[str, Any]:
     q = (q or "").strip()
     if not q:
-        raise AppError("Query 'q' is required", code="bad_request", status_code=400)
+        raise AppError("Query 'q' is required", code=ErrorCode.SEARCH_BAD_REQUEST, status_code=400)
     limit = max(1, min(int(limit or 20), 100))
     mode = (mode or "keyword").lower()
 
@@ -74,6 +75,6 @@ def search(
 
     raise AppError(
         "mode must be 'keyword' or 'semantic'",
-        code="bad_request",
+        code=ErrorCode.SEARCH_BAD_REQUEST,
         status_code=400,
     )
