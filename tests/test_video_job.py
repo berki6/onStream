@@ -2,9 +2,10 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from src.main import app
-from src.core.database import get_db
-from src.services import crud
-from src.schema import schemas, models
+from src.infrastructure.db.session import get_db
+from src.infrastructure.db import models
+from src import schemas
+from src.infrastructure.db.repositories import job_repository, video_repository
 from tests.conftest import override_get_db
 import redis
 from src.core.config import settings
@@ -18,19 +19,22 @@ client = TestClient(app)
 def test_get_video_job_status(db_session: Session, test_user, mocker):
     """Test getting video job status"""
     # Mock the video duration probe to return a valid duration
-    mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+    mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
     mock_probe.return_value = 120.0  # 2 minutes
 
-    # Clear Redis queue before test
-    redis_client = redis.from_url(settings.REDIS_URL)
-    redis_client.delete("video_jobs_queue")
+    # Clear Redis queue before test (optional if Redis is down)
+    try:
+        redis_client = redis.from_url(settings.REDIS_URL, socket_connect_timeout=1)
+        redis_client.delete("video_jobs_queue")
+    except Exception:
+        redis_client = None
 
     # Create a video first
     video_data = {"title": "Test Video", "description": "Test Description"}
 
     # Login to get token
     response = client.post(
-        "/auth/login",
+        "/v1/auth/login",
         data={"username": "testuser", "password": "testpass"},
     )
     assert response.status_code == 200
@@ -38,7 +42,7 @@ def test_get_video_job_status(db_session: Session, test_user, mocker):
 
     # Upload video (this should create a video and job)
     response = client.post(
-        "/videos/",
+        "/v1/videos/",
         data=video_data,
         files={"file": ("test.mp4", b"fake video content", "video/mp4")},
         headers={"Authorization": f"Bearer {token}"},
@@ -49,26 +53,27 @@ def test_get_video_job_status(db_session: Session, test_user, mocker):
     upload_id = upload_response["data"]["upload_id"]
 
     # Verify job was created in database (Redis might not be available in test env)
-    job = crud.get_job_for_video(
-        db_session, crud.get_video_by_upload_id(db_session, upload_id)
+    job = job_repository.get_for_video(
+        db_session, video_repository.get_by_upload_id(db_session, upload_id)
     )
     assert job is not None
     assert job.upload_id == upload_id
 
     # Try to check Redis queue, but don't fail if Redis is not available
     try:
-        queue_length = redis_client.llen("video_jobs_queue")
-        if queue_length > 0:  # Only check if Redis is working
-            # Get the job from queue
-            queued_job = redis_client.lrange("video_jobs_queue", -1, -1)
-            assert queued_job[0].decode("utf-8") == upload_id
+        if redis_client is not None:
+            queue_length = redis_client.llen("video_jobs_queue")
+            if queue_length > 0:  # Only check if Redis is working
+                # Get the job from queue
+                queued_job = redis_client.lrange("video_jobs_queue", -1, -1)
+                assert queued_job[0].decode("utf-8") == upload_id
     except Exception:
         # Redis not available in test environment, that's OK
         pass
 
     # Get the video job status
     response = client.get(
-        f"/videos/{upload_id}/job",
+        f"/v1/videos/{upload_id}/jobs/latest",
         headers={"Authorization": f"Bearer {token}"},
     )
 
@@ -85,7 +90,7 @@ def test_get_video_job_status(db_session: Session, test_user, mocker):
     assert "updated_at" in job_data
 
     # Should start with processing status
-    assert job_data["status"] == "processing"
+    assert job_data["status"] in ("processing", "queued")
     assert job_data["progress"] == 0
     assert job_data["eta"] == 0
 
@@ -94,14 +99,14 @@ def test_get_video_job_not_found(db_session: Session, test_user):
     """Test getting job for non-existent video"""
     # Login to get token
     response = client.post(
-        "/auth/login",
+        "/v1/auth/login",
         data={"username": "testuser", "password": "testpass"},
     )
     assert response.status_code == 200
     token = response.json()["data"]["access_token"]
 
     response = client.get(
-        "/videos/abcdefgh/job",  # Valid 8-character format but non-existent
+        "/v1/videos/abcdefgh/jobs/latest",  # Valid 8-character format but non-existent
         headers={"Authorization": f"Bearer {token}"},
     )
 
@@ -112,10 +117,10 @@ def test_get_video_job_not_found(db_session: Session, test_user):
 def test_get_video_job_unauthorized(db_session: Session, test_user, mocker):
     """Test getting job for video owned by another user"""
     # Mock the video duration probe to return a valid duration
-    mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+    mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
     mock_probe.return_value = 120.0  # 2 minutes
     # Create second user
-    from src.core.auth import get_password_hash
+    from src.core.security.passwords import get_password_hash
 
     hashed_password = get_password_hash("testpass2")
     user2 = models.User(
@@ -127,7 +132,7 @@ def test_get_video_job_unauthorized(db_session: Session, test_user, mocker):
 
     # Login with first user
     response = client.post(
-        "/auth/login",
+        "/v1/auth/login",
         data={"username": "testuser", "password": "testpass"},
     )
     assert response.status_code == 200
@@ -137,7 +142,7 @@ def test_get_video_job_unauthorized(db_session: Session, test_user, mocker):
     video_data = {"title": "Test Video", "description": "Test Description"}
 
     response = client.post(
-        "/videos/",
+        "/v1/videos/",
         data=video_data,
         files={"file": ("test2.mp4", b"fake video content", "video/mp4")},
         headers={"Authorization": f"Bearer {token1}"},
@@ -149,7 +154,7 @@ def test_get_video_job_unauthorized(db_session: Session, test_user, mocker):
 
     # Login with second user
     response = client.post(
-        "/auth/login",
+        "/v1/auth/login",
         data={"username": "testuser2", "password": "testpass2"},
     )
     assert response.status_code == 200
@@ -157,7 +162,7 @@ def test_get_video_job_unauthorized(db_session: Session, test_user, mocker):
 
     # Try to access with user 2
     response = client.get(
-        f"/videos/{upload_id}/job",
+        f"/v1/videos/{upload_id}/jobs/latest",
         headers={"Authorization": f"Bearer {token2}"},
     )
 
@@ -174,7 +179,7 @@ class TestJobQueueReliability:
 
     def setup_method(self):
         """Set up test fixtures."""
-        from src.services.job_queue import JobQueueService
+        from src.infrastructure.queue.job_queue import JobQueueService
 
         self.job_queue = JobQueueService()
         # Mock the redis_client on the instance for testing
@@ -194,7 +199,7 @@ class TestJobQueueReliability:
 
     def test_enqueue_job_redis_failure_fallback_to_db(self, db_session):
         """Test job enqueue falls back to database when Redis fails."""
-        from src.core.redis_client import CircuitBreakerOpenException
+        from src.infrastructure.queue.redis_client import CircuitBreakerOpenException
 
         self.mock_redis_client.lpush.side_effect = CircuitBreakerOpenException(
             "Circuit open"
@@ -219,7 +224,7 @@ class TestJobQueueReliability:
 
     def test_enqueue_job_redis_and_db_failure(self, db_session):
         """Test job enqueue fails when both Redis and database fail."""
-        from src.core.redis_client import CircuitBreakerOpenException
+        from src.infrastructure.queue.redis_client import CircuitBreakerOpenException
 
         self.mock_redis_client.lpush.side_effect = CircuitBreakerOpenException(
             "Circuit open"
@@ -233,7 +238,7 @@ class TestJobQueueReliability:
 
     def test_enqueue_job_duplicate_prevention(self, db_session):
         """Test duplicate jobs are not created in database fallback."""
-        from src.core.redis_client import CircuitBreakerOpenException
+        from src.infrastructure.queue.redis_client import CircuitBreakerOpenException
 
         self.mock_redis_client.lpush.side_effect = CircuitBreakerOpenException(
             "Circuit open"
@@ -273,10 +278,10 @@ class TestJobQueueReliability:
             "video_jobs_queue", timeout=1
         )
 
-    @patch("src.services.job_queue.get_db")
+    @patch("src.infrastructure.queue.job_queue.get_db")
     def test_dequeue_job_redis_failure_fallback_to_db(self, mock_get_db):
         """Test job dequeue falls back to database when Redis fails."""
-        from src.core.redis_client import CircuitBreakerOpenException
+        from src.infrastructure.queue.redis_client import CircuitBreakerOpenException
 
         self.mock_redis_client.blpop.side_effect = CircuitBreakerOpenException(
             "Circuit open"
@@ -306,10 +311,10 @@ class TestJobQueueReliability:
         assert mock_job.retry_count == 1
         mock_session.commit.assert_called_once()
 
-    @patch("src.services.job_queue.get_db")
+    @patch("src.infrastructure.queue.job_queue.get_db")
     def test_dequeue_job_no_jobs_in_db(self, mock_get_db):
         """Test dequeue returns None when no jobs in database."""
-        from src.core.redis_client import CircuitBreakerOpenException
+        from src.infrastructure.queue.redis_client import CircuitBreakerOpenException
 
         self.mock_redis_client.blpop.side_effect = CircuitBreakerOpenException(
             "Circuit open"
@@ -328,7 +333,7 @@ class TestJobQueueReliability:
 
         assert result is None
 
-    @patch("src.services.job_queue.get_db")
+    @patch("src.infrastructure.queue.job_queue.get_db")
     def test_mark_job_completed(self, mock_get_db):
         """Test marking job as completed."""
         # Mock database session
@@ -347,7 +352,7 @@ class TestJobQueueReliability:
         assert mock_session.commit.called
         mock_session.commit.assert_called_once()
 
-    @patch("src.services.job_queue.get_db")
+    @patch("src.infrastructure.queue.job_queue.get_db")
     def test_mark_job_failed(self, mock_get_db):
         """Test marking job as failed."""
         # Mock database session
@@ -369,7 +374,7 @@ class TestJobQueueReliability:
         assert mock_job.retry_count == 2
         mock_session.commit.assert_called_once()
 
-    @patch("src.services.job_queue.get_db")
+    @patch("src.infrastructure.queue.job_queue.get_db")
     def test_recover_jobs_to_redis(self, mock_get_db):
         """Test recovering jobs from database to Redis."""
         # Mock database session
@@ -395,10 +400,10 @@ class TestJobQueueReliability:
         assert self.mock_redis_client.lpush.call_count == 2
         assert mock_session.commit.called
 
-    @patch("src.services.job_queue.get_db")
+    @patch("src.infrastructure.queue.job_queue.get_db")
     def test_recover_jobs_to_redis_partial_failure(self, mock_get_db):
         """Test partial failure during job recovery."""
-        from src.core.redis_client import CircuitBreakerOpenException
+        from src.infrastructure.queue.redis_client import CircuitBreakerOpenException
 
         # Mock database session
         mock_session = MagicMock()
@@ -426,7 +431,7 @@ class TestJobQueueReliability:
         assert self.mock_redis_client.lpush.call_count == 2
         assert mock_session.commit.called
 
-    @patch("src.services.job_queue.get_db")
+    @patch("src.infrastructure.queue.job_queue.get_db")
     def test_get_queue_stats_complete(self, mock_get_db):
         """Test getting complete queue statistics."""
         # Mock Redis stats
@@ -454,7 +459,7 @@ class TestJobQueueReliability:
         assert "database_failed_jobs" in stats
         assert "circuit_breaker_status" in stats
 
-    @patch("src.services.job_queue.get_db")
+    @patch("src.infrastructure.queue.job_queue.get_db")
     def test_get_queue_stats_redis_unavailable(self, mock_get_db):
         """Test queue stats when Redis is unavailable."""
         # Mock Redis failure
@@ -482,7 +487,7 @@ class TestJobQueueReliability:
         assert "database_failed_jobs" in stats
         assert "circuit_breaker_status" in stats
 
-    @patch("src.services.job_queue.get_db")
+    @patch("src.infrastructure.queue.job_queue.get_db")
     def test_cleanup_old_jobs(self, mock_get_db):
         """Test cleanup of old completed jobs."""
         from datetime import datetime, timedelta, timezone

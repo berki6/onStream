@@ -2,8 +2,8 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from src.main import app
-from src.core.database import get_db
-from src.schema import models
+from src.infrastructure.db.session import get_db
+from src.infrastructure.db import models
 from tests.conftest import override_get_db
 import tempfile
 import os
@@ -18,7 +18,7 @@ class TestPlaylistRouterExtended:
     def test_create_playlist_missing_title(self, db_session):
         """Test creating playlist with missing title."""
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("Testpass123!")
         user = models.User(
@@ -31,12 +31,12 @@ class TestPlaylistRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "missingtitle", "password": "Testpass123!"}
+            "/v1/auth/login", data={"username": "missingtitle", "password": "Testpass123!"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
-        response = client.post("/playlists/", json={}, headers=headers)
+        response = client.post("/v1/playlists/", json={}, headers=headers)
         assert response.status_code == 422  # Validation error for missing title
 
         # Cleanup
@@ -46,7 +46,7 @@ class TestPlaylistRouterExtended:
     def test_create_playlist_title_too_long(self, db_session):
         """Test creating playlist with title exceeding max length."""
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("Testpass123!")
         user = models.User(
@@ -59,14 +59,14 @@ class TestPlaylistRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "longplaylist", "password": "Testpass123!"}
+            "/v1/auth/login", data={"username": "longplaylist", "password": "Testpass123!"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         long_title = "A" * 201  # Exceeds MAX_TITLE_LENGTH
         response = client.post(
-            "/playlists/", json={"name": long_title}, headers=headers
+            "/v1/playlists/", json={"name": long_title}, headers=headers
         )
         assert (
             response.status_code == 422
@@ -82,7 +82,7 @@ class TestPlaylistRouterExtended:
     def test_create_playlist_duplicate_title(self, db_session):
         """Test creating playlist with duplicate title for same user."""
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -95,20 +95,20 @@ class TestPlaylistRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "duplicate", "password": "testpass"}
+            "/v1/auth/login", data={"username": "duplicate", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Create first playlist
         response = client.post(
-            "/playlists/", json={"name": "My Playlist"}, headers=headers
+            "/v1/playlists/", json={"name": "My Playlist"}, headers=headers
         )
         assert response.status_code == 201
 
         # Try to create duplicate
         response = client.post(
-            "/playlists/", json={"name": "My Playlist"}, headers=headers
+            "/v1/playlists/", json={"name": "My Playlist"}, headers=headers
         )
         assert response.status_code == 400
         assert "already exists" in response.json()["detail"]
@@ -127,7 +127,7 @@ class TestPlaylistRouterExtended:
     def test_add_video_to_playlist_not_found(self, db_session):
         """Test adding video to non-existent playlist."""
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -140,13 +140,13 @@ class TestPlaylistRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "addnotfound", "password": "testpass"}
+            "/v1/auth/login", data={"username": "addnotfound", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
-            "/playlists/999/videos/abcdefgh/",
+            "/v1/playlists/999/videos/abcdefgh/",
             json={"position": 1},
             headers=headers,
         )
@@ -160,7 +160,7 @@ class TestPlaylistRouterExtended:
     def test_add_video_to_playlist_wrong_user(self, db_session):
         """Test adding video to playlist owned by another user."""
         # Create two users
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
 
@@ -182,25 +182,25 @@ class TestPlaylistRouterExtended:
 
         # Login as user1 and create playlist
         response = client.post(
-            "/auth/login", data={"username": "playlistowner", "password": "testpass"}
+            "/v1/auth/login", data={"username": "playlistowner", "password": "testpass"}
         )
         token1 = response.json()["data"]["access_token"]
         headers1 = {"Authorization": f"Bearer {token1}"}
 
         response = client.post(
-            "/playlists/", json={"name": "Owner's Playlist"}, headers=headers1
+            "/v1/playlists/", json={"name": "Owner's Playlist"}, headers=headers1
         )
         playlist_id = response.json()["data"]["id"]
 
         # Login as user2 and try to add video to user1's playlist
         response = client.post(
-            "/auth/login", data={"username": "playliststealer", "password": "testpass"}
+            "/v1/auth/login", data={"username": "playliststealer", "password": "testpass"}
         )
         token2 = response.json()["data"]["access_token"]
         headers2 = {"Authorization": f"Bearer {token2}"}
 
         response = client.post(
-            f"/playlists/{playlist_id}/videos/abcdefgh/",
+            f"/v1/playlists/{playlist_id}/videos/abcdefgh/",
             json={"position": 1},
             headers=headers2,
         )
@@ -222,11 +222,11 @@ class TestPlaylistRouterExtended:
     def test_add_video_to_playlist_video_not_found(self, mocker, db_session):
         """Test adding non-existent video to playlist."""
         # Mock video duration probe
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 120.0
 
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -239,20 +239,20 @@ class TestPlaylistRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "videonotfound", "password": "testpass"}
+            "/v1/auth/login", data={"username": "videonotfound", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Create playlist
         response = client.post(
-            "/playlists/", json={"name": "Test Playlist"}, headers=headers
+            "/v1/playlists/", json={"name": "Test Playlist"}, headers=headers
         )
         playlist_id = response.json()["data"]["id"]
 
         # Try to add non-existent video
         response = client.post(
-            f"/playlists/{playlist_id}/videos/abcdefgh/",
+            f"/v1/playlists/{playlist_id}/videos/abcdefgh/",
             json={"position": 1},
             headers=headers,
         )
@@ -273,11 +273,11 @@ class TestPlaylistRouterExtended:
     def test_add_video_to_playlist_video_wrong_user(self, mocker, db_session):
         """Test adding video owned by another user to playlist."""
         # Mock video duration probe
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 120.0
 
         # Create two users
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
 
@@ -299,13 +299,13 @@ class TestPlaylistRouterExtended:
 
         # Login as user1 and create video
         response = client.post(
-            "/auth/login", data={"username": "videoowner", "password": "testpass"}
+            "/v1/auth/login", data={"username": "videoowner", "password": "testpass"}
         )
         token1 = response.json()["data"]["access_token"]
         headers1 = {"Authorization": f"Bearer {token1}"}
 
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "Owner's Video"},
             files={"file": ("owner.mp4", b"content", "video/mp4")},
             headers=headers1,
@@ -314,19 +314,19 @@ class TestPlaylistRouterExtended:
 
         # Login as user2 and create playlist
         response = client.post(
-            "/auth/login", data={"username": "playlistuser", "password": "testpass"}
+            "/v1/auth/login", data={"username": "playlistuser", "password": "testpass"}
         )
         token2 = response.json()["data"]["access_token"]
         headers2 = {"Authorization": f"Bearer {token2}"}
 
         response = client.post(
-            "/playlists/", json={"name": "User2 Playlist"}, headers=headers2
+            "/v1/playlists/", json={"name": "User2 Playlist"}, headers=headers2
         )
         playlist_id = response.json()["data"]["id"]
 
         # Try to add user1's video to user2's playlist
         response = client.post(
-            f"/playlists/{playlist_id}/videos/{upload_id}/",
+            f"/v1/playlists/{playlist_id}/videos/{upload_id}/",
             json={"position": 1},
             headers=headers2,
         )
@@ -355,11 +355,11 @@ class TestPlaylistRouterExtended:
     def test_add_video_to_playlist_duplicate_video(self, mocker, db_session):
         """Test adding same video twice to playlist."""
         # Mock video duration probe
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 120.0
 
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -372,20 +372,20 @@ class TestPlaylistRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "duplicatevideo", "password": "testpass"}
+            "/v1/auth/login", data={"username": "duplicatevideo", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Create playlist
         response = client.post(
-            "/playlists/", json={"name": "Duplicate Test"}, headers=headers
+            "/v1/playlists/", json={"name": "Duplicate Test"}, headers=headers
         )
         playlist_id = response.json()["data"]["id"]
 
         # Create video
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "Test Video"},
             files={"file": ("test.mp4", b"content", "video/mp4")},
             headers=headers,
@@ -394,7 +394,7 @@ class TestPlaylistRouterExtended:
 
         # Add video to playlist first time
         response = client.post(
-            f"/playlists/{playlist_id}/videos/{upload_id}/",
+            f"/v1/playlists/{playlist_id}/videos/{upload_id}/",
             json={"position": 1},
             headers=headers,
         )
@@ -402,7 +402,7 @@ class TestPlaylistRouterExtended:
 
         # Try to add same video again
         response = client.post(
-            f"/playlists/{playlist_id}/videos/{upload_id}/",
+            f"/v1/playlists/{playlist_id}/videos/{upload_id}/",
             json={"position": 2},
             headers=headers,
         )
@@ -430,11 +430,11 @@ class TestPlaylistRouterExtended:
     def test_remove_video_from_playlist_not_in_playlist(self, mocker, db_session):
         """Test removing video that is not in the playlist."""
         # Mock video duration probe
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 120.0
 
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -447,20 +447,20 @@ class TestPlaylistRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "notplaylist", "password": "testpass"}
+            "/v1/auth/login", data={"username": "notplaylist", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Create playlist
         response = client.post(
-            "/playlists/", json={"name": "Remove Test"}, headers=headers
+            "/v1/playlists/", json={"name": "Remove Test"}, headers=headers
         )
         playlist_id = response.json()["data"]["id"]
 
         # Create video
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "Test Video"},
             files={"file": ("test.mp4", b"content", "video/mp4")},
             headers=headers,
@@ -469,7 +469,7 @@ class TestPlaylistRouterExtended:
 
         # Try to remove video not in playlist
         response = client.delete(
-            f"/playlists/{playlist_id}/videos/{upload_id}/", headers=headers
+            f"/v1/playlists/{playlist_id}/videos/{upload_id}/", headers=headers
         )
         assert response.status_code == 404
         assert "not in playlist" in response.json()["detail"]
@@ -495,7 +495,7 @@ class TestPlaylistRouterExtended:
     def test_list_playlist_videos_empty_playlist(self, db_session):
         """Test listing videos from empty playlist."""
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -508,19 +508,19 @@ class TestPlaylistRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "emptyplaylist", "password": "testpass"}
+            "/v1/auth/login", data={"username": "emptyplaylist", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Create playlist
         response = client.post(
-            "/playlists/", json={"name": "Empty Playlist"}, headers=headers
+            "/v1/playlists/", json={"name": "Empty Playlist"}, headers=headers
         )
         playlist_id = response.json()["data"]["id"]
 
         # List videos (should be empty)
-        response = client.get(f"/playlists/{playlist_id}/videos/", headers=headers)
+        response = client.get(f"/v1/playlists/{playlist_id}/videos/", headers=headers)
         assert response.status_code == 200
         videos = response.json()["data"]
         assert videos == []
@@ -539,7 +539,7 @@ class TestPlaylistRouterExtended:
     def test_playlist_pagination_edge_cases(self, db_session):
         """Test playlist listing with edge case pagination."""
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -552,27 +552,27 @@ class TestPlaylistRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "playlistpaginate", "password": "testpass"}
+            "/v1/auth/login", data={"username": "playlistpaginate", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Test negative skip
-        response = client.get("/playlists/?skip=-1", headers=headers)
+        response = client.get("/v1/playlists/?skip=-1", headers=headers)
         assert response.status_code == 400
         assert "must be non-negative" in response.json()["detail"]
 
         # Test zero limit
-        response = client.get("/playlists/?limit=0", headers=headers)
+        response = client.get("/v1/playlists/?limit=0", headers=headers)
         assert response.status_code == 400
         assert "must be between 1 and" in response.json()["detail"]
 
         # Test negative limit
-        response = client.get("/playlists/?limit=-1", headers=headers)
+        response = client.get("/v1/playlists/?limit=-1", headers=headers)
         assert response.status_code == 400
 
         # Test limit exceeding maximum
-        response = client.get("/playlists/?limit=200", headers=headers)
+        response = client.get("/v1/playlists/?limit=200", headers=headers)
         assert response.status_code == 400
         assert "must be between 1 and" in response.json()["detail"]
 
@@ -583,7 +583,7 @@ class TestPlaylistRouterExtended:
     def test_delete_playlist_not_found(self, db_session):
         """Test deleting non-existent playlist."""
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -596,12 +596,12 @@ class TestPlaylistRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "deletenotfound", "password": "testpass"}
+            "/v1/auth/login", data={"username": "deletenotfound", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
-        response = client.delete("/playlists/999/", headers=headers)
+        response = client.delete("/v1/playlists/999/", headers=headers)
         assert response.status_code == 404
         assert "Playlist not found" in response.json()["detail"]
 
@@ -612,7 +612,7 @@ class TestPlaylistRouterExtended:
     def test_delete_playlist_wrong_user(self, db_session):
         """Test deleting playlist owned by another user."""
         # Create two users
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
 
@@ -634,26 +634,26 @@ class TestPlaylistRouterExtended:
 
         # Login as user1 and create playlist
         response = client.post(
-            "/auth/login",
+            "/v1/auth/login",
             data={"username": "playlistdeleteowner", "password": "testpass"},
         )
         token1 = response.json()["data"]["access_token"]
         headers1 = {"Authorization": f"Bearer {token1}"}
 
         response = client.post(
-            "/playlists/", json={"name": "Owner's Playlist"}, headers=headers1
+            "/v1/playlists/", json={"name": "Owner's Playlist"}, headers=headers1
         )
         playlist_id = response.json()["data"]["id"]
 
         # Login as user2 and try to delete
         response = client.post(
-            "/auth/login",
+            "/v1/auth/login",
             data={"username": "playlistdeletestealer", "password": "testpass"},
         )
         token2 = response.json()["data"]["access_token"]
         headers2 = {"Authorization": f"Bearer {token2}"}
 
-        response = client.delete(f"/playlists/{playlist_id}/", headers=headers2)
+        response = client.delete(f"/v1/playlists/{playlist_id}/", headers=headers2)
         assert response.status_code == 403
         assert "Access denied" in response.json()["detail"]
 
@@ -672,11 +672,11 @@ class TestPlaylistRouterExtended:
     def test_playlist_video_position_update(self, mocker, db_session):
         """Test updating video position in playlist."""
         # Mock video duration probe
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 120.0
 
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -689,20 +689,20 @@ class TestPlaylistRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "positionupdate", "password": "testpass"}
+            "/v1/auth/login", data={"username": "positionupdate", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Create playlist
         response = client.post(
-            "/playlists/", json={"name": "Position Test"}, headers=headers
+            "/v1/playlists/", json={"name": "Position Test"}, headers=headers
         )
         playlist_id = response.json()["data"]["id"]
 
         # Create two videos
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "Video 1"},
             files={"file": ("video1.mp4", b"content", "video/mp4")},
             headers=headers,
@@ -710,7 +710,7 @@ class TestPlaylistRouterExtended:
         upload_id1 = response.json()["data"]["upload_id"]
 
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "Video 2"},
             files={"file": ("video2.mp4", b"content", "video/mp4")},
             headers=headers,
@@ -719,14 +719,14 @@ class TestPlaylistRouterExtended:
 
         # Add videos to playlist
         response = client.post(
-            f"/playlists/{playlist_id}/videos/{upload_id1}/",
+            f"/v1/playlists/{playlist_id}/videos/{upload_id1}/",
             json={"position": 1},
             headers=headers,
         )
         assert response.status_code == 201
 
         response = client.post(
-            f"/playlists/{playlist_id}/videos/{upload_id2}/",
+            f"/v1/playlists/{playlist_id}/videos/{upload_id2}/",
             json={"position": 2},
             headers=headers,
         )
@@ -734,14 +734,14 @@ class TestPlaylistRouterExtended:
 
         # Update position of first video
         response = client.put(
-            f"/playlists/{playlist_id}/videos/{upload_id1}/",
+            f"/v1/playlists/{playlist_id}/videos/{upload_id1}/",
             json={"position": 3},
             headers=headers,
         )
         assert response.status_code == 200
 
         # Verify positions
-        response = client.get(f"/playlists/{playlist_id}/videos/", headers=headers)
+        response = client.get(f"/v1/playlists/{playlist_id}/videos/", headers=headers)
         videos = response.json()["data"]
         assert len(videos) == 2
         # Positions should be updated accordingly
@@ -767,11 +767,11 @@ class TestPlaylistRouterExtended:
     def test_add_video_to_playlist_cross_user_playlist(self, mocker, db_session):
         """Test adding video to playlist owned by another user."""
         # Mock video duration probe
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 120.0
 
         # Create two users
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("Testpass123!")
 
@@ -793,27 +793,27 @@ class TestPlaylistRouterExtended:
 
         # Login as user1 and create playlist
         response = client.post(
-            "/auth/login",
+            "/v1/auth/login",
             data={"username": "playlistowner2", "password": "Testpass123!"},
         )
         token1 = response.json()["data"]["access_token"]
         headers1 = {"Authorization": f"Bearer {token1}"}
 
         response = client.post(
-            "/playlists/", json={"name": "Cross User Playlist"}, headers=headers1
+            "/v1/playlists/", json={"name": "Cross User Playlist"}, headers=headers1
         )
         playlist_id = response.json()["data"]["id"]
 
         # Login as user2 and create video
         response = client.post(
-            "/auth/login",
+            "/v1/auth/login",
             data={"username": "videouploader2", "password": "Testpass123!"},
         )
         token2 = response.json()["data"]["access_token"]
         headers2 = {"Authorization": f"Bearer {token2}"}
 
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "Cross User Video"},
             files={"file": ("cross.mp4", b"content", "video/mp4")},
             headers=headers2,
@@ -822,7 +822,7 @@ class TestPlaylistRouterExtended:
 
         # Try to add user2's video to user1's playlist (should fail)
         response = client.post(
-            f"/playlists/{playlist_id}/videos/{upload_id}/",
+            f"/v1/playlists/{playlist_id}/videos/{upload_id}/",
             json={"position": 1},
             headers=headers2,
         )
@@ -851,7 +851,7 @@ class TestPlaylistRouterExtended:
     def test_playlist_duplicate_name_creation(self, db_session):
         """Test creating playlist with duplicate name for same user."""
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("Testpass123!")
         user = models.User(
@@ -864,20 +864,20 @@ class TestPlaylistRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "dupname", "password": "Testpass123!"}
+            "/v1/auth/login", data={"username": "dupname", "password": "Testpass123!"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Create first playlist
         response = client.post(
-            "/playlists/", json={"name": "Duplicate Name"}, headers=headers
+            "/v1/playlists/", json={"name": "Duplicate Name"}, headers=headers
         )
         assert response.status_code == 201
 
         # Try to create second playlist with same name
         response = client.post(
-            "/playlists/", json={"name": "Duplicate Name"}, headers=headers
+            "/v1/playlists/", json={"name": "Duplicate Name"}, headers=headers
         )
         assert response.status_code == 400
         assert "already exists" in response.json()["detail"]

@@ -136,6 +136,18 @@ The API will be available at: [http://localhost:8000](http://localhost:8000)
 - **API Documentation**: [http://localhost:8000/docs](http://localhost:8000/docs) (Swagger UI)
 - **Alternative Docs**: [http://localhost:8000/redoc](http://localhost:8000/redoc) (ReDoc)
 
+### Docker Compose (Phase 1 stack)
+
+Full local stack: Postgres, Redis, MinIO, API, and worker.
+
+```bash
+docker compose up --build
+```
+
+Uses [`.env.docker`](.env.docker). API: http://localhost:8000 — MinIO console: http://localhost:9001.
+
+See [`docs/PHASE1.md`](docs/PHASE1.md) for the Phase 1 foundation scope.
+
 ### Background Worker
 
 For video processing, start the worker process:
@@ -242,8 +254,8 @@ All endpoints return standardized responses with consistent format, inspired by 
 Every API request is assigned a unique UUID (`X-Request-ID` header + body field) for end-to-end lifecycle tracing. All log entries include the request ID for correlation across components:
 
 ```log
-2025-11-17 13:24:03 - src.routers.auth - INFO - [550e8400-e29b-41d4-a716-446655440000] - User 'john' logged in successfully
-2025-11-17 13:24:04 - src.routers.videos - INFO - [550e8400-e29b-41d4-a716-446655440000] - Video upload started
+2025-11-17 13:24:03 - src.api.v1.routes.auth - INFO - [550e8400-e29b-41d4-a716-446655440000] - User 'john' logged in successfully
+2025-11-17 13:24:04 - src.api.v1.routes.videos - INFO - [550e8400-e29b-41d4-a716-446655440000] - Video upload started
 2025-11-17 13:24:05 - src.tasks.worker - INFO - [550e8400-e29b-41d4-a716-446655440000] - Processing video job
 ```
 

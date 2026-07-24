@@ -1,7 +1,7 @@
 import pytest
 import time
 from unittest.mock import patch, MagicMock, call
-from src.core.redis_client import (
+from src.infrastructure.queue.redis_client import (
     RedisClient,
     CircuitBreaker,
     CircuitBreakerOpenException,
@@ -184,7 +184,7 @@ class TestRedisClient:
         mock_pool_from_url.assert_called_once()
         assert pool1 is pool2
 
-    @patch("src.core.redis_client.redis.Redis")
+    @patch("src.infrastructure.queue.redis_client.redis.Redis")
     def test_get_client_uses_pool(self, mock_redis_class):
         """Test get_client uses the connection pool."""
         mock_pool = MagicMock()
@@ -194,7 +194,7 @@ class TestRedisClient:
 
         mock_redis_class.assert_called_once_with(connection_pool=mock_pool)
 
-    @patch("src.core.redis_client.redis.Redis")
+    @patch("src.infrastructure.queue.redis_client.redis.Redis")
     @patch("time.sleep")
     def test_execute_with_retry_success_first_try(self, mock_sleep, mock_redis_class):
         """Test successful operation on first try."""
@@ -209,7 +209,7 @@ class TestRedisClient:
         assert result == "success"
         mock_sleep.assert_not_called()
 
-    @patch("src.core.redis_client.redis.Redis")
+    @patch("src.infrastructure.queue.redis_client.redis.Redis")
     @patch("time.sleep")
     def test_execute_with_retry_success_after_retry(self, mock_sleep, mock_redis_class):
         """Test successful operation after retries."""
@@ -233,7 +233,7 @@ class TestRedisClient:
         assert mock_sleep.call_count == 2
         mock_sleep.assert_has_calls([call(1.0), call(2.0)])
 
-    @patch("src.core.redis_client.redis.Redis")
+    @patch("src.infrastructure.queue.redis_client.redis.Redis")
     @patch("time.sleep")
     def test_execute_with_retry_max_retries_exceeded(
         self, mock_sleep, mock_redis_class
@@ -251,7 +251,7 @@ class TestRedisClient:
         # Should have tried 3 times, slept 2 times
         assert mock_sleep.call_count == 2
 
-    @patch("src.core.redis_client.redis.Redis")
+    @patch("src.infrastructure.queue.redis_client.redis.Redis")
     def test_execute_with_retry_circuit_breaker_open(self, mock_redis_class):
         """Test circuit breaker blocks retries when open."""
         mock_client = MagicMock()
@@ -271,7 +271,7 @@ class TestRedisClient:
         with pytest.raises(CircuitBreakerOpenException):
             self.redis_client._execute_with_retry(lambda: "success")
 
-    @patch("src.core.redis_client.redis.Redis")
+    @patch("src.infrastructure.queue.redis_client.redis.Redis")
     def test_ping_success(self, mock_redis_class):
         """Test successful ping."""
         mock_client = MagicMock()
@@ -283,7 +283,7 @@ class TestRedisClient:
         assert result is True
         mock_client.ping.assert_called_once()
 
-    @patch("src.core.redis_client.redis.Redis")
+    @patch("src.infrastructure.queue.redis_client.redis.Redis")
     def test_ping_failure(self, mock_redis_class):
         """Test ping failure."""
         mock_client = MagicMock()
@@ -294,7 +294,7 @@ class TestRedisClient:
 
         assert result is False
 
-    @patch("src.core.redis_client.redis.Redis")
+    @patch("src.infrastructure.queue.redis_client.redis.Redis")
     def test_lpush_operation(self, mock_redis_class):
         """Test lpush operation with retry logic."""
         mock_client = MagicMock()
@@ -306,7 +306,7 @@ class TestRedisClient:
         assert result == 1
         mock_client.lpush.assert_called_once_with("test_queue", "item1", "item2")
 
-    @patch("src.core.redis_client.redis.Redis")
+    @patch("src.infrastructure.queue.redis_client.redis.Redis")
     def test_blpop_operation(self, mock_redis_class):
         """Test blpop operation with retry logic."""
         mock_client = MagicMock()
@@ -318,7 +318,7 @@ class TestRedisClient:
         assert result == ("queue", b"item")
         mock_client.blpop.assert_called_once_with(["queue"], 1)
 
-    @patch("src.core.redis_client.redis.Redis")
+    @patch("src.infrastructure.queue.redis_client.redis.Redis")
     def test_llen_operation(self, mock_redis_class):
         """Test llen operation with retry logic."""
         mock_client = MagicMock()
@@ -330,7 +330,7 @@ class TestRedisClient:
         assert result == 5
         mock_client.llen.assert_called_once_with("test_queue")
 
-    @patch("src.core.redis_client.redis.Redis")
+    @patch("src.infrastructure.queue.redis_client.redis.Redis")
     def test_lrange_operation(self, mock_redis_class):
         """Test lrange operation with retry logic."""
         mock_client = MagicMock()
@@ -375,7 +375,7 @@ class TestCircuitBreakerRecovery:
         """Set up test fixtures."""
         self.redis_client = RedisClient()
 
-    @patch("src.core.redis_client.redis.Redis")
+    @patch("src.infrastructure.queue.redis_client.redis.Redis")
     def test_circuit_breaker_status_monitoring(self, mock_redis_class):
         """Test circuit breaker status monitoring."""
         mock_client = MagicMock()
@@ -412,7 +412,7 @@ class TestCircuitBreakerRecovery:
         assert status["state"] == "OPEN"
         assert status["failure_count"] == 10
 
-    @patch("src.core.redis_client.redis.Redis")
+    @patch("src.infrastructure.queue.redis_client.redis.Redis")
     def test_connection_pool_isolation(self, mock_redis_class):
         """Test that connection pool isolates connections properly."""
         mock_client1 = MagicMock()
@@ -431,7 +431,7 @@ class TestCircuitBreakerRecovery:
         call_args = mock_redis_class.call_args_list
         assert call_args[0][1]["connection_pool"] == call_args[1][1]["connection_pool"]
 
-    @patch("src.core.redis_client.redis.Redis")
+    @patch("src.infrastructure.queue.redis_client.redis.Redis")
     @patch("time.sleep")
     def test_timeout_handling(self, mock_sleep, mock_redis_class):
         """Test handling of Redis timeout errors."""
@@ -448,7 +448,7 @@ class TestCircuitBreakerRecovery:
         # Should have attempted retries
         assert mock_sleep.call_count == 2  # 2 retry attempts
 
-    @patch("src.core.redis_client.redis.Redis")
+    @patch("src.infrastructure.queue.redis_client.redis.Redis")
     def test_os_error_handling(self, mock_redis_class):
         """Test handling of OS errors (network issues)."""
         mock_client = MagicMock()

@@ -245,10 +245,7 @@ print(f"Next job: {next_job}")
 Monitor the health of Redis connections and reliability features:
 
 ```python
-from src.core.redis_client import get_redis_client
-
-# Get Redis client with circuit breaker
-redis_client = get_redis_client()
+from src.infrastructure.queue.redis_client import redis_client
 
 # Check circuit breaker status
 circuit_status = redis_client.get_circuit_breaker_status()
@@ -269,7 +266,7 @@ Query job status directly from database:
 
 ```python
 from sqlalchemy.orm import Session
-from src.schema.models import VideoJob, QueuedJob
+from src.infrastructure.db.models import VideoJob, QueuedJob
 
 def get_job_status(db: Session, upload_id: str):
     # Check active job status
@@ -355,5 +352,5 @@ curl http://localhost:8000/health | jq '.circuit_breaker'
 curl http://localhost:8000/health | jq '.queue_stats'
 
 # Monitor database fallback jobs
-python -c "from src.core.database import get_db; from src.schema.models import QueuedJob; db = next(get_db()); print(f'Fallback jobs: {db.query(QueuedJob).count()}')"
+python -c "from src.infrastructure.db.session import get_db; from src.infrastructure.db.models import QueuedJob; db = next(get_db()); print(f'Fallback jobs: {db.query(QueuedJob).count()}')"
 ```

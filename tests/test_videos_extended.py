@@ -2,8 +2,8 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from src.main import app
-from src.core.database import get_db
-from src.schema import models
+from src.infrastructure.db.session import get_db
+from src.infrastructure.db import models
 from tests.conftest import override_get_db
 
 app.dependency_overrides[get_db] = override_get_db
@@ -16,7 +16,7 @@ class TestVideoRouterExtended:
     def test_upload_video_missing_file(self, db_session):
         """Test video upload with missing file field."""
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -29,14 +29,14 @@ class TestVideoRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "missingfile", "password": "testpass"}
+            "/v1/auth/login", data={"username": "missingfile", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Try upload without file
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "No File Video"},
             headers=headers,
         )
@@ -49,7 +49,7 @@ class TestVideoRouterExtended:
     def test_upload_video_invalid_content_type(self, db_session):
         """Test video upload with invalid content type."""
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -62,13 +62,13 @@ class TestVideoRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "invalidtype", "password": "testpass"}
+            "/v1/auth/login", data={"username": "invalidtype", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "Invalid Type"},
             files={"file": ("test.txt", b"text content", "text/plain")},
             headers=headers,
@@ -83,11 +83,11 @@ class TestVideoRouterExtended:
     def test_upload_video_title_too_long(self, mocker, db_session):
         """Test video upload with title exceeding max length."""
         # Mock video duration probe
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 120.0
 
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -100,14 +100,14 @@ class TestVideoRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "longtitle", "password": "testpass"}
+            "/v1/auth/login", data={"username": "longtitle", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         long_title = "A" * 201  # Exceeds MAX_TITLE_LENGTH
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": long_title},
             files={"file": ("test.mp4", b"content", "video/mp4")},
             headers=headers,
@@ -122,11 +122,11 @@ class TestVideoRouterExtended:
     def test_upload_video_corrupt_file(self, mocker, db_session):
         """Test video upload with corrupt/invalid video file."""
         # Mock probe to return None (indicating corrupt file)
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = None
 
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -139,13 +139,13 @@ class TestVideoRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "corrupt", "password": "testpass"}
+            "/v1/auth/login", data={"username": "corrupt", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "Corrupt Video"},
             files={"file": ("corrupt.mp4", b"not a real video", "video/mp4")},
             headers=headers,
@@ -160,11 +160,11 @@ class TestVideoRouterExtended:
     def test_upload_video_too_short(self, mocker, db_session):
         """Test video upload with video shorter than minimum duration."""
         # Mock probe to return very short duration
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 0.5  # 0.5 seconds
 
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -177,13 +177,13 @@ class TestVideoRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "tooshort", "password": "testpass"}
+            "/v1/auth/login", data={"username": "tooshort", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "Too Short Video"},
             files={"file": ("short.mp4", b"content", "video/mp4")},
             headers=headers,
@@ -198,11 +198,11 @@ class TestVideoRouterExtended:
     def test_upload_video_too_long(self, mocker, db_session):
         """Test video upload with video longer than maximum duration."""
         # Mock probe to return very long duration
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 7201  # 7201 seconds (just over 2 hours)
 
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -215,13 +215,13 @@ class TestVideoRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "toolong", "password": "testpass"}
+            "/v1/auth/login", data={"username": "toolong", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "Too Long Video"},
             files={"file": ("long.mp4", b"content", "video/mp4")},
             headers=headers,
@@ -236,11 +236,11 @@ class TestVideoRouterExtended:
     def test_list_videos_pagination_edge_cases(self, mocker, db_session):
         """Test video listing with edge case pagination parameters."""
         # Mock video duration probe
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 60.0
 
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -253,27 +253,27 @@ class TestVideoRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "paginate", "password": "testpass"}
+            "/v1/auth/login", data={"username": "paginate", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Test negative skip
-        response = client.get("/videos/?skip=-1", headers=headers)
+        response = client.get("/v1/videos/?skip=-1", headers=headers)
         assert response.status_code == 400
         assert "must be non-negative" in response.json()["detail"]
 
         # Test zero limit
-        response = client.get("/videos/?limit=0", headers=headers)
+        response = client.get("/v1/videos/?limit=0", headers=headers)
         assert response.status_code == 400
         assert "must be between 1 and" in response.json()["detail"]
 
         # Test negative limit
-        response = client.get("/videos/?limit=-1", headers=headers)
+        response = client.get("/v1/videos/?limit=-1", headers=headers)
         assert response.status_code == 400
 
         # Test limit exceeding maximum
-        response = client.get("/videos/?limit=200", headers=headers)
+        response = client.get("/v1/videos/?limit=200", headers=headers)
         assert response.status_code == 400
         assert "must be between 1 and" in response.json()["detail"]
 
@@ -284,7 +284,7 @@ class TestVideoRouterExtended:
     def test_get_video_invalid_upload_id(self, db_session):
         """Test getting video with invalid upload ID format."""
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -297,18 +297,18 @@ class TestVideoRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "invalidid", "password": "testpass"}
+            "/v1/auth/login", data={"username": "invalidid", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Test upload ID too short
-        response = client.get("/videos/abc/", headers=headers)
+        response = client.get("/v1/videos/abc/", headers=headers)
         assert response.status_code == 400
         assert "Invalid upload ID format" in response.json()["detail"]
 
         # Test upload ID with invalid characters
-        response = client.get("/videos/abcO1234/", headers=headers)
+        response = client.get("/v1/videos/abcO1234/", headers=headers)
         assert response.status_code == 400
         assert "Invalid upload ID format" in response.json()["detail"]
 
@@ -319,7 +319,7 @@ class TestVideoRouterExtended:
     def test_delete_video_not_found(self, db_session):
         """Test deleting non-existent video."""
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -332,12 +332,12 @@ class TestVideoRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "deletenotfound", "password": "testpass"}
+            "/v1/auth/login", data={"username": "deletenotfound", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
-        response = client.delete("/videos/abcdefgh/", headers=headers)
+        response = client.delete("/v1/videos/abcdefgh/", headers=headers)
         assert response.status_code == 404
         assert "Video not found" in response.json()["detail"]
 
@@ -348,11 +348,11 @@ class TestVideoRouterExtended:
     def test_delete_video_wrong_user(self, mocker, db_session):
         """Test deleting video owned by another user."""
         # Mock video duration probe
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 120.0
 
         # Create two users
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
 
@@ -374,13 +374,13 @@ class TestVideoRouterExtended:
 
         # Login as user1 and create video
         response = client.post(
-            "/auth/login", data={"username": "deleteowner", "password": "testpass"}
+            "/v1/auth/login", data={"username": "deleteowner", "password": "testpass"}
         )
         token1 = response.json()["data"]["access_token"]
         headers1 = {"Authorization": f"Bearer {token1}"}
 
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "Owner's Video"},
             files={"file": ("owner.mp4", b"content", "video/mp4")},
             headers=headers1,
@@ -389,12 +389,12 @@ class TestVideoRouterExtended:
 
         # Login as user2 and try to delete
         response = client.post(
-            "/auth/login", data={"username": "deletestealer", "password": "testpass"}
+            "/v1/auth/login", data={"username": "deletestealer", "password": "testpass"}
         )
         token2 = response.json()["data"]["access_token"]
         headers2 = {"Authorization": f"Bearer {token2}"}
 
-        response = client.delete(f"/videos/{upload_id}/", headers=headers2)
+        response = client.delete(f"/v1/videos/{upload_id}/", headers=headers2)
         assert response.status_code == 403
         assert "Access denied" in response.json()["detail"]
 
@@ -413,11 +413,11 @@ class TestVideoRouterExtended:
     def test_upload_video_auto_title_generation(self, mocker, db_session):
         """Test automatic title generation from filename."""
         # Mock video duration probe
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 120.0
 
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -430,14 +430,14 @@ class TestVideoRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "autotitle", "password": "testpass"}
+            "/v1/auth/login", data={"username": "autotitle", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Upload without title - should auto-generate from filename
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             files={"file": ("my_test_video.mp4", b"content", "video/mp4")},
             headers=headers,
         )
@@ -461,11 +461,11 @@ class TestVideoRouterExtended:
     def test_upload_video_empty_title_fallback(self, mocker, db_session):
         """Test fallback when title is empty and filename is invalid."""
         # Mock video duration probe
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 120.0
 
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -478,14 +478,14 @@ class TestVideoRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "fallback", "password": "testpass"}
+            "/v1/auth/login", data={"username": "fallback", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Upload with empty title and no filename
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": ""},
             files={"file": (None, b"content", "video/mp4")},
             headers=headers,
@@ -500,7 +500,7 @@ class TestVideoRouterExtended:
     def test_list_videos_empty_result(self, db_session):
         """Test listing videos when user has no videos."""
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -513,12 +513,12 @@ class TestVideoRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "emptyvideos", "password": "testpass"}
+            "/v1/auth/login", data={"username": "emptyvideos", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
-        response = client.get("/videos/", headers=headers)
+        response = client.get("/v1/videos/", headers=headers)
         assert response.status_code == 200
         videos = response.json()["data"]
         assert videos == []  # Should be empty list
@@ -530,11 +530,11 @@ class TestVideoRouterExtended:
     def test_get_video_soft_deleted(self, mocker, db_session):
         """Test that soft deleted videos are not accessible."""
         # Mock video duration probe
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 120.0
 
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -547,14 +547,14 @@ class TestVideoRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "softdelete", "password": "testpass"}
+            "/v1/auth/login", data={"username": "softdelete", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Create video
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "Soft Delete Test"},
             files={"file": ("soft.mp4", b"content", "video/mp4")},
             headers=headers,
@@ -562,11 +562,11 @@ class TestVideoRouterExtended:
         upload_id = response.json()["data"]["upload_id"]
 
         # Soft delete the video
-        response = client.delete(f"/videos/{upload_id}/", headers=headers)
+        response = client.delete(f"/v1/videos/{upload_id}/", headers=headers)
         assert response.status_code == 204
 
         # Try to access the deleted video
-        response = client.get(f"/videos/{upload_id}/", headers=headers)
+        response = client.get(f"/v1/videos/{upload_id}/", headers=headers)
         assert response.status_code == 404
         assert "Video not found" in response.json()["detail"]
 
@@ -578,11 +578,11 @@ class TestVideoRouterExtended:
     def test_upload_video_database_transaction_failure(self, mocker, db_session):
         """Test video upload when database transaction fails during video creation."""
         # Mock video duration probe
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 120.0
 
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("Testpass123!")
         user = models.User(
@@ -595,7 +595,7 @@ class TestVideoRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "dbtransfail", "password": "Testpass123!"}
+            "/v1/auth/login", data={"username": "dbtransfail", "password": "Testpass123!"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
@@ -605,7 +605,7 @@ class TestVideoRouterExtended:
         mock_commit.side_effect = Exception("Database transaction failed")
 
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "DB Transaction Fail"},
             files={"file": ("db_fail.mp4", b"content", "video/mp4")},
             headers=headers,
@@ -623,15 +623,15 @@ class TestVideoRouterExtended:
     def test_upload_video_job_creation_failure(self, mocker, db_session):
         """Test video upload when video job creation fails."""
         # Mock video duration probe
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 120.0
 
         # Mock job creation to fail
-        mock_create_job = mocker.patch("src.services.crud.create_video_job")
+        mock_create_job = mocker.patch("src.application.video_service.job_repository.create")
         mock_create_job.side_effect = Exception("Job creation failed")
 
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("Testpass123!")
         user = models.User(
@@ -644,13 +644,13 @@ class TestVideoRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "jobfail", "password": "Testpass123!"}
+            "/v1/auth/login", data={"username": "jobfail", "password": "Testpass123!"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "Job Creation Fail"},
             files={"file": ("job_fail.mp4", b"content", "video/mp4")},
             headers=headers,
@@ -665,15 +665,15 @@ class TestVideoRouterExtended:
     def test_upload_video_file_move_failure(self, mocker, db_session):
         """Test video upload when file move operation fails."""
         # Mock video duration probe
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 120.0
 
-        # Mock os.rename to fail
-        mock_rename = mocker.patch("os.rename")
+        # Mock Path.rename to fail
+        mock_rename = mocker.patch("pathlib.Path.rename")
         mock_rename.side_effect = OSError("File move failed")
 
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("Testpass123!")
         user = models.User(
@@ -686,13 +686,13 @@ class TestVideoRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "movefail", "password": "Testpass123!"}
+            "/v1/auth/login", data={"username": "movefail", "password": "Testpass123!"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "File Move Fail"},
             files={"file": ("move_fail.mp4", b"content", "video/mp4")},
             headers=headers,
@@ -707,17 +707,17 @@ class TestVideoRouterExtended:
     def test_upload_video_redis_failure(self, mocker, db_session):
         """Test video upload when Redis queue push fails."""
         # Mock video duration probe
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 120.0
 
         # Mock job queue enqueue to fail
         mock_enqueue = mocker.patch(
-            "src.services.job_queue.JobQueueService.enqueue_job"
+            "src.infrastructure.queue.job_queue.JobQueueService.enqueue_job"
         )
         mock_enqueue.return_value = False  # Simulate failure
 
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("Testpass123!")
         user = models.User(
@@ -730,13 +730,13 @@ class TestVideoRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "redisfail", "password": "Testpass123!"}
+            "/v1/auth/login", data={"username": "redisfail", "password": "Testpass123!"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "Redis Fail"},
             files={"file": ("redis_fail.mp4", b"content", "video/mp4")},
             headers=headers,
@@ -762,11 +762,11 @@ class TestVideoRouterExtended:
     def test_upload_video_final_commit_failure(self, mocker, db_session):
         """Test video upload when final database commit fails."""
         # Mock video duration probe
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 120.0
 
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("Testpass123!")
         user = models.User(
@@ -779,17 +779,17 @@ class TestVideoRouterExtended:
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "commitfail", "password": "Testpass123!"}
+            "/v1/auth/login", data={"username": "commitfail", "password": "Testpass123!"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
-        # Mock the final commit in the crud service to fail
-        mock_crud_commit = mocker.patch("src.services.crud.Session.commit")
-        mock_crud_commit.side_effect = Exception("Final commit failed")
+        # Mock video create to fail (simulates DB commit failure during create)
+        mock_create = mocker.patch("src.application.video_service.video_repository.create")
+        mock_create.side_effect = Exception("Final commit failed")
 
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "Final Commit Fail"},
             files={"file": ("commit_fail.mp4", b"content", "video/mp4")},
             headers=headers,
