@@ -137,7 +137,23 @@ def create_app() -> FastAPI:
 
     @application.get("/")
     def read_root():
-        return {"message": "OnStream API", "version": "0.3.0"}
+        return {
+            "message": "OnStream API",
+            "version": "0.3.0",
+            "docs": "/docs",
+            "scalar": "/scalar",
+        }
+
+    @application.get("/scalar", include_in_schema=False)
+    async def scalar_api_reference():
+        from scalar_fastapi import AgentScalarConfig, get_scalar_api_reference
+
+        return get_scalar_api_reference(
+            openapi_url=application.openapi_url,
+            title=f"{application.title} API",
+            scalar_proxy_url="https://proxy.scalar.com",
+            agent=AgentScalarConfig(disabled=True),
+        )
 
     if settings.PROMETHEUS_ENABLED:
 

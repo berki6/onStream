@@ -23,7 +23,8 @@ python start_worker.py
 docker compose up --build
 ```
 
-- API / Swagger: http://localhost:8000/docs  
+- Swagger UI: http://localhost:8000/docs  
+- Scalar API reference: http://localhost:8000/scalar  
 - Compose also runs Postgres, Redis, MinIO, MediaMTX (RTMP `:1935`, WebRTC `:8889`)
 
 Optional profiles: `ai`, `gpu`, `turn`, `edge` (Caddy), `obs` (Prometheus/Grafana).

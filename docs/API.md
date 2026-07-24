@@ -2,7 +2,15 @@
 
 Index: [`README.md`](README.md).
 
-This document is the route catalogue for OnStream’s public HTTP surface. Interactive schemas, examples, and try-it forms are available from the running server at `/docs` (OpenAPI / Swagger). Architectural context lives in [`FOUNDATION.md`](FOUNDATION.md); behavioral detail for media and live flows lives in the sibling design documents.
+This document is the route catalogue for OnStream’s public HTTP surface. Interactive exploration is available on the running server at:
+
+| UI | URL |
+|----|-----|
+| Scalar API reference | [`/scalar`](http://localhost:8000/scalar) (recommended) |
+| Swagger UI | [`/docs`](http://localhost:8000/docs) |
+| ReDoc | [`/redoc`](http://localhost:8000/redoc) |
+
+Architectural context lives in [`FOUNDATION.md`](FOUNDATION.md); behavioral detail for media and live flows lives in the sibling design documents.
 
 Unless noted, JSON responses use the standard envelope `{ success, data, message, request_id, timestamp, api_version }`. List endpoints may add `pagination`. Authenticate with `Authorization: Bearer <access_token>` or, where supported, `X-API-Key: <key>`.
 
@@ -98,6 +106,7 @@ These routes are mounted on the application root for probes, metrics scrapers, a
 | `/health/live` | liveness |
 | `/health/ready` | readiness |
 | `/metrics` | Prometheus (if enabled) |
+| `/scalar` | Scalar interactive API reference |
 | `/demo/` | static hls.js (if `DEMO_PLAYER_ENABLED`) |
 
 ## Client guides
