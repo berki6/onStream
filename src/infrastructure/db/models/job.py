@@ -39,6 +39,7 @@ class QueuedJob(Base):
     upload_id = Column(String(12), nullable=False, index=True)
     queue_name = Column(String(100), nullable=False, index=True)
     status = Column(String(20), default="pending", index=True)
+    job_type = Column(String(32), default="transcode", nullable=False, index=True)
     retry_count = Column(Integer, default=0)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -47,4 +48,5 @@ class QueuedJob(Base):
     __table_args__ = (
         Index("idx_queued_jobs_status_queue", "status", "queue_name"),
         Index("idx_queued_jobs_upload_id", "upload_id"),
+        Index("idx_queued_jobs_upload_type", "upload_id", "job_type", "status"),
     )

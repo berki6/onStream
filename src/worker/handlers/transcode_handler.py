@@ -218,8 +218,9 @@ def process_video(session, job):
             stage=models.JobStage.READY.value,
             message="Job completed successfully",
         )
-        job_queue.mark_job_completed(job.upload_id)
+        job_queue.mark_job_completed(job.upload_id, job_type="transcode")
         emit_video_event(session, video, "video.ready")
+        _enqueue_ai_jobs(session, job.upload_id)
         logger.info(f"ABR processing completed for {job.upload_id} ({len(encoded)} rungs)")
 
     except Exception as e:
@@ -239,8 +240,20 @@ def process_video(session, job):
         )
         video.status = models.VideoStatus.ERROR
         session.commit()
-        job_queue.mark_job_failed(job.upload_id, short_error)
+        job_queue.mark_job_failed(job.upload_id, short_error, job_type="transcode")
         emit_video_event(session, video, "video.failed", {"error": short_error})
+
+
+def _enqueue_ai_jobs(session, upload_id: str) -> None:
+    """Enqueue post-transcode AI jobs when AI_ENABLED."""
+    if not settings.AI_ENABLED:
+        return
+    if settings.AI_MODERATION_ENABLED:
+        job_queue.enqueue_job(upload_id, session, job_type="moderation")
+    if settings.AI_SMART_THUMBNAIL_ENABLED:
+        job_queue.enqueue_job(upload_id, session, job_type="smart_thumbnail")
+    if settings.AI_CAPTIONS_ENABLED:
+        job_queue.enqueue_job(upload_id, session, job_type="captions")
 
 
 def process_job(upload_id: str):

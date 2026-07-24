@@ -37,6 +37,11 @@ from src.schemas.playlist import (
 )
 from src.schemas.webhook import WebhookEndpointCreate
 from src.schemas.api_key import ApiKeyCreate
+from src.schemas.moderation import (
+    ModerationReviewRequest,
+    SearchResponse,
+    SearchResultItem,
+)
 
 __all__ = [
     "APIResponse",
@@ -74,4 +79,7 @@ __all__ = [
     "PlaylistVideoBase",
     "PlaylistVideoCreate",
     "PlaylistVideo",
+    "ModerationReviewRequest",
+    "SearchResponse",
+    "SearchResultItem",
 ]

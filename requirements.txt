@@ -23,3 +23,5 @@ psycopg2-binary==2.9.10
 boto3==1.35.99
 prometheus-client==0.21.1
 sentry-sdk[fastapi]==2.19.2
+
+# Optional AI media (faster-whisper, sentence-transformers): see requirements-ai.txt

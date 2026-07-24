@@ -12,6 +12,7 @@ class VideoStatus(str, Enum):
     READY = "READY"
     ERROR = "ERROR"
     DELETED = "DELETED"
+    QUARANTINED = "QUARANTINED"
 
 
 class VideoBase(BaseModel):
@@ -78,6 +79,16 @@ class Video(VideoBase):
     thumbnail_path: Optional[str] = None
     storyboard_path: Optional[str] = None
     storyboard_vtt_path: Optional[str] = None
+    caption_vtt_path: Optional[str] = None
+    transcript_path: Optional[str] = None
+    detected_language: Optional[str] = None
+    chapters_json: Optional[str] = None
+    suggested_title: Optional[str] = None
+    suggested_tags: Optional[str] = None
+    moderation_score: Optional[float] = None
+    moderation_labels: Optional[str] = None
+    quarantined_at: Optional[datetime] = None
+    preview_clip_path: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
     status: VideoStatus
@@ -96,6 +107,9 @@ class Video(VideoBase):
         "thumbnail_path",
         "storyboard_path",
         "storyboard_vtt_path",
+        "caption_vtt_path",
+        "transcript_path",
+        "preview_clip_path",
         mode="before",
     )
     @classmethod

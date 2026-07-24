@@ -184,6 +184,7 @@ class TestDatabaseModels:
             models.VideoStatus.READY,
             models.VideoStatus.ERROR,
             models.VideoStatus.DELETED,
+            models.VideoStatus.QUARANTINED,
         ]
 
         videos = []

@@ -155,3 +155,20 @@ def create_playback_token(
     except AppError as e:
         raise_app_error(e)
     return api_ok(request, data, message="Playback token issued")
+
+
+@router.get("/{video_id}/chapters", response_model=APIResponse)
+def get_video_chapters(
+    request: Request,
+    video_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Return AI-generated chapters for a video."""
+    from src.application import caption_service
+
+    try:
+        chapters = caption_service.get_chapters(db, video_id, current_user.id)
+    except AppError as e:
+        raise_app_error(e)
+    return api_ok(request, {"chapters": chapters}, message="Chapters retrieved")

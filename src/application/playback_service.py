@@ -20,7 +20,12 @@ from src.core.config import settings
 from src.core.security.tokens import create_stream_token, decode_token
 from src.infrastructure.db import models
 from src.infrastructure.db.repositories import video_repository
+from src.infrastructure.media.abr import inject_subtitle_track
 from src.infrastructure.storage import get_storage
+
+
+def _is_playable(video: models.Video) -> bool:
+    return video.status in (models.VideoStatus.READY, models.VideoStatus.QUARANTINED)
 
 
 def issue_token(
@@ -36,7 +41,7 @@ def issue_token(
         raise AppError("Video not found", code="not_found", status_code=404)
     if video.user_id != user_id:
         raise AppError("Access denied", code="forbidden", status_code=403)
-    if video.status != models.VideoStatus.READY:
+    if not _is_playable(video):
         raise AppError(
             "Video is not ready for streaming", code="conflict", status_code=409
         )
@@ -73,10 +78,40 @@ def authorize_access(
     Authorize playback access.
 
     Returns stream token string to rewrite into playlists, if any.
+    Quarantined videos: only the owner may play (public access denied).
     """
     check_origin(origin_or_referer)
 
-    if video.is_public:
+    is_owner = current_user is not None and video.user_id == current_user.id
+
+    if video.status == models.VideoStatus.QUARANTINED:
+        if is_owner:
+            return token
+        # Also allow owner via access/stream token without current_user loaded
+        candidate = token or bearer
+        if candidate:
+            try:
+                payload = decode_token(candidate, expected_type="stream")
+                if payload.get("sub") == video.upload_id and is_owner:
+                    return candidate
+            except JWTError:
+                pass
+            try:
+                payload = decode_token(candidate, expected_type="access")
+                if current_user and payload.get("sub") == current_user.username:
+                    if video.user_id == current_user.id:
+                        return None
+            except JWTError:
+                pass
+        if current_user:
+            raise AppError("Access denied", code="forbidden", status_code=403)
+        raise AppError(
+            "Stream token required for private video",
+            code="unauthorized",
+            status_code=401,
+        )
+
+    if video.is_public and video.status == models.VideoStatus.READY:
         return token
 
     candidate = token or bearer
@@ -95,7 +130,7 @@ def authorize_access(
         except JWTError:
             pass
 
-    if current_user and video.user_id == current_user.id:
+    if is_owner:
         return None
 
     if current_user:
@@ -136,12 +171,19 @@ def rewrite_playlist(content: str, token: Optional[str]) -> bytes:
     return ("\n".join(out_lines) + "\n").encode("utf-8")
 
 
+def prepare_master_playlist(video: models.Video, content: str) -> str:
+    """Inject subtitle track into master playlist when captions exist."""
+    if not video.caption_vtt_path:
+        return content
+    return inject_subtitle_track(content, captions_uri="captions.vtt")
+
+
 def get_ready_video(db: Session, video_id: str) -> models.Video:
     validate_public_video_id(video_id)
     video = video_repository.get_by_upload_id(db, video_id)
     if not video:
         raise AppError("Video not found", code="not_found", status_code=404)
-    if video.status != models.VideoStatus.READY:
+    if not _is_playable(video):
         raise AppError(
             "Video is not ready for streaming", code="conflict", status_code=409
         )

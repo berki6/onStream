@@ -89,6 +89,35 @@ services:
       api:
         condition: service_started
 
+  worker-ai:
+    profiles: ["ai"]
+    build: .
+    env_file:
+      - .env.docker
+    environment:
+      AI_ENABLED: "true"
+      AI_CAPTIONS_PROVIDER: faster_whisper
+      AI_EMBEDDINGS_PROVIDER: sentence_transformers
+      WHISPER_MODEL: tiny
+      EMBEDDING_MODEL: all-MiniLM-L6-v2
+    volumes:
+      - media_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      createbuckets:
+        condition: service_completed_successfully
+      api:
+        condition: service_started
+    # Install AI extras at start (image keeps core deps only)
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        pip install -q -r requirements-ai.txt &&
+        ./scripts/docker-entrypoint.sh worker
+
 volumes:
   postgres_data:
   minio_data:

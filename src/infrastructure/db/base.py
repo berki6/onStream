@@ -11,6 +11,7 @@ class VideoStatus(PyEnum):
     READY = "READY"
     ERROR = "ERROR"
     DELETED = "DELETED"
+    QUARANTINED = "QUARANTINED"
 
 
 class JobStage(PyEnum):
@@ -21,6 +22,15 @@ class JobStage(PyEnum):
     READY = "ready"
     ERROR = "error"
     CANCELLED = "cancelled"
+
+
+class JobType(PyEnum):
+    TRANSCODE = "transcode"
+    CAPTIONS = "captions"
+    CHAPTERS = "chapters"
+    MODERATION = "moderation"
+    EMBEDDINGS = "embeddings"
+    SMART_THUMBNAIL = "smart_thumbnail"
 
 
 class UploadSessionStatus(PyEnum):

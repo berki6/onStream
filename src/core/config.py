@@ -101,6 +101,23 @@ class Settings(BaseSettings):
         "PUBLIC_API_BASE_URL", "http://localhost:8000"
     )
 
+    # AI media intelligence (off by default for CI)
+    AI_ENABLED: bool = _env_bool("AI_ENABLED", "false")
+    AI_CAPTIONS_ENABLED: bool = _env_bool("AI_CAPTIONS_ENABLED", "true")
+    AI_CHAPTERS_ENABLED: bool = _env_bool("AI_CHAPTERS_ENABLED", "true")
+    AI_MODERATION_ENABLED: bool = _env_bool("AI_MODERATION_ENABLED", "true")
+    AI_EMBEDDINGS_ENABLED: bool = _env_bool("AI_EMBEDDINGS_ENABLED", "true")
+    AI_SMART_THUMBNAIL_ENABLED: bool = _env_bool("AI_SMART_THUMBNAIL_ENABLED", "true")
+    WHISPER_MODEL: str = os.environ.get("WHISPER_MODEL", "tiny")
+    EMBEDDING_MODEL: str = os.environ.get("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+    AI_MODERATION_THRESHOLD: float = float(
+        os.environ.get("AI_MODERATION_THRESHOLD", "0.7")
+    )
+    AI_CAPTIONS_PROVIDER: str = os.environ.get("AI_CAPTIONS_PROVIDER", "faster_whisper")
+    AI_EMBEDDINGS_PROVIDER: str = os.environ.get(
+        "AI_EMBEDDINGS_PROVIDER", "sentence_transformers"
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

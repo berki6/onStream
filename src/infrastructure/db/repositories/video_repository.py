@@ -69,3 +69,45 @@ def update_fields(db: Session, video: models.Video, **fields: Any) -> models.Vid
     db.commit()
     db.refresh(video)
     return video
+
+
+def search_keyword(
+    db: Session,
+    user_id: int,
+    query: str,
+    limit: int = 20,
+):
+    """ILIKE keyword search over title/description for the user's videos."""
+    like = f"%{query}%"
+    return (
+        db.query(models.Video)
+        .filter(models.Video.user_id == user_id)
+        .filter(models.Video.status != VideoStatus.DELETED)
+        .filter(
+            (models.Video.title.ilike(like))
+            | (models.Video.description.ilike(like))
+            | (models.Video.suggested_title.ilike(like))
+            | (models.Video.suggested_tags.ilike(like))
+        )
+        .limit(limit)
+        .all()
+    )
+
+
+def list_quarantined(db: Session, user_id: int, skip: int = 0, limit: int = 100):
+    total = (
+        db.query(models.Video)
+        .filter(models.Video.user_id == user_id)
+        .filter(models.Video.status == VideoStatus.QUARANTINED)
+        .count()
+    )
+    videos = (
+        db.query(models.Video)
+        .filter(models.Video.user_id == user_id)
+        .filter(models.Video.status == VideoStatus.QUARANTINED)
+        .order_by(models.Video.quarantined_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return videos, total

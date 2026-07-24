@@ -8,6 +8,7 @@ from src import schemas
 from src.infrastructure.db.repositories import job_repository, video_repository
 from tests.conftest import override_get_db
 import redis
+import json
 from src.core.config import settings
 from unittest.mock import patch, MagicMock, call
 
@@ -66,7 +67,13 @@ def test_get_video_job_status(db_session: Session, test_user, mocker):
             if queue_length > 0:  # Only check if Redis is working
                 # Get the job from queue
                 queued_job = redis_client.lrange("video_jobs_queue", -1, -1)
-                assert queued_job[0].decode("utf-8") == upload_id
+                raw = queued_job[0].decode("utf-8")
+                try:
+                    payload = json.loads(raw)
+                    assert payload["upload_id"] == upload_id
+                    assert payload.get("job_type", "transcode") == "transcode"
+                except json.JSONDecodeError:
+                    assert raw == upload_id
     except Exception:
         # Redis not available in test environment, that's OK
         pass
@@ -193,9 +200,11 @@ class TestJobQueueReliability:
         result = self.job_queue.enqueue_job("testupload123", db_session)
 
         assert result is True
-        self.mock_redis_client.lpush.assert_called_once_with(
-            "video_jobs_queue", "testupload123"
-        )
+        self.mock_redis_client.lpush.assert_called_once()
+        call_args = self.mock_redis_client.lpush.call_args[0]
+        assert call_args[0] == "video_jobs_queue"
+        payload = json.loads(call_args[1])
+        assert payload == {"upload_id": "testupload123", "job_type": "transcode"}
 
     def test_enqueue_job_redis_failure_fallback_to_db(self, db_session):
         """Test job enqueue falls back to database when Redis fails."""
@@ -217,6 +226,7 @@ class TestJobQueueReliability:
         assert queued_job is not None
         assert queued_job.status == "pending"
         assert queued_job.queue_name == "video_jobs_queue"
+        assert queued_job.job_type == "transcode"
 
         # Clean up
         db_session.delete(queued_job)
@@ -266,17 +276,29 @@ class TestJobQueueReliability:
 
     def test_dequeue_job_redis_success(self):
         """Test successful job dequeue from Redis."""
+        payload = json.dumps(
+            {"upload_id": "testupload123", "job_type": "transcode"}
+        ).encode("utf-8")
         self.mock_redis_client.blpop.return_value = (
             "video_jobs_queue",
-            b"testupload123",
+            payload,
         )
 
         result = self.job_queue.dequeue_job()
 
-        assert result == "testupload123"
+        assert result == {"upload_id": "testupload123", "job_type": "transcode"}
         self.mock_redis_client.blpop.assert_called_once_with(
             "video_jobs_queue", timeout=1
         )
+
+    def test_dequeue_job_legacy_string_payload(self):
+        """Legacy plain upload_id strings map to job_type=transcode."""
+        self.mock_redis_client.blpop.return_value = (
+            "video_jobs_queue",
+            b"testupload123",
+        )
+        result = self.job_queue.dequeue_job()
+        assert result == {"upload_id": "testupload123", "job_type": "transcode"}
 
     @patch("src.infrastructure.queue.job_queue.get_db")
     def test_dequeue_job_redis_failure_fallback_to_db(self, mock_get_db):
@@ -296,6 +318,7 @@ class TestJobQueueReliability:
         # Mock queued job in database
         mock_job = MagicMock()
         mock_job.upload_id = "testupload123"
+        mock_job.job_type = "transcode"
         mock_job.status = "pending"
         mock_job.retry_count = 0
         mock_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
@@ -306,6 +329,8 @@ class TestJobQueueReliability:
 
         # Check that a job was returned and database was committed
         assert result is not None
+        assert result["upload_id"] == "testupload123"
+        assert result["job_type"] == "transcode"
         assert mock_session.commit.called
         assert mock_job.status == "processing"
         assert mock_job.retry_count == 1
@@ -384,8 +409,10 @@ class TestJobQueueReliability:
         # Mock finding jobs
         mock_job1 = MagicMock()
         mock_job1.upload_id = "upload1"
+        mock_job1.job_type = "transcode"
         mock_job2 = MagicMock()
         mock_job2.upload_id = "upload2"
+        mock_job2.job_type = "captions"
         mock_session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
             mock_job1,
             mock_job2,
@@ -398,6 +425,10 @@ class TestJobQueueReliability:
 
         # Check that Redis was called for both jobs and database was committed
         assert self.mock_redis_client.lpush.call_count == 2
+        first_payload = json.loads(self.mock_redis_client.lpush.call_args_list[0][0][1])
+        second_payload = json.loads(self.mock_redis_client.lpush.call_args_list[1][0][1])
+        assert first_payload == {"upload_id": "upload1", "job_type": "transcode"}
+        assert second_payload == {"upload_id": "upload2", "job_type": "captions"}
         assert mock_session.commit.called
 
     @patch("src.infrastructure.queue.job_queue.get_db")
@@ -412,8 +443,10 @@ class TestJobQueueReliability:
         # Mock finding jobs
         mock_job1 = MagicMock()
         mock_job1.upload_id = "upload1"
+        mock_job1.job_type = "transcode"
         mock_job2 = MagicMock()
         mock_job2.upload_id = "upload2"
+        mock_job2.job_type = "transcode"
         mock_session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
             mock_job1,
             mock_job2,

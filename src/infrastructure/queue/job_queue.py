@@ -4,8 +4,14 @@ Job queue service with database persistence fallback.
 This service provides a robust job queue that uses Redis as primary storage
 but falls back to database persistence when Redis is unavailable. It also
 handles job recovery when Redis comes back online.
+
+Payload format (JSON): {"upload_id": "...", "job_type": "transcode"}
+Legacy plain-string payloads are treated as job_type=transcode.
 """
 
+from __future__ import annotations
+
+import json
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -23,6 +29,26 @@ from src.infrastructure.queue.redis_client import (
 logger = get_logger(__name__)
 
 
+def _encode_payload(upload_id: str, job_type: str) -> str:
+    return json.dumps({"upload_id": upload_id, "job_type": job_type})
+
+
+def _parse_payload(raw: str) -> dict:
+    """Parse Redis/DB payload into {upload_id, job_type}. Legacy strings => transcode."""
+    if not raw:
+        return {"upload_id": "", "job_type": "transcode"}
+    try:
+        data = json.loads(raw)
+        if isinstance(data, dict) and "upload_id" in data:
+            return {
+                "upload_id": str(data["upload_id"]),
+                "job_type": str(data.get("job_type") or "transcode"),
+            }
+    except (json.JSONDecodeError, TypeError, ValueError):
+        pass
+    return {"upload_id": raw, "job_type": "transcode"}
+
+
 class JobQueueService:
     """Service for managing job queues with Redis primary and database fallback."""
 
@@ -31,28 +57,34 @@ class JobQueueService:
         self.queue_name = "video_jobs_queue"
         self.max_recovery_batch_size = 100
 
-    def enqueue_job(self, upload_id: str, db: Session) -> bool:
+    def enqueue_job(
+        self, upload_id: str, db: Session, job_type: str = "transcode"
+    ) -> bool:
         """
         Enqueue a job, trying Redis first, then falling back to database.
 
         Returns True if successfully queued, False otherwise.
         """
+        payload = _encode_payload(upload_id, job_type)
+
         # Try Redis first
         try:
-            self.redis_client.lpush(self.queue_name, upload_id)
-            logger.info(f"Job {upload_id} queued in Redis")
+            self.redis_client.lpush(self.queue_name, payload)
+            logger.info(f"Job {upload_id}/{job_type} queued in Redis")
             return True
         except (CircuitBreakerOpenException, Exception) as e:
             logger.warning(
-                f"Redis unavailable for job {upload_id}, falling back to database: {e}"
+                f"Redis unavailable for job {upload_id}/{job_type}, "
+                f"falling back to database: {e}"
             )
 
             # Fall back to database storage
             try:
-                # Check if job already exists in database queue
                 existing_job = (
                     db.query(models.QueuedJob)
-                    .filter_by(upload_id=upload_id, status="pending")
+                    .filter_by(
+                        upload_id=upload_id, status="pending", job_type=job_type
+                    )
                     .first()
                 )
 
@@ -61,41 +93,50 @@ class JobQueueService:
                         upload_id=upload_id,
                         queue_name=self.queue_name,
                         status="pending",
+                        job_type=job_type,
                         retry_count=0,
                         created_at=datetime.now(timezone.utc),
                     )
                     db.add(queued_job)
                     db.commit()
-                    logger.info(f"Job {upload_id} queued in database fallback")
+                    logger.info(
+                        f"Job {upload_id}/{job_type} queued in database fallback"
+                    )
                     return True
                 else:
-                    logger.info(f"Job {upload_id} already queued in database")
+                    logger.info(
+                        f"Job {upload_id}/{job_type} already queued in database"
+                    )
                     return True
 
             except Exception as db_error:
                 logger.error(
-                    f"Failed to queue job {upload_id} in database fallback: {db_error}"
+                    f"Failed to queue job {upload_id}/{job_type} in database "
+                    f"fallback: {db_error}"
                 )
                 return False
 
-    def dequeue_job(self, timeout: int = 1) -> Optional[str]:
+    def dequeue_job(self, timeout: int = 1) -> Optional[dict]:
         """
         Dequeue a job from Redis, or recover from database if Redis is available.
 
-        Returns upload_id if job found, None otherwise.
+        Returns {"upload_id": str, "job_type": str} if found, None otherwise.
         """
         # Try Redis first
         try:
             result = self.redis_client.blpop(self.queue_name, timeout=timeout)
             if result:
-                _, upload_id_bytes = result
-                upload_id = (
-                    upload_id_bytes.decode("utf-8")
-                    if isinstance(upload_id_bytes, bytes)
-                    else upload_id_bytes
+                _, raw_bytes = result
+                raw = (
+                    raw_bytes.decode("utf-8")
+                    if isinstance(raw_bytes, bytes)
+                    else raw_bytes
                 )
-                logger.info(f"Job {upload_id} dequeued from Redis")
-                return upload_id
+                job = _parse_payload(raw)
+                logger.info(
+                    f"Job {job['upload_id']}/{job['job_type']} dequeued from Redis"
+                )
+                return job
         except (CircuitBreakerOpenException, Exception) as e:
             logger.warning(
                 f"Redis unavailable for dequeue, checking database recovery: {e}"
@@ -104,11 +145,10 @@ class JobQueueService:
         # If Redis is down, try to recover jobs from database
         return self._recover_job_from_database()
 
-    def _recover_job_from_database(self) -> Optional[str]:
+    def _recover_job_from_database(self) -> Optional[dict]:
         """Recover a pending job from database storage."""
         db = next(get_db())
         try:
-            # Get oldest pending job
             queued_job = (
                 db.query(models.QueuedJob)
                 .filter(
@@ -122,15 +162,16 @@ class JobQueueService:
             )
 
             if queued_job:
-                # Mark as processing to prevent duplicate processing
                 queued_job.status = "processing"
                 queued_job.retry_count += 1
                 db.commit()
 
+                job_type = getattr(queued_job, "job_type", None) or "transcode"
                 logger.info(
-                    f"Recovered job {queued_job.upload_id} from database (retry #{queued_job.retry_count})"
+                    f"Recovered job {queued_job.upload_id}/{job_type} from database "
+                    f"(retry #{queued_job.retry_count})"
                 )
-                return queued_job.upload_id
+                return {"upload_id": queued_job.upload_id, "job_type": job_type}
 
         except Exception as e:
             logger.error(f"Failed to recover job from database: {e}")
@@ -139,32 +180,45 @@ class JobQueueService:
 
         return None
 
-    def mark_job_completed(self, upload_id: str):
+    def mark_job_completed(self, upload_id: str, job_type: str = "transcode"):
         """Mark a job as completed in database (for cleanup)."""
         db = next(get_db())
         try:
             queued_job = (
                 db.query(models.QueuedJob)
-                .filter_by(upload_id=upload_id, status="processing")
+                .filter_by(
+                    upload_id=upload_id, status="processing", job_type=job_type
+                )
                 .first()
             )
 
             if queued_job:
                 queued_job.status = "completed"
                 db.commit()
-                logger.info(f"Job {upload_id} marked as completed in database")
+                logger.info(
+                    f"Job {upload_id}/{job_type} marked as completed in database"
+                )
         except Exception as e:
-            logger.error(f"Failed to mark job {upload_id} as completed: {e}")
+            logger.error(
+                f"Failed to mark job {upload_id}/{job_type} as completed: {e}"
+            )
         finally:
             db.close()
 
-    def mark_job_failed(self, upload_id: str, error_message: Optional[str] = None):
+    def mark_job_failed(
+        self,
+        upload_id: str,
+        error_message: Optional[str] = None,
+        job_type: str = "transcode",
+    ):
         """Mark a job as failed in database."""
         db = next(get_db())
         try:
             queued_job = (
                 db.query(models.QueuedJob)
-                .filter_by(upload_id=upload_id, status="processing")
+                .filter_by(
+                    upload_id=upload_id, status="processing", job_type=job_type
+                )
                 .first()
             )
 
@@ -174,9 +228,11 @@ class JobQueueService:
                     queued_job.error_message = error_message
                 queued_job.retry_count += 1
                 db.commit()
-                logger.warning(f"Job {upload_id} marked as failed: {error_message}")
+                logger.warning(
+                    f"Job {upload_id}/{job_type} marked as failed: {error_message}"
+                )
         except Exception as e:
-            logger.error(f"Failed to mark job {upload_id} as failed: {e}")
+            logger.error(f"Failed to mark job {upload_id}/{job_type} as failed: {e}")
         finally:
             db.close()
 
@@ -190,7 +246,6 @@ class JobQueueService:
         db = next(get_db())
 
         try:
-            # Get pending jobs that haven't been retried too many times
             pending_jobs = (
                 db.query(models.QueuedJob)
                 .filter(
@@ -207,14 +262,16 @@ class JobQueueService:
 
             for job in pending_jobs:
                 try:
-                    # Try to push to Redis
-                    self.redis_client.lpush(self.queue_name, job.upload_id)
+                    job_type = getattr(job, "job_type", None) or "transcode"
+                    payload = _encode_payload(job.upload_id, job_type)
+                    self.redis_client.lpush(self.queue_name, payload)
 
-                    # Mark as recovered in database
                     job.status = "recovered"
                     recovered_count += 1
 
-                    logger.info(f"Recovered job {job.upload_id} to Redis")
+                    logger.info(
+                        f"Recovered job {job.upload_id}/{job_type} to Redis"
+                    )
 
                 except (CircuitBreakerOpenException, Exception) as e:
                     logger.warning(

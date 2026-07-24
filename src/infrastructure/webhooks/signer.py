@@ -10,6 +10,8 @@ WEBHOOK_EVENTS = {
     "video.ready",
     "video.failed",
     "video.deleted",
+    "video.quarantined",
+    "video.captions_ready",
 }
 
 

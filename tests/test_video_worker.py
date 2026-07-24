@@ -17,6 +17,7 @@ from src.infrastructure.db.session import engine
 
 class TestVideoWorker:
     def setup_method(self):
+        models.Base.metadata.drop_all(bind=engine)
         models.Base.metadata.create_all(bind=engine)
         self.Session = sessionmaker(bind=engine)
         self.session = self.Session()

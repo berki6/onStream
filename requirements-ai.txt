@@ -1,0 +1,6 @@
+# Optional AI media intelligence dependencies (GPU-friendly installs)
+# Install with: pip install -r requirements-ai.txt
+# Or use docker compose --profile ai
+
+faster-whisper>=1.0.0
+sentence-transformers>=3.0.0

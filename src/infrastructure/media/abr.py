@@ -17,16 +17,66 @@ def select_ladder(source_height: int, ladder: Optional[List[dict]] = None) -> Li
     return selected
 
 
-def write_master_playlist(output_dir: Path, renditions: List[Dict]) -> Path:
+def write_master_playlist(
+    output_dir: Path,
+    renditions: List[Dict],
+    captions_uri: Optional[str] = None,
+) -> Path:
     lines = ["#EXTM3U", "#EXT-X-VERSION:3"]
+    if captions_uri:
+        lines.append(
+            '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="Captions",'
+            f'DEFAULT=YES,AUTOSELECT=YES,URI="{captions_uri}"'
+        )
     for r in renditions:
         bandwidth = r["bitrate_k"] * 1000
         height = r["height"]
         width = int(height * 16 / 9)
-        lines.append(
+        stream_inf = (
             f"#EXT-X-STREAM-INF:BANDWIDTH={bandwidth},RESOLUTION={width}x{height}"
         )
+        if captions_uri:
+            stream_inf += ',SUBTITLES="subs"'
+        lines.append(stream_inf)
         lines.append(f"{height}p/index.m3u8")
     master = output_dir / "master.m3u8"
     master.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return master
+
+
+def inject_subtitle_track(playlist: str, captions_uri: str = "captions.vtt") -> str:
+    """Inject subtitle MEDIA tag into an existing master playlist if missing."""
+    if "TYPE=SUBTITLES" in playlist:
+        return playlist
+    lines = playlist.splitlines()
+    out: List[str] = []
+    media_inserted = False
+    for line in lines:
+        if line.startswith("#EXTM3U"):
+            out.append(line)
+            continue
+        if line.startswith("#EXT-X-VERSION"):
+            out.append(line)
+            if not media_inserted:
+                out.append(
+                    '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="Captions",'
+                    f'DEFAULT=YES,AUTOSELECT=YES,URI="{captions_uri}"'
+                )
+                media_inserted = True
+            continue
+        if line.startswith("#EXT-X-STREAM-INF:") and 'SUBTITLES="subs"' not in line:
+            out.append(line.rstrip() + ',SUBTITLES="subs"')
+            continue
+        out.append(line)
+    if not media_inserted:
+        # No version tag — insert after EXTM3U
+        rebuilt = []
+        for i, line in enumerate(out):
+            rebuilt.append(line)
+            if i == 0:
+                rebuilt.append(
+                    '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="Captions",'
+                    f'DEFAULT=YES,AUTOSELECT=YES,URI="{captions_uri}"'
+                )
+        out = rebuilt
+    return "\n".join(out) + ("\n" if playlist.endswith("\n") or out else "")
