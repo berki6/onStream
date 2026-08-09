@@ -8,6 +8,9 @@ sample.mp4
 data/
 .vscode
 node_modules/
+# MediaMTX auto-generated TLS (local)
+auto.crt
+auto.key
 # Environment Variables
 .env
 
