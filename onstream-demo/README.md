@@ -17,6 +17,16 @@ This demo follows modern Expo patterns that carry forward to 57:
 
 To move to 57 later: `npx expo install expo@^57.0.0 --fix` and ship a dev client / APK.
 
+## Security / npm audit
+
+App source uses current Expo Router + `expo-video` (not deprecated `expo-av`).
+
+`npm audit` findings are almost entirely **transitive Expo/Metro toolchain** deps, not demo app code.
+
+Patched via `package.json` `overrides`: `postcss`, `uuid`, `js-yaml`, `nanoid`, `brace-expansion@5`.
+
+**Remaining (cannot zero on SDK 54):** `image-size@<=2.0.2` has no fixed release yet; Metro pulls it, so `npm audit` still reports ~10 highs in that chain. Do **not** run `npm audit fix --force` — it jumps to Expo 57 and breaks Expo Go on phones. When `image-size` ships a patch (or you move to a SDK that drops it), re-run `npm audit`.
+
 ## Install
 
 ```bash

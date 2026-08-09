@@ -27,8 +27,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0B1210"
       },
-      "package": "com.onstream.demo",
-      "usesCleartextTraffic": true
+      "package": "com.onstream.demo"
     },
     "web": {
       "bundler": "metro",
@@ -45,7 +44,15 @@
           "supportsPictureInPicture": true
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
