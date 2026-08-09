@@ -143,6 +143,18 @@ npm start
 
 Scan the QR with **Expo Go** (same Wi‑Fi).
 
+If Android shows **`Failed to download remote update`**, the phone cannot reach Metro. Prefer:
+
+```powershell
+# USB cable + debugging (device already attached)
+adb reverse tcp:8081 tcp:8081
+npm run start:usb
+```
+
+or `npm run start:tunnel`. Full guide (any Expo/RN Android project): [`docs/ANDROID_METRO_CONNECTION.md`](docs/ANDROID_METRO_CONNECTION.md).
+
+Scan the QR with **Expo Go** (same Wi‑Fi).
+
 | Client | API base to set in Lab / login |
 |--------|--------------------------------|
 | Physical phone | `http://<YOUR-LAN-IP>:8000` |

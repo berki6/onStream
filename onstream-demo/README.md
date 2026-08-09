@@ -50,7 +50,40 @@ npx expo install expo-video expo-secure-store expo-document-picker expo-clipboar
 npm start
 ```
 
-4. Scan the QR with **Expo Go** (same Wi‑Fi).
+4. Scan the QR with **Expo Go** (same Wi‑Fi). Expo Go must be **SDK 54**.
+
+If Android shows **`Failed to download remote update`**, see the reusable guide: [`docs/ANDROID_METRO_CONNECTION.md`](../docs/ANDROID_METRO_CONNECTION.md) (USB `adb reverse`, tunnel, LAN/firewall). Short version below.
+
+**A — Tunnel (most reliable on locked Wi‑Fi)**
+
+```powershell
+# stop the current Metro (Ctrl+C), then:
+npm run start:tunnel
+```
+
+Scan the new QR (uses Expo’s tunnel; needs internet on phone + PC). First run may install `@expo/ngrok`.
+
+**B — USB + adb reverse** (device cable + USB debugging on)
+
+```powershell
+adb devices
+adb reverse tcp:8081 tcp:8081
+npm run start:usb
+```
+
+Then open the project from Expo Go (or press `a` in the Expo terminal).
+
+**C — Fix LAN**
+
+- PC and phone on the **same** Wi‑Fi (not guest / AP isolation).
+- Windows Wi‑Fi profile = **Private** (Settings → Network → Wi‑Fi → properties).
+- Allow **Node.js** through Windows Firewall (Private + Public), or allow inbound TCP **8081**.
+- No VPN on phone/PC. If Expo shows a VirtualBox IP, force Wi‑Fi:
+
+```powershell
+$env:REACT_NATIVE_PACKAGER_HOSTNAME="192.168.1.2"
+npm start
+```
 
 ### Android emulator
 
