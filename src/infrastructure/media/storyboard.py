@@ -48,10 +48,9 @@ def generate_storyboard(
             x, y = col * tile_w, row * tile_h
 
             def fmt(sec: float) -> str:
-                h = int(sec // 3600)
-                m = int((sec % 3600) // 60)
-                s = sec % 60
-                return f"{h:02d}:{m:02d}:{s:06.3f}"
+                from src.infrastructure.media.captions import _format_vtt_timestamp
+
+                return _format_vtt_timestamp(sec)
 
             lines.append(f"{fmt(t)} --> {fmt(end)}")
             lines.append(f"storyboard.jpg#xywh={x},{y},{tile_w},{tile_h}")

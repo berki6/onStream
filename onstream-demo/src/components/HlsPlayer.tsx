@@ -16,14 +16,21 @@ export function HlsPlayer({ uri, title }: Props) {
   });
 
   useEffect(() => {
-    if (!uri) {
-      player.pause();
-      setPlaying(false);
-      return;
-    }
-    player.replace({ uri, contentType: "hls" as const });
-    player.play();
-    setPlaying(true);
+    let cancelled = false;
+    (async () => {
+      if (!uri) {
+        player.pause();
+        setPlaying(false);
+        return;
+      }
+      await player.replaceAsync({ uri, contentType: "hls" as const });
+      if (cancelled) return;
+      player.play();
+      setPlaying(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [uri, player]);
 
   if (!uri) {
@@ -43,7 +50,7 @@ export function HlsPlayer({ uri, title }: Props) {
       <VideoView
         style={styles.video}
         player={player}
-        allowsFullscreen
+        fullscreenOptions={{ enable: true }}
         allowsPictureInPicture
         contentFit="contain"
         nativeControls

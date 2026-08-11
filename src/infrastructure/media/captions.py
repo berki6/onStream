@@ -47,12 +47,14 @@ def extract_audio(video_path: str, audio_path: str) -> str:
 
 
 def _format_vtt_timestamp(seconds: float) -> str:
+    """WebVTT cue time: HH:MM:SS.mmm (seconds always two digits before the dot)."""
     if seconds < 0:
-        seconds = 0
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = seconds % 60
-    return f"{hours:02d}:{minutes:02d}:{secs:06.3f}"
+        seconds = 0.0
+    total_ms = int(round(seconds * 1000.0))
+    hours, rem = divmod(total_ms, 3_600_000)
+    minutes, rem = divmod(rem, 60_000)
+    secs, millis = divmod(rem, 1000)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}.{millis:03d}"
 
 
 def segments_to_vtt(segments: List[Dict[str, Any]]) -> str:

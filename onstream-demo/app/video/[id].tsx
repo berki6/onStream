@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams } from "expo-router";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -22,6 +22,8 @@ import { Screen } from "@/components/Screen";
 import { StatusPill } from "@/components/StatusPill";
 import { colors, spacing } from "@/theme/tokens";
 
+const IN_FLIGHT = new Set(["PENDING", "PROCESSING", "QUEUED", "UPLOADING"]);
+
 export default function VideoDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [video, setVideo] = useState<Video | null>(null);
@@ -29,6 +31,7 @@ export default function VideoDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [tokenLoading, setTokenLoading] = useState(false);
+  const focusedRef = useRef(true);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -45,9 +48,22 @@ export default function VideoDetailScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      focusedRef.current = true;
       load();
+      return () => {
+        focusedRef.current = false;
+      };
     }, [load])
   );
+
+  useEffect(() => {
+    const status = String(video?.status || "").toUpperCase();
+    if (!IN_FLIGHT.has(status)) return;
+    const timer = setInterval(() => {
+      if (focusedRef.current) load();
+    }, 2500);
+    return () => clearInterval(timer);
+  }, [video?.status, load]);
 
   return (
     <Screen>

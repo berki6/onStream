@@ -1,6 +1,6 @@
 import * as DocumentPicker from "expo-document-picker";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -19,6 +19,8 @@ import { Screen } from "@/components/Screen";
 import { StatusPill } from "@/components/StatusPill";
 import { colors, radii, spacing } from "@/theme/tokens";
 
+const IN_FLIGHT = new Set(["PENDING", "PROCESSING", "QUEUED", "UPLOADING"]);
+
 export default function VideosScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -27,6 +29,7 @@ export default function VideosScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const focusedRef = useRef(true);
 
   const load = useCallback(async () => {
     setError(null);
@@ -43,9 +46,25 @@ export default function VideosScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      focusedRef.current = true;
       load();
+      return () => {
+        focusedRef.current = false;
+      };
     }, [load])
   );
+
+  // Auto-refresh while any video is still processing
+  useEffect(() => {
+    const busy = items.some((v) =>
+      IN_FLIGHT.has(String(v.status || "").toUpperCase())
+    );
+    if (!busy) return;
+    const id = setInterval(() => {
+      if (focusedRef.current) load();
+    }, 2500);
+    return () => clearInterval(id);
+  }, [items, load]);
 
   return (
     <Screen>
