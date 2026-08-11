@@ -216,12 +216,15 @@ DEMO_PLAYER_ENABLED=false
 
 ## CDN / edge cache headers
 
-When `PLAYBACK_CDN_HEADERS_ENABLED=true`, playback responses set `Cache-Control`:
+When `PLAYBACK_CDN_HEADERS_ENABLED=true`, playback responses set `Cache-Control` plus `X-Content-Type-Options: nosniff`:
 
 | Asset | VOD | Live |
 |-------|-----|------|
-| `.m3u8` | `max-age=3` | `no-cache` / `no-store` |
-| `.ts` | long `immutable` | `max-age=2` |
+| `.m3u8` | `max-age=5, must-revalidate` | `max-age=0, s-maxage=1, must-revalidate` |
+| `.ts` | long `immutable` | `max-age=4` |
+| `.vtt` / thumbs | `max-age=86400` | `no-store` |
+
+Live playlists intentionally **do not** use `no-store`: browsers revalidate every request (`max-age=0`) while a shared edge may keep the object ~1s. Revoke still relies on OnStream auth 404 + optional CDN purge. Implementation: `src/application/playback_headers.py`.
 
 Owner health: `GET /v1/live/{stream_id}/health` (stale playlist age, ABR status).
 

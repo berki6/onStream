@@ -27,6 +27,24 @@
     h1 { font-weight: 600; letter-spacing: -0.02em; margin: 0 0 0.5rem; }
     p { color: var(--muted); margin: 0 0 1.5rem; max-width: 36rem; text-align: center; }
     .row { display: flex; gap: 0.5rem; width: min(720px, 100%); margin-bottom: 1rem; }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1.25rem;
+      align-items: center;
+      width: min(720px, 100%);
+      margin: 0.75rem 0 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .meta label { display: flex; align-items: center; gap: 0.4rem; }
+    select {
+      padding: 0.35rem 0.5rem;
+      border: 1px solid #2a3a4a;
+      border-radius: 6px;
+      background: #121a22;
+      color: var(--fg);
+    }
     input {
       flex: 1;
       padding: 0.65rem 0.85rem;
@@ -50,32 +68,137 @@
       border-radius: 8px;
       aspect-ratio: 16 / 9;
     }
+    #captionStatus { min-height: 1.25rem; }
   </style>
 </head>
 <body>
   <h1>OnStream</h1>
-  <p>Paste an HLS master playlist URL (public or with <code>?token=</code>) and play.</p>
+  <p>
+    Paste an HLS master playlist URL (public or with <code>?token=</code>) and play.
+    VOD masters with captions expose a subtitle track here.
+  </p>
   <div class="row">
     <input id="url" type="url" placeholder="http://localhost:8000/v1/playback/{id}/master.m3u8" />
     <button id="play" type="button">Play</button>
   </div>
-  <video id="video" controls playsinline></video>
+  <video id="video" controls playsinline crossorigin="anonymous"></video>
+  <div class="meta">
+    <label>
+      Captions
+      <select id="captionSelect" disabled>
+        <option value="-1">Off / none</option>
+      </select>
+    </label>
+    <span id="captionStatus">No stream loaded</span>
+  </div>
   <script>
     const video = document.getElementById("video");
     const input = document.getElementById("url");
+    const captionSelect = document.getElementById("captionSelect");
+    const captionStatus = document.getElementById("captionStatus");
     let hls;
+
+    function resetCaptionUi(message) {
+      captionSelect.innerHTML = '<option value="-1">Off / none</option>';
+      captionSelect.value = "-1";
+      captionSelect.disabled = true;
+      captionStatus.textContent = message || "No captions in this playlist";
+    }
+
+    function fillCaptionSelect(tracks, preferredIndex) {
+      captionSelect.innerHTML = '<option value="-1">Off</option>';
+      tracks.forEach((t, i) => {
+        const opt = document.createElement("option");
+        opt.value = String(i);
+        const name = t.name || t.label || ("Track " + (i + 1));
+        const lang = t.lang || t.language || "";
+        opt.textContent = lang ? name + " (" + lang + ")" : name;
+        captionSelect.appendChild(opt);
+      });
+      captionSelect.disabled = tracks.length === 0;
+      if (tracks.length && preferredIndex >= 0) {
+        captionSelect.value = String(preferredIndex);
+        captionStatus.textContent = tracks.length + " caption track(s) — use the menu or the video CC control";
+      } else if (tracks.length) {
+        captionStatus.textContent = tracks.length + " caption track(s) available";
+      } else {
+        captionStatus.textContent = "No captions in this playlist";
+      }
+    }
+
+    function applyNativeTextTracks() {
+      const tracks = [];
+      for (let i = 0; i < video.textTracks.length; i++) {
+        const tt = video.textTracks[i];
+        if (tt.kind === "subtitles" || tt.kind === "captions") {
+          tracks.push({ name: tt.label || tt.kind, lang: tt.language, _tt: tt });
+        }
+      }
+      fillCaptionSelect(
+        tracks.map((t) => ({ name: t.name, lang: t.lang })),
+        tracks.length ? 0 : -1
+      );
+      tracks.forEach((t, i) => {
+        t._tt.mode = i === 0 ? "showing" : "disabled";
+      });
+      captionSelect.onchange = () => {
+        const idx = Number(captionSelect.value);
+        tracks.forEach((t, i) => {
+          t._tt.mode = i === idx ? "showing" : "disabled";
+        });
+      };
+    }
+
+    function wireHlsCaptions(instance) {
+      const refresh = () => {
+        const tracks = instance.subtitleTracks || [];
+        const preferred = tracks.length ? 0 : -1;
+        fillCaptionSelect(tracks, preferred);
+        instance.subtitleDisplay = preferred >= 0;
+        instance.subtitleTrack = preferred;
+      };
+      instance.on(Hls.Events.MANIFEST_PARSED, refresh);
+      instance.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, refresh);
+      captionSelect.onchange = () => {
+        const idx = Number(captionSelect.value);
+        instance.subtitleDisplay = idx >= 0;
+        instance.subtitleTrack = idx;
+      };
+    }
+
     document.getElementById("play").addEventListener("click", () => {
       const src = input.value.trim();
       if (!src) return;
-      if (hls) { hls.destroy(); hls = null; }
+      if (hls) {
+        hls.destroy();
+        hls = null;
+      }
+      resetCaptionUi("Loading…");
+
       if (Hls.isSupported()) {
-        hls = new Hls();
+        hls = new Hls({
+          enableWorker: true,
+          // Prefer native cues when possible so the <video> CC button works too.
+          renderTextTracksNatively: true,
+        });
+        wireHlsCaptions(hls);
         hls.loadSource(src);
         hls.attachMedia(video);
+        hls.on(Hls.Events.ERROR, (_e, data) => {
+          if (data.fatal) {
+            captionStatus.textContent = "Playback error — check URL / token";
+          }
+        });
       } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
         video.src = src;
+        video.addEventListener(
+          "loadedmetadata",
+          () => applyNativeTextTracks(),
+          { once: true }
+        );
       } else {
         alert("HLS is not supported in this browser.");
+        resetCaptionUi("HLS not supported");
       }
     });
   </script>

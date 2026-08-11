@@ -76,7 +76,7 @@ More encoder/player recipes: [`docs/PLAYBACK_CLIENTS.md`](docs/PLAYBACK_CLIENTS.
 | VOD (Expo / API) | **Ready** | Upload → worker → READY → token → HLS (verified by `scripts/e2e_smoke.py`) |
 | VOD on a **physical phone** | **Config** | `PUBLIC_API_BASE_URL` must be LAN IP (this machine: `http://192.168.1.2:8000`) |
 | Live create / token / revoke | **Ready** | Verified by smoke; manual publish via OBS or FFmpeg (below) |
-| `/demo/` | **Playback only** | Paste URL; no upload/login by design |
+| `/demo/` | **Playback + captions** | Paste URL; subtitle track menu when master has captions; no upload/login by design |
 | Captions in demo UI | **Ready (status)** | Video detail shows caption ready/pending + language; no in-player track picker yet |
 | Direct upload `/v1/uploads` in Expo | **Not in Expo** | Multipart `/v1/videos/` only |
 | WHIP publish from the app | **Not in Expo** | Copy WHIP URL → external encoder |
@@ -193,6 +193,7 @@ Covers: health, `/demo/`, register/login, VOD upload→READY→master.m3u8, live
 4. Open the video → app requests a playback token and plays HLS via `expo-video`.
 5. Alternate players:
    - Copy `playback_url` from Scalar `POST /v1/videos/{id}/tokens` → open in `/demo/` or VLC.
+   - If captions ran, `/demo/` shows a **Captions** dropdown (and the video CC control) once the master includes `EXT-X-MEDIA TYPE=SUBTITLES`.
 6. If phone play fails with network errors, fix `PUBLIC_API_BASE_URL` to the LAN IP and re-issue a token.
 
 ---
