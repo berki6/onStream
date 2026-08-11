@@ -157,7 +157,7 @@ Create returns sensitive publish material once (`stream_key`, `whip_url`, `whep_
 | Method | Path |
 |--------|------|
 | POST | `/` create (returns stream_key, whip_url, whep_url once) |
-| GET | `/` list |
+| GET | `/` list (`include_ended=true` includes revoked rows) |
 | GET | `/{stream_id}` |
 | GET | `/{stream_id}/health` |
 | DELETE | `/{stream_id}` |

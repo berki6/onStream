@@ -168,10 +168,17 @@ def create_stream(
     return _to_response(stream, stream_key=plaintext_key)
 
 
-def list_streams(db: Session, user_id: int, skip: int = 0, limit: int = 100):
+def list_streams(
+    db: Session,
+    user_id: int,
+    skip: int = 0,
+    limit: int = 100,
+    *,
+    include_ended: bool = False,
+):
     _require_live_enabled()
     rows, total = live_stream_repository.list_by_user(
-        db, user_id, skip=skip, limit=limit
+        db, user_id, skip=skip, limit=limit, include_ended=include_ended
     )
     return [_to_response(r) for r in rows], total
 

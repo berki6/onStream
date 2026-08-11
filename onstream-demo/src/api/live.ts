@@ -35,9 +35,14 @@ export type LiveToken = {
   playback_url: string;
 };
 
-export async function listLiveStreams(skip = 0, limit = 50) {
+export async function listLiveStreams(
+  skip = 0,
+  limit = 50,
+  opts?: { includeEnded?: boolean }
+) {
+  const includeEnded = opts?.includeEnded ? "true" : "false";
   return apiRequest<ApiEnvelope<LiveStream[]>>(
-    `/v1/live/?skip=${skip}&limit=${limit}`
+    `/v1/live/?skip=${skip}&limit=${limit}&include_ended=${includeEnded}`
   );
 }
 

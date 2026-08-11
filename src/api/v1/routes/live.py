@@ -91,12 +91,17 @@ def list_live_streams(
     request: Request,
     skip: int = 0,
     limit: int = 100,
+    include_ended: bool = Query(False),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     try:
         rows, total = live_service.list_streams(
-            db, current_user.id, skip=skip, limit=limit
+            db,
+            current_user.id,
+            skip=skip,
+            limit=limit,
+            include_ended=include_ended,
         )
     except AppError as e:
         raise_app_error(e)

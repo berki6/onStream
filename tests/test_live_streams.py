@@ -116,6 +116,17 @@ def test_list_get_delete(test_user, db_session: Session):
         r["stream_id"] for r in listed_after.json()["data"]
     ]
 
+    # Opt-in history for lab UI
+    with_ended = client.get(
+        "/v1/live/?include_ended=true",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert with_ended.status_code == 200
+    ended_ids = [r["stream_id"] for r in with_ended.json()["data"]]
+    assert stream_id in ended_ids
+    ended_row = next(r for r in with_ended.json()["data"] if r["stream_id"] == stream_id)
+    assert ended_row["status"] == "ended"
+
 def test_mediamtx_auth_accepts_valid_key_rejects_bad(test_user, db_session: Session):
     token = _auth_token()
     created = _create_stream(token)

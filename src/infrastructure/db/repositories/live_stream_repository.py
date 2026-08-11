@@ -31,18 +31,20 @@ def get_by_stream_key_hash(
     )
 
 
-def list_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 100):
-    total = (
-        db.query(models.LiveStream)
-        .filter(models.LiveStream.user_id == user_id)
-        .filter(models.LiveStream.status != "ended")
-        .count()
-    )
+def list_by_user(
+    db: Session,
+    user_id: int,
+    skip: int = 0,
+    limit: int = 100,
+    *,
+    include_ended: bool = False,
+):
+    q = db.query(models.LiveStream).filter(models.LiveStream.user_id == user_id)
+    if not include_ended:
+        q = q.filter(models.LiveStream.status != "ended")
+    total = q.count()
     rows = (
-        db.query(models.LiveStream)
-        .filter(models.LiveStream.user_id == user_id)
-        .filter(models.LiveStream.status != "ended")
-        .order_by(models.LiveStream.created_at.desc())
+        q.order_by(models.LiveStream.created_at.desc())
         .offset(skip)
         .limit(limit)
         .all()
