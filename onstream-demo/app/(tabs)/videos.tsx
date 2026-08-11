@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import { useFocusEffect, useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -14,11 +15,13 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApiError } from "@/api/client";
-import { listVideos, uploadVideoMultipart, Video } from "@/api/videos";
+import { uploadVideoMultipart } from "@/api/videos";
 import { Button } from "@/components/Button";
 import { Screen } from "@/components/Screen";
 import { StatusPill } from "@/components/StatusPill";
 import { videoPipelineHint } from "@/lib/videoStatus";
+import { videoKeys } from "@/query/keys";
+import { prefetchVideo, useVideosQuery } from "@/query/videos";
 import { colors, radii, spacing } from "@/theme/tokens";
 
 const IN_FLIGHT = new Set(["PENDING", "PROCESSING", "QUEUED", "UPLOADING"]);
@@ -33,34 +36,29 @@ const HINT_COLOR = {
 export default function VideosScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [items, setItems] = useState<Video[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const qc = useQueryClient();
   const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const focusedRef = useRef(true);
 
-  const load = useCallback(async () => {
-    setError(null);
-    try {
-      const res = await listVideos();
-      setItems(res.data || []);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load videos");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  const {
+    data: items = [],
+    isPending,
+    isError,
+    error,
+    refetch,
+  } = useVideosQuery();
+
+  const [pullRefreshing, setPullRefreshing] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
       focusedRef.current = true;
-      load();
+      refetch();
       return () => {
         focusedRef.current = false;
       };
-    }, [load])
+    }, [refetch])
   );
 
   useEffect(() => {
@@ -69,10 +67,18 @@ export default function VideosScreen() {
     );
     if (!busy) return;
     const id = setInterval(() => {
-      if (focusedRef.current) load();
+      if (focusedRef.current) refetch();
     }, 2500);
     return () => clearInterval(id);
-  }, [items, load]);
+  }, [items, refetch]);
+
+  const listError =
+    uploadError ||
+    (isError
+      ? error instanceof Error
+        ? error.message
+        : "Failed to load videos"
+      : null);
 
   return (
     <Screen>
@@ -100,7 +106,7 @@ export default function VideosScreen() {
             if (picked.canceled || !picked.assets?.[0]) return;
             const asset = picked.assets[0];
             setUploading(true);
-            setError(null);
+            setUploadError(null);
             try {
               await uploadVideoMultipart({
                 uri: asset.uri,
@@ -108,9 +114,11 @@ export default function VideosScreen() {
                 mimeType: asset.mimeType || "video/mp4",
                 title: (asset.name || "Mobile upload").replace(/\.[^.]+$/, ""),
               });
-              await load();
+              await qc.invalidateQueries({ queryKey: videoKeys.list() });
             } catch (e) {
-              setError(e instanceof ApiError ? e.message : "Upload failed");
+              setUploadError(
+                e instanceof ApiError ? e.message : "Upload failed"
+              );
             } finally {
               setUploading(false);
             }
@@ -118,27 +126,31 @@ export default function VideosScreen() {
         />
       </View>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {listError ? <Text style={styles.error}>{listError}</Text> : null}
 
-      {loading ? (
+      {isPending && items.length === 0 ? (
         <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} />
       ) : (
         <FlatList
           data={items}
           keyExtractor={(item) => item.upload_id}
           contentContainerStyle={styles.list}
-          // Bounce when content overflows; do NOT alwaysBounceVertical —
-          // that races pull-to-refresh on every top drag.
           bounces
           alwaysBounceVertical={false}
           overScrollMode="auto"
           refreshControl={
             <RefreshControl
-              refreshing={refreshing}
+              refreshing={pullRefreshing}
               tintColor={colors.brand}
-              onRefresh={() => {
-                setRefreshing(true);
-                load();
+              colors={[colors.brand]}
+              progressBackgroundColor={colors.bgElevated}
+              onRefresh={async () => {
+                setPullRefreshing(true);
+                try {
+                  await refetch();
+                } finally {
+                  setPullRefreshing(false);
+                }
               }}
             />
           }
@@ -155,6 +167,9 @@ export default function VideosScreen() {
             const hint = videoPipelineHint(item);
             return (
               <Pressable
+                onPressIn={() => {
+                  prefetchVideo(qc, item.upload_id);
+                }}
                 onPress={() => router.push(`/video/${item.upload_id}`)}
                 style={({ pressed }) => [
                   styles.card,
@@ -169,7 +184,8 @@ export default function VideosScreen() {
                           ? "play-circle"
                           : String(item.status).toUpperCase() === "ERROR"
                             ? "alert-circle"
-                            : String(item.status).toUpperCase() === "QUARANTINED"
+                            : String(item.status).toUpperCase() ===
+                                "QUARANTINED"
                               ? "shield-half-outline"
                               : "hourglass-outline"
                       }
@@ -179,7 +195,8 @@ export default function VideosScreen() {
                           ? colors.brand
                           : String(item.status).toUpperCase() === "ERROR"
                             ? colors.danger
-                            : String(item.status).toUpperCase() === "QUARANTINED"
+                            : String(item.status).toUpperCase() ===
+                                "QUARANTINED"
                               ? colors.warning
                               : colors.textMuted
                       }

@@ -1,4 +1,5 @@
 import { Stack, useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
@@ -9,10 +10,12 @@ import { CopyRow } from "@/components/CopyRow";
 import { Field } from "@/components/Field";
 import { FormScroll } from "@/components/FormScroll";
 import { Screen } from "@/components/Screen";
+import { liveKeys } from "@/query/keys";
 import { colors, spacing } from "@/theme/tokens";
 
 export default function CreateLiveScreen() {
   const router = useRouter();
+  const qc = useQueryClient();
   const [title, setTitle] = useState("Mobile lab stream");
   const [created, setCreated] = useState<LiveStream | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +49,8 @@ export default function CreateLiveScreen() {
                 try {
                   const res = await createLiveStream(title.trim() || "Live");
                   setCreated(res.data);
+                  qc.setQueryData(liveKeys.detail(res.data.stream_id), res.data);
+                  await qc.invalidateQueries({ queryKey: liveKeys.list() });
                 } catch (e) {
                   setError(e instanceof ApiError ? e.message : "Create failed");
                 } finally {

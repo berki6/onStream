@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -12,11 +13,11 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { ApiError } from "@/api/client";
-import { listLiveStreams, LiveStream } from "@/api/live";
+import { type LiveStream } from "@/api/live";
 import { Button } from "@/components/Button";
 import { Screen } from "@/components/Screen";
 import { StatusPill } from "@/components/StatusPill";
+import { prefetchLive, useLiveListQuery } from "@/query/live";
 import { colors, radii, spacing } from "@/theme/tokens";
 
 type Row =
@@ -30,28 +31,22 @@ function isEnded(s: LiveStream) {
 export default function LiveTabScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [items, setItems] = useState<LiveStream[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const qc = useQueryClient();
 
-  const load = useCallback(async () => {
-    setError(null);
-    try {
-      const res = await listLiveStreams(0, 50, { includeEnded: true });
-      setItems(res.data || []);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load live streams");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  const {
+    data: items = [],
+    isPending,
+    isError,
+    error,
+    refetch,
+  } = useLiveListQuery();
+
+  const [pullRefreshing, setPullRefreshing] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load])
+      refetch();
+    }, [refetch])
   );
 
   const rows: Row[] = useMemo(() => {
@@ -74,7 +69,8 @@ export default function LiveTabScreen() {
         kind: "header",
         id: "hdr-ended",
         title: "Recently ended",
-        subtitle: "Revoked streams stay openable for health/history; they are not playable.",
+        subtitle:
+          "Revoked streams stay openable for health/history; they are not playable.",
       });
       for (const s of ended) {
         out.push({ kind: "stream", id: `ended-${s.stream_id}`, stream: s });
@@ -82,6 +78,12 @@ export default function LiveTabScreen() {
     }
     return out;
   }, [items]);
+
+  const listError = isError
+    ? error instanceof Error
+      ? error.message
+      : "Failed to load live streams"
+    : null;
 
   return (
     <Screen>
@@ -97,27 +99,31 @@ export default function LiveTabScreen() {
         />
       </View>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {listError ? <Text style={styles.error}>{listError}</Text> : null}
 
-      {loading ? (
+      {isPending && items.length === 0 ? (
         <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} />
       ) : (
         <FlatList
           data={rows}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
-          // Bounce when content overflows; do NOT alwaysBounceVertical —
-          // that races pull-to-refresh on every top drag.
           bounces
           alwaysBounceVertical={false}
           overScrollMode="auto"
           refreshControl={
             <RefreshControl
-              refreshing={refreshing}
+              refreshing={pullRefreshing}
               tintColor={colors.brand}
-              onRefresh={() => {
-                setRefreshing(true);
-                load();
+              colors={[colors.brand]}
+              progressBackgroundColor={colors.bgElevated}
+              onRefresh={async () => {
+                setPullRefreshing(true);
+                try {
+                  await refetch();
+                } finally {
+                  setPullRefreshing(false);
+                }
               }}
             />
           }
@@ -148,6 +154,9 @@ export default function LiveTabScreen() {
             const st = String(stream.status || "").toLowerCase();
             return (
               <Pressable
+                onPressIn={() => {
+                  prefetchLive(qc, stream.stream_id);
+                }}
                 onPress={() => router.push(`/live/${stream.stream_id}`)}
                 style={[styles.card, ended && styles.cardEnded]}
               >

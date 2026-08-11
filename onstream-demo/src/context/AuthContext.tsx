@@ -28,6 +28,8 @@ type AuthState = {
 const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  // Single atomic boot state so we never paint "ready && !signedIn" for a
+  // stored session (that race flashes the login screen).
   const [ready, setReady] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
   const [username, setUsername] = useState<string | null>(null);
@@ -41,7 +43,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    refreshSession().finally(() => setReady(true));
+    let cancelled = false;
+    (async () => {
+      try {
+        await refreshSession();
+      } finally {
+        if (!cancelled) setReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [refreshSession]);
 
   const signIn = useCallback(async (user: string, password: string) => {

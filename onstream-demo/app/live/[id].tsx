@@ -1,62 +1,60 @@
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useState } from "react";
-import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { useFocusEffect } from "expo-router";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { ApiError } from "@/api/client";
-import {
-  createLiveToken,
-  deleteLiveStream,
-  getLiveHealth,
-  getLiveStream,
-  LiveHealth,
-  LiveStream,
-} from "@/api/live";
+import { createLiveToken, deleteLiveStream } from "@/api/live";
 import { Button } from "@/components/Button";
 import { CopyRow } from "@/components/CopyRow";
+import { DetailSkeleton } from "@/components/DetailSkeleton";
 import { HlsPlayer } from "@/components/HlsPlayer";
 import { Screen } from "@/components/Screen";
 import { StatusPill } from "@/components/StatusPill";
+import { liveKeys } from "@/query/keys";
+import { useLiveHealthQuery, useLiveStreamQuery } from "@/query/live";
 import { colors, spacing } from "@/theme/tokens";
 
 export default function LiveDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const [stream, setStream] = useState<LiveStream | null>(null);
-  const [health, setHealth] = useState<LiveHealth | null>(null);
+  const qc = useQueryClient();
   const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [revoking, setRevoking] = useState(false);
+  const [focused, setFocused] = useState(true);
 
-  const ended = String(stream?.status || "").toLowerCase() === "ended";
+  const {
+    data: stream,
+    isPending,
+    isError,
+    error,
+    refetch: refetchStream,
+  } = useLiveStreamQuery(id, { focused });
 
-  const load = useCallback(async () => {
-    if (!id) return;
-    setError(null);
-    try {
-      const [s, h] = await Promise.all([getLiveStream(id), getLiveHealth(id)]);
-      setStream(s.data);
-      setHealth(h.data);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load stream");
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
+  const {
+    data: health,
+    refetch: refetchHealth,
+  } = useLiveHealthQuery(id, { focused });
 
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load])
+      setFocused(true);
+      refetchStream();
+      refetchHealth();
+      return () => setFocused(false);
+    }, [refetchStream, refetchHealth])
   );
+
+  const ended = String(stream?.status || "").toLowerCase() === "ended";
+  const cold = isPending && !stream;
+  const loadError =
+    isError && !stream
+      ? error instanceof Error
+        ? error.message
+        : "Failed to load stream"
+      : null;
 
   return (
     <Screen>
@@ -68,8 +66,20 @@ export default function LiveDetailScreen() {
           headerTitleStyle: { fontFamily: "Syne_700Bold" },
         }}
       />
-      {loading ? (
-        <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} />
+
+      {cold ? (
+        <DetailSkeleton variant="live" />
+      ) : loadError ? (
+        <View style={styles.content}>
+          <Text style={styles.error}>{loadError}</Text>
+          <Button
+            label="Retry"
+            onPress={() => {
+              void refetchStream();
+              void refetchHealth();
+            }}
+          />
+        </View>
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
           {stream ? (
@@ -81,16 +91,13 @@ export default function LiveDetailScreen() {
 
           {ended ? (
             <Text style={styles.endedNote}>
-              Stream revoked. New playlist requests return 404. Buffered
-              seconds may finish, then the player stalls. The encoder may keep
+              Stream revoked. New playlist requests return 404. Buffered seconds
+              may finish, then the player stalls. The encoder may keep
               publishing until kicked or stopped.
             </Text>
           ) : null}
 
-          <HlsPlayer
-            uri={ended ? null : playbackUrl}
-            title={stream?.title}
-          />
+          <HlsPlayer uri={ended ? null : playbackUrl} title={stream?.title} />
 
           {health ? (
             <View style={styles.healthBox}>
@@ -108,7 +115,7 @@ export default function LiveDetailScreen() {
           ) : null}
 
           {note ? <Text style={styles.note}>{note}</Text> : null}
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
 
           <Button
             label="Issue live playback token"
@@ -119,12 +126,22 @@ export default function LiveDetailScreen() {
                 const res = await createLiveToken(id);
                 setPlaybackUrl(res.data.playback_url);
                 setNote(null);
+                setActionError(null);
               } catch (e) {
-                setError(e instanceof ApiError ? e.message : "Token failed");
+                setActionError(
+                  e instanceof ApiError ? e.message : "Token failed"
+                );
               }
             }}
           />
-          <Button label="Refresh health" variant="ghost" onPress={load} />
+          <Button
+            label="Refresh health"
+            variant="ghost"
+            onPress={() => {
+              refetchStream();
+              refetchHealth();
+            }}
+          />
           {!ended ? (
             <Button
               label="Revoke stream"
@@ -133,22 +150,22 @@ export default function LiveDetailScreen() {
               onPress={async () => {
                 if (!id) return;
                 setRevoking(true);
-                setError(null);
+                setActionError(null);
                 try {
                   const res = await deleteLiveStream(id);
-                  setStream(res.data);
+                  qc.setQueryData(liveKeys.detail(id), res.data);
+                  await qc.invalidateQueries({ queryKey: liveKeys.list() });
+                  await qc.invalidateQueries({
+                    queryKey: liveKeys.health(id),
+                  });
                   setPlaybackUrl(null);
                   setNote(
                     "Revoked. Playback through OnStream is ended; refresh health if needed."
                   );
-                  try {
-                    const h = await getLiveHealth(id);
-                    setHealth(h.data);
-                  } catch {
-                    /* health optional after revoke */
-                  }
                 } catch (e) {
-                  setError(e instanceof ApiError ? e.message : "Delete failed");
+                  setActionError(
+                    e instanceof ApiError ? e.message : "Delete failed"
+                  );
                 } finally {
                   setRevoking(false);
                 }

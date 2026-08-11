@@ -1,27 +1,19 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import * as Linking from "expo-linking";
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import React, { useCallback, useState } from "react";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { ApiError, getApiBase } from "@/api/client";
-import {
-  createPlaybackToken,
-  getVideo,
-  Video,
-} from "@/api/videos";
+import { createPlaybackToken } from "@/api/videos";
 import { Button } from "@/components/Button";
 import { CopyRow } from "@/components/CopyRow";
+import { DetailSkeleton } from "@/components/DetailSkeleton";
 import { HlsPlayer } from "@/components/HlsPlayer";
 import { Screen } from "@/components/Screen";
 import { StatusPill } from "@/components/StatusPill";
 import { videoPipelineHint } from "@/lib/videoStatus";
+import { useVideoQuery } from "@/query/videos";
 import { colors, radii, spacing } from "@/theme/tokens";
 
 const IN_FLIGHT = new Set(["PENDING", "PROCESSING", "QUEUED", "UPLOADING"]);
@@ -35,61 +27,41 @@ const HINT_COLOR = {
 
 export default function VideoDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [video, setVideo] = useState<Video | null>(null);
   const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [tokenLoading, setTokenLoading] = useState(false);
   const [demoLoading, setDemoLoading] = useState(false);
-  const focusedRef = useRef(true);
+  const [focused, setFocused] = useState(true);
+
+  const {
+    data: video,
+    isPending,
+    isError,
+    error,
+    refetch,
+  } = useVideoQuery(id, { focused });
+
+  useFocusEffect(
+    useCallback(() => {
+      setFocused(true);
+      refetch();
+      return () => setFocused(false);
+    }, [refetch])
+  );
 
   const captionsReady = Boolean(video?.caption_vtt_path);
   const status = String(video?.status || "").toUpperCase();
   const isReady = status === "READY";
   const isBlocked = status === "ERROR" || status === "QUARANTINED";
   const pipeline = video ? videoPipelineHint(video) : null;
-
-  const load = useCallback(async () => {
-    if (!id) return;
-    setError(null);
-    try {
-      const res = await getVideo(id);
-      setVideo(res.data);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load video");
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  useFocusEffect(
-    useCallback(() => {
-      focusedRef.current = true;
-      load();
-      return () => {
-        focusedRef.current = false;
-      };
-    }, [load])
-  );
-
-  useEffect(() => {
-    const st = String(video?.status || "").toUpperCase();
-    const waitingCaptions = st === "READY" && !video?.caption_vtt_path;
-    if (!IN_FLIGHT.has(st) && !waitingCaptions) return;
-
-    let ticks = 0;
-    const maxTicks = waitingCaptions && !IN_FLIGHT.has(st) ? 12 : Infinity;
-    const timer = setInterval(() => {
-      ticks += 1;
-      if (ticks > maxTicks) {
-        clearInterval(timer);
-        return;
-      }
-      if (focusedRef.current) load();
-    }, 2500);
-    return () => clearInterval(timer);
-  }, [video?.status, video?.caption_vtt_path, load]);
+  const cold = isPending && !video;
+  const loadError =
+    isError && !video
+      ? error instanceof Error
+        ? error.message
+        : "Failed to load video"
+      : null;
 
   const ensurePlaybackUrl = useCallback(async () => {
     if (playbackUrl) return playbackUrl;
@@ -109,8 +81,14 @@ export default function VideoDetailScreen() {
           headerTitleStyle: { fontFamily: "Syne_700Bold" },
         }}
       />
-      {loading ? (
-        <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} />
+
+      {cold ? (
+        <DetailSkeleton variant="video" />
+      ) : loadError ? (
+        <View style={styles.content}>
+          <Text style={styles.error}>{loadError}</Text>
+          <Button label="Retry" onPress={() => { void refetch(); }} />
+        </View>
       ) : (
         <ScrollView
           contentContainerStyle={styles.content}
@@ -214,7 +192,7 @@ export default function VideoDetailScreen() {
           <HlsPlayer uri={playbackUrl} title={video?.title} />
 
           {note ? <Text style={styles.note}>{note}</Text> : null}
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
 
           <Button
             label="Issue playback token"
@@ -223,13 +201,13 @@ export default function VideoDetailScreen() {
             onPress={async () => {
               if (!id) return;
               setTokenLoading(true);
-              setError(null);
+              setActionError(null);
               setNote(null);
               try {
                 const res = await createPlaybackToken(id);
                 setPlaybackUrl(res.data.playback_url);
               } catch (e) {
-                setError(
+                setActionError(
                   e instanceof ApiError ? e.message : "Token request failed"
                 );
               } finally {
@@ -245,7 +223,7 @@ export default function VideoDetailScreen() {
             disabled={!isReady}
             onPress={async () => {
               setDemoLoading(true);
-              setError(null);
+              setActionError(null);
               setNote(null);
               try {
                 const url = await ensurePlaybackUrl();
@@ -262,7 +240,7 @@ export default function VideoDetailScreen() {
                     : "Opened /demo/ — captions appear after the AI captions job finishes."
                 );
               } catch (e) {
-                setError(
+                setActionError(
                   e instanceof ApiError
                     ? e.message
                     : e instanceof Error
@@ -275,7 +253,13 @@ export default function VideoDetailScreen() {
             }}
           />
 
-          <Button label="Refresh status" variant="ghost" onPress={load} />
+          <Button
+            label="Refresh status"
+            variant="ghost"
+            onPress={() => {
+              void refetch();
+            }}
+          />
 
           {playbackUrl ? (
             <CopyRow label="Playback URL" value={playbackUrl} />

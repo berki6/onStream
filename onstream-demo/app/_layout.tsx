@@ -9,17 +9,19 @@ import {
   ThemeProvider,
   type Theme,
 } from "@react-navigation/native";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { useFonts } from "expo-font";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import React, { useEffect } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { queryClient } from "@/query/client";
 import { colors } from "@/theme/tokens";
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -37,36 +39,24 @@ const navTheme: Theme = {
   },
 };
 
-function AuthGate({ children }: { children: React.ReactNode }) {
-  const { ready, signedIn } = useAuth();
-  const segments = useSegments();
-  const router = useRouter();
+/** Keep native splash up until fonts + SecureStore session are ready. */
+function BootSplash({ fontsLoaded }: { fontsLoaded: boolean }) {
+  const { ready } = useAuth();
 
   useEffect(() => {
-    if (!ready) return;
-    const inAuth = segments[0] === "(auth)";
-    if (!signedIn && !inAuth) {
-      router.replace("/(auth)/login");
-    } else if (signedIn && inAuth) {
-      router.replace("/(tabs)/videos");
+    if (fontsLoaded && ready) {
+      SplashScreen.hideAsync().catch(() => undefined);
     }
-  }, [ready, signedIn, segments, router]);
+  }, [fontsLoaded, ready]);
 
+  return null;
+}
+
+function AuthBoot({ children }: { children: React.ReactNode }) {
+  const { ready } = useAuth();
   if (!ready) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: colors.bg,
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <ActivityIndicator color={colors.brand} />
-      </View>
-    );
+    return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   }
-
   return <>{children}</>;
 }
 
@@ -83,58 +73,57 @@ export default function RootLayout() {
     SystemUI.setBackgroundColorAsync(colors.bg).catch(() => undefined);
   }, []);
 
-  useEffect(() => {
-    if (loaded) SplashScreen.hideAsync().catch(() => undefined);
-  }, [loaded]);
-
-  if (!loaded) {
-    return (
-      <View style={{ flex: 1, backgroundColor: colors.bg }} />
-    );
-  }
-
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
       <KeyboardProvider>
-        <ThemeProvider value={navTheme}>
-          <AuthProvider>
-            <StatusBar style="light" />
-            <AuthGate>
-              <Stack
-                screenOptions={{
-                  headerShown: false,
-                  contentStyle: { backgroundColor: colors.bg },
-                  headerStyle: { backgroundColor: colors.bgElevated },
-                  headerTintColor: colors.text,
-                  headerShadowVisible: false,
-                  // Avoid root "fade" — it crossfades through the default
-                  // white scene backdrop and strobes on back.
-                  animation: "slide_from_right",
-                }}
-              >
-                <Stack.Screen name="(auth)" />
-                <Stack.Screen name="(tabs)" options={{ animation: "none" }} />
-                <Stack.Screen
-                  name="video/[id]"
-                  options={{ headerShown: true, title: "Playback" }}
-                />
-                <Stack.Screen
-                  name="live/[id]"
-                  options={{ headerShown: true, title: "Live" }}
-                />
-                <Stack.Screen
-                  name="live/create"
-                  options={{
-                    headerShown: true,
-                    title: "New live",
-                    presentation: "modal",
-                    animation: "slide_from_bottom",
-                  }}
-                />
-              </Stack>
-            </AuthGate>
-          </AuthProvider>
-        </ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider value={navTheme}>
+            <AuthProvider>
+              <BootSplash fontsLoaded={loaded} />
+              <StatusBar style="light" />
+              {!loaded ? (
+                <View style={{ flex: 1, backgroundColor: colors.bg }} />
+              ) : (
+                <AuthBoot>
+                  <Stack
+                    screenOptions={{
+                      headerShown: false,
+                      contentStyle: { backgroundColor: colors.bg },
+                      headerStyle: { backgroundColor: colors.bgElevated },
+                      headerTintColor: colors.text,
+                      headerShadowVisible: false,
+                      animation: "slide_from_right",
+                    }}
+                  >
+                    <Stack.Screen name="index" />
+                    <Stack.Screen name="(auth)" />
+                    <Stack.Screen
+                      name="(tabs)"
+                      options={{ animation: "none" }}
+                    />
+                    <Stack.Screen
+                      name="video/[id]"
+                      options={{ headerShown: true, title: "Playback" }}
+                    />
+                    <Stack.Screen
+                      name="live/[id]"
+                      options={{ headerShown: true, title: "Live" }}
+                    />
+                    <Stack.Screen
+                      name="live/create"
+                      options={{
+                        headerShown: true,
+                        title: "New live",
+                        presentation: "modal",
+                        animation: "slide_from_bottom",
+                      }}
+                    />
+                  </Stack>
+                </AuthBoot>
+              )}
+            </AuthProvider>
+          </ThemeProvider>
+        </QueryClientProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>
   );

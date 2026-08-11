@@ -20,6 +20,7 @@
     "@expo/vector-icons": "^15.0.3",
     "@react-navigation/bottom-tabs": "^7.4.0",
     "@react-navigation/native": "^7.1.8",
+    "@tanstack/react-query": "^5.101.4",
     "babel-preset-expo": "~54.0.10",
     "expo": "~54.0.36",
     "expo-build-properties": "~1.0.10",
