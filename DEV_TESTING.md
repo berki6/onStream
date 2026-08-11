@@ -219,7 +219,32 @@ Shared setup, then pick **one** publisher (OBS or FFmpeg). Do not create a secon
 
 ### 2b. Publish with FFmpeg (no OBS)
 
-Use when OBS/Streamlabs is unavailable. Loops the repo sample clip into RTMP until you stop it.
+**Preferred:** one helper that starts the looping publisher and prints the phone checklist. API + worker + MediaMTX must already be running.
+
+It only automates the **encoder** side.
+
+| Step | Mode B (`--username` / `--password`) | Mode A (`--stream-key`) |
+|------|--------------------------------------|-------------------------|
+| Create stream | Yes | No (you created in Expo) |
+| Publish (FFmpeg loop) | Yes — keeps running | Yes — keeps running |
+| Phone play / health / token | **You** | **You** |
+| Revoke | On **Ctrl+C** (default) | Only if you pass login + `--revoke-on-exit` |
+
+It waits while you test. It does **not** auto-play, auto-assert health, or revoke on a timer. Stop with Ctrl+C when you’re done — then mode B revokes.
+
+```powershell
+# A) You created the stream in Expo — paste the plaintext key (shown once):
+.\.venv\Scripts\python.exe scripts\live_lab_publish.py --stream-key <STREAM_KEY>
+
+# B) Script logs in, creates a stream, publishes, and revokes on Ctrl+C:
+.\.venv\Scripts\python.exe scripts\live_lab_publish.py --username <user> --password <pass>
+```
+
+Optional env: `ONSTREAM_LAB_BASE`, `ONSTREAM_LAB_USER`, `ONSTREAM_LAB_PASSWORD`, `ONSTREAM_LAB_RTMP`, `ONSTREAM_LAB_MEDIAMTX_API`.
+
+Expect script output: MediaMTX path online (when reachable), then **Do this on your phone now** steps. Leave it running until play is confirmed. `Ctrl+C` stops FFmpeg (and revokes in mode B by default).
+
+**Manual fallback** (same encode settings):
 
 ```powershell
 # Replace <STREAM_KEY> with the plaintext key from create (not stream_id)
@@ -292,7 +317,7 @@ After the revoke demo, stop the encoder (`Ctrl+C` / stop OBS) if it is still pub
 - [ ] `/health` OK
 - [ ] Register / login (Expo or Scalar)
 - [ ] VOD upload → READY → play (Expo and/or `/demo/`)
-- [ ] Live create → OBS **or** FFmpeg publish → play → revoke
+- [ ] Live create → OBS **or** `scripts/live_lab_publish.py` / FFmpeg → play → revoke
 - [ ] After revoke: playback 404; stop encoder if still running
 - [ ] Phone: LAN `PUBLIC_API_BASE_URL` + matching Expo API base
 - [ ] Optional: captions appear in master playlist after AI jobs (not shown in Expo UI)
