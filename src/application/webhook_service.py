@@ -74,6 +74,40 @@ def list_endpoints(db: Session, user_id: int) -> List[Dict[str, Any]]:
     ]
 
 
+def list_deliveries(
+    db: Session, user_id: int, *, limit: int = 50
+) -> List[Dict[str, Any]]:
+    """Recent deliveries for all of the user's webhook endpoints (lab inbox)."""
+    limit = max(1, min(int(limit or 50), 200))
+    rows = (
+        db.query(models.WebhookDelivery)
+        .join(
+            models.WebhookEndpoint,
+            models.WebhookDelivery.endpoint_id == models.WebhookEndpoint.id,
+        )
+        .filter(models.WebhookEndpoint.user_id == user_id)
+        .order_by(models.WebhookDelivery.id.desc())
+        .limit(limit)
+        .all()
+    )
+    out: List[Dict[str, Any]] = []
+    for d in rows:
+        snippet = (d.payload or "")[:240]
+        out.append(
+            {
+                "id": d.id,
+                "endpoint_id": d.endpoint_id,
+                "event": d.event,
+                "status": d.status,
+                "attempts": d.attempts,
+                "last_error": d.last_error,
+                "payload_preview": snippet,
+                "created_at": d.created_at,
+            }
+        )
+    return out
+
+
 def delete_endpoint(db: Session, user_id: int, endpoint_id: int) -> None:
     ep = (
         db.query(models.WebhookEndpoint)

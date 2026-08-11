@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -17,9 +18,17 @@ import { listVideos, uploadVideoMultipart, Video } from "@/api/videos";
 import { Button } from "@/components/Button";
 import { Screen } from "@/components/Screen";
 import { StatusPill } from "@/components/StatusPill";
+import { videoPipelineHint } from "@/lib/videoStatus";
 import { colors, radii, spacing } from "@/theme/tokens";
 
 const IN_FLIGHT = new Set(["PENDING", "PROCESSING", "QUEUED", "UPLOADING"]);
+
+const HINT_COLOR = {
+  ok: colors.ready,
+  warn: colors.warning,
+  danger: colors.danger,
+  muted: colors.textDim,
+} as const;
 
 export default function VideosScreen() {
   const insets = useSafeAreaInsets();
@@ -54,7 +63,6 @@ export default function VideosScreen() {
     }, [load])
   );
 
-  // Auto-refresh while any video is still processing
   useEffect(() => {
     const busy = items.some((v) =>
       IN_FLIGHT.has(String(v.status || "").toUpperCase())
@@ -119,6 +127,11 @@ export default function VideosScreen() {
           data={items}
           keyExtractor={(item) => item.upload_id}
           contentContainerStyle={styles.list}
+          // Bounce when content overflows; do NOT alwaysBounceVertical —
+          // that races pull-to-refresh on every top drag.
+          bounces
+          alwaysBounceVertical={false}
+          overScrollMode="auto"
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -131,29 +144,64 @@ export default function VideosScreen() {
           }
           ListEmptyComponent={
             <View style={styles.empty}>
+              <Ionicons name="film-outline" size={40} color={colors.textDim} />
               <Text style={styles.emptyTitle}>No videos yet</Text>
               <Text style={styles.emptyBody}>
                 Upload a clip to exercise ABR, tokens, and HLS playback.
               </Text>
             </View>
           }
-          renderItem={({ item }) => (
-            <Pressable
-              onPress={() => router.push(`/video/${item.upload_id}`)}
-              style={({ pressed }) => [styles.card, pressed && { opacity: 0.9 }]}
-            >
-              <View style={styles.cardTop}>
-                <Text style={styles.cardTitle} numberOfLines={1}>
-                  {item.title}
+          renderItem={({ item }) => {
+            const hint = videoPipelineHint(item);
+            return (
+              <Pressable
+                onPress={() => router.push(`/video/${item.upload_id}`)}
+                style={({ pressed }) => [
+                  styles.card,
+                  pressed && { opacity: 0.9 },
+                ]}
+              >
+                <View style={styles.cardTop}>
+                  <View style={styles.iconWrap}>
+                    <Ionicons
+                      name={
+                        String(item.status).toUpperCase() === "READY"
+                          ? "play-circle"
+                          : String(item.status).toUpperCase() === "ERROR"
+                            ? "alert-circle"
+                            : String(item.status).toUpperCase() === "QUARANTINED"
+                              ? "shield-half-outline"
+                              : "hourglass-outline"
+                      }
+                      size={22}
+                      color={
+                        String(item.status).toUpperCase() === "READY"
+                          ? colors.brand
+                          : String(item.status).toUpperCase() === "ERROR"
+                            ? colors.danger
+                            : String(item.status).toUpperCase() === "QUARANTINED"
+                              ? colors.warning
+                              : colors.textMuted
+                      }
+                    />
+                  </View>
+                  <Text style={styles.cardTitle} numberOfLines={1}>
+                    {item.title}
+                  </Text>
+                  <StatusPill status={item.status} />
+                </View>
+                <Text style={[styles.hint, { color: HINT_COLOR[hint.tone] }]}>
+                  {hint.text}
                 </Text>
-                <StatusPill status={item.status} />
-              </View>
-              <Text style={styles.meta}>{item.upload_id}</Text>
-              {item.quality_score != null ? (
-                <Text style={styles.meta}>Quality {item.quality_score.toFixed(1)}</Text>
-              ) : null}
-            </Pressable>
-          )}
+                <Text style={styles.meta}>{item.upload_id}</Text>
+                {item.quality_score != null ? (
+                  <Text style={styles.meta}>
+                    Quality {item.quality_score.toFixed(1)}
+                  </Text>
+                ) : null}
+              </Pressable>
+            );
+          }}
         />
       )}
     </Screen>
@@ -193,12 +241,16 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
     backgroundColor: colors.bgSoft,
     padding: 16,
-    gap: 8,
+    gap: 6,
   },
   cardTop: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+  },
+  iconWrap: {
+    width: 28,
+    alignItems: "center",
   },
   cardTitle: {
     flex: 1,
@@ -206,12 +258,17 @@ const styles = StyleSheet.create({
     fontFamily: "Syne_700Bold",
     fontSize: 18,
   },
+  hint: {
+    fontFamily: "DMSans_500Medium",
+    fontSize: 13,
+    lineHeight: 18,
+  },
   meta: {
     color: colors.textDim,
     fontFamily: "DMSans_400Regular",
-    fontSize: 13,
+    fontSize: 12,
   },
-  empty: { paddingVertical: 48, gap: 8 },
+  empty: { paddingVertical: 48, gap: 8, alignItems: "flex-start" },
   emptyTitle: {
     color: colors.text,
     fontFamily: "Syne_700Bold",

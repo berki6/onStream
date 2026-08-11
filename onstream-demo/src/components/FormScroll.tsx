@@ -29,6 +29,9 @@ export function FormScroll({
   contentContainerStyle,
   keyboardShouldPersistTaps = "handled",
   showsVerticalScrollIndicator = false,
+  bounces = true,
+  alwaysBounceVertical,
+  overScrollMode = "auto",
   style,
   ...rest
 }: FormScrollProps) {
@@ -38,6 +41,13 @@ export function FormScroll({
       bottomOffset={bottomOffset}
       keyboardShouldPersistTaps={keyboardShouldPersistTaps}
       showsVerticalScrollIndicator={showsVerticalScrollIndicator}
+      bounces={bounces}
+      // Default: bounce only when content overflows (avoids fighting forms /
+      // future RefreshControl). Callers can pass alwaysBounceVertical.
+      alwaysBounceVertical={
+        alwaysBounceVertical === undefined ? false : alwaysBounceVertical
+      }
+      overScrollMode={overScrollMode}
       contentContainerStyle={[
         centered ? styles.centered : undefined,
         contentContainerStyle,

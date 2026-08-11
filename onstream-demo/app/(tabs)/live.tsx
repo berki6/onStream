@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
@@ -105,6 +106,11 @@ export default function LiveTabScreen() {
           data={rows}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
+          // Bounce when content overflows; do NOT alwaysBounceVertical —
+          // that races pull-to-refresh on every top drag.
+          bounces
+          alwaysBounceVertical={false}
+          overScrollMode="auto"
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -117,6 +123,7 @@ export default function LiveTabScreen() {
           }
           ListEmptyComponent={
             <View style={styles.empty}>
+              <Ionicons name="radio-outline" size={40} color={colors.textDim} />
               <Text style={styles.emptyTitle}>No streams yet</Text>
               <Text style={styles.emptyBody}>
                 Create one to grab RTMP / WHIP URLs, publish with OBS or the lab
@@ -138,12 +145,30 @@ export default function LiveTabScreen() {
             }
             const stream = item.stream;
             const ended = isEnded(stream);
+            const st = String(stream.status || "").toLowerCase();
             return (
               <Pressable
                 onPress={() => router.push(`/live/${stream.stream_id}`)}
                 style={[styles.card, ended && styles.cardEnded]}
               >
                 <View style={styles.cardTop}>
+                  <Ionicons
+                    name={
+                      st === "live"
+                        ? "radio"
+                        : st === "idle"
+                          ? "pause-circle-outline"
+                          : "stop-circle-outline"
+                    }
+                    size={20}
+                    color={
+                      st === "live"
+                        ? colors.live
+                        : st === "idle"
+                          ? colors.warning
+                          : colors.textDim
+                    }
+                  />
                   <Text style={styles.cardTitle} numberOfLines={1}>
                     {stream.title}
                   </Text>
@@ -227,7 +252,7 @@ const styles = StyleSheet.create({
     fontFamily: "DMSans_400Regular",
     fontSize: 12,
   },
-  empty: { paddingVertical: 48, gap: 8 },
+  empty: { paddingVertical: 48, gap: 8, alignItems: "flex-start" },
   emptyTitle: {
     color: colors.text,
     fontFamily: "Syne_700Bold",

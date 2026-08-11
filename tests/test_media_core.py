@@ -123,6 +123,10 @@ def test_create_webhook_and_api_key(user_and_token):
     assert r.status_code == 201
     assert "secret" in r.json()["data"]
 
+    r_del = client.get("/v1/webhooks/deliveries", headers=headers)
+    assert r_del.status_code == 200
+    assert isinstance(r_del.json()["data"], list)
+
     r2 = client.post(
         "/v1/api-keys",
         headers=headers,

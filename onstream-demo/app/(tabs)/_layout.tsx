@@ -28,8 +28,12 @@ export default function TabsLayout() {
         name="videos"
         options={{
           title: "VOD",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="film-outline" color={color} size={size} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? "film" : "film-outline"}
+              color={color}
+              size={size}
+            />
           ),
         }}
       />
@@ -37,8 +41,12 @@ export default function TabsLayout() {
         name="live"
         options={{
           title: "Live",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="radio-outline" color={color} size={size} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? "radio" : "radio-outline"}
+              color={color}
+              size={size}
+            />
           ),
         }}
       />
@@ -46,8 +54,12 @@ export default function TabsLayout() {
         name="settings"
         options={{
           title: "Lab",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="flask-outline" color={color} size={size} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? "flask" : "flask-outline"}
+              color={color}
+              size={size}
+            />
           ),
         }}
       />

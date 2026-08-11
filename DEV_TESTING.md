@@ -320,6 +320,8 @@ With a webhook endpoint subscribed to `live.created,live.started,live.idle,live.
 2. Ensure the **worker** is running (delivers pending rows every few ticks).
 3. Expect deliveries in order: `live.created` → `live.started` → (`live.idle` if encoder stops cleanly) → `live.ended` on revoke.
 
+**Lab UI:** Expo **Lab** tab → Webhooks → Subscribe (e.g. `https://webhook.site/<uuid>`) → refresh **Delivery log**. Same data via `GET /v1/webhooks/deliveries`.
+
 Hard `live.ended` is revoke-only; health soft-fail emits `live.idle`, not `live.ended`. Details: [`docs/API.md`](docs/API.md#live-outbound-webhooks).
 
 ---
@@ -332,7 +334,8 @@ Hard `live.ended` is revoke-only; health soft-fail emits `live.idle`, not `live.
 - [ ] Live create → OBS **or** `scripts/live_lab_publish.py` / FFmpeg → play → revoke
 - [ ] After revoke: playback 404; stop encoder if still running
 - [ ] Phone: LAN `PUBLIC_API_BASE_URL` + matching Expo API base
-- [ ] Optional: captions appear in master playlist after AI jobs (not shown in Expo UI)
+- [ ] Optional: captions appear after AI jobs (Expo VOD detail shows READY vs captions-pending)
+- [ ] Optional: Lab → Webhooks subscribe + delivery log shows `live.*`
 
 ---
 
@@ -341,4 +344,4 @@ Hard `live.ended` is revoke-only; health soft-fail emits `live.idle`, not `live.
 - Direct-upload browser flow (`/v1/uploads`) — use Scalar/curl if needed
 - In-app WHIP publish — use OBS, FFmpeg (RTMP), or a WHIP client with the copied URL
 - Password-reset email UX in Expo
-- Captions / moderation status screens
+- Full moderation review queue (quarantine is visible on VOD; clear via API/Scalar)

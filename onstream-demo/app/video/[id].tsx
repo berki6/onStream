@@ -1,4 +1,5 @@
-import { Stack, useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import * as Linking from "expo-linking";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -8,7 +9,6 @@ import {
   Text,
   View,
 } from "react-native";
-import { useFocusEffect } from "expo-router";
 
 import { ApiError, getApiBase } from "@/api/client";
 import {
@@ -21,24 +21,17 @@ import { CopyRow } from "@/components/CopyRow";
 import { HlsPlayer } from "@/components/HlsPlayer";
 import { Screen } from "@/components/Screen";
 import { StatusPill } from "@/components/StatusPill";
-import { colors, spacing } from "@/theme/tokens";
+import { videoPipelineHint } from "@/lib/videoStatus";
+import { colors, radii, spacing } from "@/theme/tokens";
 
 const IN_FLIGHT = new Set(["PENDING", "PROCESSING", "QUEUED", "UPLOADING"]);
 
-function captionsLabel(video: Video | null): string {
-  if (!video) return "—";
-  const status = String(video.status || "").toUpperCase();
-  if (video.caption_vtt_path) {
-    const lang = video.detected_language
-      ? ` · ${video.detected_language}`
-      : "";
-    return `Ready${lang} — in HLS playlist`;
-  }
-  if (IN_FLIGHT.has(status)) return "Pending (after READY)";
-  if (status === "READY") return "Pending or not enabled";
-  if (status === "ERROR" || status === "QUARANTINED") return "Unavailable";
-  return "Not ready";
-}
+const HINT_COLOR = {
+  ok: colors.ready,
+  warn: colors.warning,
+  danger: colors.danger,
+  muted: colors.textDim,
+} as const;
 
 export default function VideoDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -52,6 +45,10 @@ export default function VideoDetailScreen() {
   const focusedRef = useRef(true);
 
   const captionsReady = Boolean(video?.caption_vtt_path);
+  const status = String(video?.status || "").toUpperCase();
+  const isReady = status === "READY";
+  const isBlocked = status === "ERROR" || status === "QUARANTINED";
+  const pipeline = video ? videoPipelineHint(video) : null;
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -77,12 +74,12 @@ export default function VideoDetailScreen() {
   );
 
   useEffect(() => {
-    const status = String(video?.status || "").toUpperCase();
-    const waitingCaptions = status === "READY" && !video?.caption_vtt_path;
-    if (!IN_FLIGHT.has(status) && !waitingCaptions) return;
+    const st = String(video?.status || "").toUpperCase();
+    const waitingCaptions = st === "READY" && !video?.caption_vtt_path;
+    if (!IN_FLIGHT.has(st) && !waitingCaptions) return;
 
     let ticks = 0;
-    const maxTicks = waitingCaptions && !IN_FLIGHT.has(status) ? 12 : Infinity;
+    const maxTicks = waitingCaptions && !IN_FLIGHT.has(st) ? 12 : Infinity;
     const timer = setInterval(() => {
       ticks += 1;
       if (ticks > maxTicks) {
@@ -115,27 +112,102 @@ export default function VideoDetailScreen() {
       {loading ? (
         <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} />
       ) : (
-        <ScrollView contentContainerStyle={styles.content}>
-          {video ? (
-            <View style={styles.meta}>
-              <StatusPill status={video.status} />
-              <Text style={styles.id}>{video.upload_id}</Text>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          bounces
+          alwaysBounceVertical
+          overScrollMode="always"
+        >
+          {video && pipeline ? (
+            <View style={styles.statusBlock}>
+              <View style={styles.meta}>
+                <StatusPill status={video.status} />
+                <Text style={styles.id}>{video.upload_id}</Text>
+              </View>
+              <View
+                style={[
+                  styles.pipelineBanner,
+                  {
+                    borderColor: HINT_COLOR[pipeline.tone],
+                    backgroundColor:
+                      pipeline.tone === "ok"
+                        ? "rgba(46,230,166,0.08)"
+                        : pipeline.tone === "warn"
+                          ? "rgba(240,194,75,0.08)"
+                          : pipeline.tone === "danger"
+                            ? "rgba(255,107,107,0.08)"
+                            : "rgba(0,0,0,0.2)",
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={
+                    pipeline.tone === "ok"
+                      ? "checkmark-circle"
+                      : pipeline.tone === "danger"
+                        ? "close-circle"
+                        : pipeline.tone === "warn"
+                          ? "alert-circle"
+                          : "ellipse-outline"
+                  }
+                  size={18}
+                  color={HINT_COLOR[pipeline.tone]}
+                />
+                <Text
+                  style={[
+                    styles.pipelineText,
+                    { color: HINT_COLOR[pipeline.tone] },
+                  ]}
+                >
+                  {pipeline.text}
+                </Text>
+              </View>
+              {isReady && !captionsReady ? (
+                <Text style={styles.infoDim}>
+                  Asset is playable now. Captions arrive asynchronously after
+                  the AI job — this is not an error.
+                </Text>
+              ) : null}
+              {isBlocked ? (
+                <Text style={styles.infoDim}>
+                  {status === "QUARANTINED"
+                    ? "Playback tokens are blocked until moderation clears quarantine."
+                    : "Transcode failed — check worker logs or re-upload."}
+                </Text>
+              ) : null}
             </View>
           ) : null}
 
           {video ? (
             <View style={styles.infoBox}>
               <Text style={styles.section}>Captions</Text>
-              <Text style={styles.infoLine}>{captionsLabel(video)}</Text>
               {captionsReady ? (
-                <Text style={styles.infoDim}>
-                  expo-video has limited track UI — use /demo/ for the captions
-                  menu (master must include EXT-X-MEDIA SUBTITLES).
+                <>
+                  <Text style={styles.infoLine}>
+                    In HLS playlist
+                    {video.detected_language
+                      ? ` · ${video.detected_language}`
+                      : ""}
+                  </Text>
+                  <Text style={styles.infoDim}>
+                    expo-video has limited track UI — use /demo/ for the
+                    captions menu.
+                  </Text>
+                  {video.caption_vtt_path ? (
+                    <Text style={styles.infoDim}>{video.caption_vtt_path}</Text>
+                  ) : null}
+                </>
+              ) : isReady ? (
+                <Text style={styles.infoLine}>
+                  Pending — video READY, waiting on captions job (or AI off)
                 </Text>
-              ) : null}
-              {video.caption_vtt_path ? (
-                <Text style={styles.infoDim}>{video.caption_vtt_path}</Text>
-              ) : null}
+              ) : IN_FLIGHT.has(status) ? (
+                <Text style={styles.infoLine}>
+                  After encode finishes (READY), then captions run
+                </Text>
+              ) : (
+                <Text style={styles.infoLine}>Unavailable for this status</Text>
+              )}
             </View>
           ) : null}
 
@@ -147,6 +219,7 @@ export default function VideoDetailScreen() {
           <Button
             label="Issue playback token"
             loading={tokenLoading}
+            disabled={isBlocked}
             onPress={async () => {
               if (!id) return;
               setTokenLoading(true);
@@ -169,7 +242,7 @@ export default function VideoDetailScreen() {
             label="Open in /demo/ (captions)"
             variant="ghost"
             loading={demoLoading}
-            disabled={String(video?.status || "").toUpperCase() !== "READY"}
+            disabled={!isReady}
             onPress={async () => {
               setDemoLoading(true);
               setError(null);
@@ -204,7 +277,9 @@ export default function VideoDetailScreen() {
 
           <Button label="Refresh status" variant="ghost" onPress={load} />
 
-          {playbackUrl ? <CopyRow label="Playback URL" value={playbackUrl} /> : null}
+          {playbackUrl ? (
+            <CopyRow label="Playback URL" value={playbackUrl} />
+          ) : null}
         </ScrollView>
       )}
     </Screen>
@@ -217,6 +292,7 @@ const styles = StyleSheet.create({
     gap: 14,
     paddingBottom: 40,
   },
+  statusBlock: { gap: 10 },
   meta: {
     flexDirection: "row",
     alignItems: "center",
@@ -226,6 +302,20 @@ const styles = StyleSheet.create({
     color: colors.textDim,
     fontFamily: "DMSans_400Regular",
     fontSize: 13,
+  },
+  pipelineBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    padding: 12,
+    borderRadius: radii.md,
+    borderWidth: 1,
+  },
+  pipelineText: {
+    flex: 1,
+    fontFamily: "DMSans_500Medium",
+    fontSize: 14,
+    lineHeight: 20,
   },
   infoBox: { gap: 4 },
   section: {

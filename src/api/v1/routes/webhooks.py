@@ -37,6 +37,17 @@ def list_webhooks(
     return api_ok(request, data, message="Webhook endpoints")
 
 
+@router.get("/deliveries", response_model=APIResponse)
+def list_webhook_deliveries(
+    request: Request,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    data = webhook_service.list_deliveries(db, current_user.id, limit=limit)
+    return api_ok(request, data, message="Webhook deliveries")
+
+
 @router.delete("/{endpoint_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_webhook(
     endpoint_id: int,

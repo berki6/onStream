@@ -177,6 +177,13 @@ Register endpoints under `/v1/webhooks` (HMAC via `X-OnStream-Signature`). Live 
 
 Payload shape: `{ "type", "created_at", "data": { stream_id, user_id, title, status, …, reason? } }`. Subscribe with those names or `*`. Worker delivers pending rows on its webhook tick.
 
+| Method | Path | Notes |
+|--------|------|--------|
+| POST | `/v1/webhooks/` | Create endpoint (secret returned once) |
+| GET | `/v1/webhooks/` | List endpoints |
+| GET | `/v1/webhooks/deliveries` | Recent delivery inbox for the caller (`?limit=`) |
+| DELETE | `/v1/webhooks/{id}` | Remove endpoint |
+
 ## Other `/v1` routers
 
 | Prefix | Purpose |

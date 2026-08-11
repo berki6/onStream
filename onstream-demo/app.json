@@ -27,7 +27,9 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0B1210"
       },
-      "package": "com.onstream.demo"
+      "package": "com.onstream.demo",
+      "backgroundColor": "#0B1210",
+      "navigationBarColor": "#0B1210"
     },
     "web": {
       "bundler": "metro",
