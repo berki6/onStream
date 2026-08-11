@@ -10,6 +10,8 @@ Use the first section for live system design. The remainder provides operator re
 
 A live session begins when an authenticated user creates a stream. OnStream stores only a hashed key and returns the plaintext key (and WHIP/WHEP URLs) once. OBS or a WHIP client publishes to MediaMTX on path `live/{stream_key}`. MediaMTX asks OnStream’s auth webhook before allowing publish; on success the row becomes `live` and HLS appears on the shared live volume. Viewers never need the stream key: they play `/v1/playback/live/{stream_id}/...` with a stream token or public flag. Revoke deletes the credential, kicks the publisher, stops optional ABR, and can purge CDN URLs.
 
+Integrators can subscribe to outbound HMAC webhooks for the same lifecycle: `live.created` → `live.started` → (`live.idle` on disconnect/stale) → `live.ended` on revoke. See [`API.md`](API.md#live-outbound-webhooks).
+
 ```mermaid
 sequenceDiagram
   participant App as API live_service

@@ -23,6 +23,7 @@ __all__ = [
     "_deliver_one",
     "process_pending_deliveries",
     "emit_video_event",
+    "emit_live_event",
 ]
 
 
@@ -176,3 +177,31 @@ def emit_video_event(
     if extra:
         data.update(extra)
     return enqueue_event(db, video.user_id, event, data)
+
+
+def emit_live_event(
+    db: Session,
+    stream: models.LiveStream,
+    event: str,
+    extra: Optional[dict] = None,
+) -> int:
+    """
+    Enqueue a live lifecycle webhook for all matching user endpoints.
+
+    Payload always includes stream identity and current status; ``extra`` adds
+    transition metadata (e.g. ``reason``).
+    """
+    data = {
+        "stream_id": stream.stream_id,
+        "user_id": stream.user_id,
+        "title": stream.title,
+        "status": stream.status,
+        "is_public": stream.is_public,
+        "hls_path": stream.hls_path,
+        "abr_hls_path": stream.abr_hls_path,
+        "started_at": stream.started_at.isoformat() if stream.started_at else None,
+        "ended_at": stream.ended_at.isoformat() if stream.ended_at else None,
+    }
+    if extra:
+        data.update(extra)
+    return enqueue_event(db, stream.user_id, event, data)

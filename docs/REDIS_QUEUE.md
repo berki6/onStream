@@ -91,7 +91,7 @@ flowchart LR
 
 ### Side loops on the worker
 
-The worker is also a lightweight live supervisor. Every few dequeue cycles it runs `check_live_streams` (stale or missing playlists → idle/ended and webhooks) and may run QoE canary fetches. That keeps live freshness logic next to the process that already holds long-running capacity, without a separate cron service for the default stack.
+The worker is also a lightweight live supervisor. Every few dequeue cycles it runs `check_live_streams` (stale or missing playlists → `live.idle` and soft status idle) and may run QoE canary fetches. That keeps live freshness logic next to the process that already holds long-running capacity, without a separate cron service for the default stack.
 
 ## Who enqueues what
 

@@ -164,6 +164,19 @@ Create returns sensitive publish material once (`stream_key`, `whip_url`, `whep_
 | POST | `/{stream_id}/tokens` |
 | POST | `/mediamtx-auth` MediaMTX webhook |
 
+### Live outbound webhooks
+
+Register endpoints under `/v1/webhooks` (HMAC via `X-OnStream-Signature`). Live events:
+
+| Event | When |
+|-------|------|
+| `live.created` | Stream row created (`POST /v1/live`) |
+| `live.started` | First successful publish auth (idle → live); not re-emitted while already live |
+| `live.idle` | Unpublish auth, or health soft-fail (missing/stale playlist) |
+| `live.ended` | Explicit revoke (`DELETE /v1/live/{id}`) only |
+
+Payload shape: `{ "type", "created_at", "data": { stream_id, user_id, title, status, …, reason? } }`. Subscribe with those names or `*`. Worker delivers pending rows on its webhook tick.
+
 ## Other `/v1` routers
 
 | Prefix | Purpose |

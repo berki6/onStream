@@ -6,6 +6,7 @@ import hashlib
 import hmac
 
 WEBHOOK_EVENTS = {
+    # VOD
     "video.created",
     "video.ready",
     "video.failed",
@@ -13,6 +14,10 @@ WEBHOOK_EVENTS = {
     "video.quarantined",
     "video.captions_ready",
     "video.quality",
+    # Live (Mux-shaped lifecycle)
+    "live.created",
+    "live.started",
+    "live.idle",
     "live.ended",
 }
 

@@ -21,13 +21,33 @@ from src.core.security.tokens import create_stream_token, decode_token
 from src.infrastructure.db import models
 from src.infrastructure.db.repositories import live_stream_repository
 from src.infrastructure.media import live_abr
+from src.infrastructure.webhooks.delivery import emit_live_event
 
 logger = get_logger(__name__)
+
+
+def _safe_emit_live(
+    db: Session,
+    stream: models.LiveStream,
+    event: str,
+    *,
+    extra: Optional[dict] = None,
+) -> None:
+    """Enqueue live webhooks without failing the control-plane path."""
+    try:
+        emit_live_event(db, stream, event, extra=extra)
+    except Exception as exc:
+        logger.warning(
+            "Failed to enqueue %s for %s: %s",
+            event,
+            getattr(stream, "stream_id", "?"),
+            exc,
+        )
+
 
 _SAFE_CHARS = "".join(
     c for c in (string.ascii_letters + string.digits) if c not in "0O1Il"
 )
-
 
 def _require_live_enabled() -> None:
     if not settings.LIVE_ENABLED:
@@ -143,6 +163,7 @@ def create_stream(
         stream_key_prefix=prefix,
         is_public=is_public,
     )
+    _safe_emit_live(db, stream, "live.created")
     logger.info("Created live stream")
     return _to_response(stream, stream_key=plaintext_key)
 
@@ -203,6 +224,7 @@ def delete_stream(db: Session, stream_id: str, user_id: int) -> dict:
 
     live_abr.stop_abr(stream_id)
     stream = live_stream_repository.revoke(db, stream)
+    _safe_emit_live(db, stream, "live.ended", extra={"reason": "revoked"})
     logger.info("Deleted live stream")
     return _to_response(stream)
 
@@ -299,9 +321,18 @@ def authorize_publish(
             abr_path = f"{stream.stream_id}/abr"
             live_abr.start_abr(stream.stream_id, key)
 
+        previous_status = stream.status
         stream = live_stream_repository.set_live(
             db, stream, hls_path=hls_path, abr_hls_path=abr_path
         )
+        # Emit only on idle/created → live (not on repeated auth while live).
+        if previous_status != "live":
+            _safe_emit_live(
+                db,
+                stream,
+                "live.started",
+                extra={"reason": "publish", "previous_status": previous_status},
+            )
         try:
             metrics_mod.LIVE_AUTH_TOTAL.labels(action=action, result="allow").inc()
             metrics_mod.LIVE_STREAMS_ACTIVE.set(
@@ -315,8 +346,16 @@ def authorize_publish(
         return stream
 
     if action in ("unpublish", "unpublish_all"):
+        previous_status = stream.status
         live_abr.stop_abr(stream.stream_id)
         stream = live_stream_repository.set_idle(db, stream)
+        if previous_status == "live":
+            _safe_emit_live(
+                db,
+                stream,
+                "live.idle",
+                extra={"reason": "unpublish", "previous_status": previous_status},
+            )
         try:
             metrics_mod.LIVE_AUTH_TOTAL.labels(action="unpublish", result="allow").inc()
             metrics_mod.LIVE_STREAMS_ACTIVE.set(

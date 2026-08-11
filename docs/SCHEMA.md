@@ -68,16 +68,18 @@ stateDiagram-v2
 
 ## Live lifecycle
 
-`live_streams.status` is a string column, typically moving between idle, live, and ended. Publish success (MediaMTX auth) marks live; unpublish, stale playlist detection, or explicit revoke moves the row toward idle or ended.
+`live_streams.status` is a string column, typically moving between idle, live, and ended. Publish success (MediaMTX auth) marks live; unpublish or stale playlist detection returns the row to idle; explicit revoke marks ended.
 
 ```mermaid
 stateDiagram-v2
   [*] --> idle
   idle --> live: MediaMTX publish auth OK
-  live --> idle: unpublish or recovered stale
-  live --> ended: health tick / revoke
+  live --> idle: unpublish or health soft-fail
+  live --> ended: revoke
   idle --> ended: revoke
 ```
+
+Outbound live webhooks follow those transitions: `live.created` (create), `live.started` (idle→live), `live.idle` (live→idle), `live.ended` (revoke only).
 
 Secrets: only `stream_key_hash` and `stream_key_prefix` are persisted. The plaintext stream key is returned once at create time and is required for OBS/WHIP publish paths.
 

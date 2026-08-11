@@ -310,6 +310,16 @@ Confirmed check: `GET /v1/playback/live/<stream_id>/master.m3u8` → **404** aft
 
 After the revoke demo, stop the encoder (`Ctrl+C` / stop OBS) if it is still publishing.
 
+### Live webhooks (optional integrator check)
+
+With a webhook endpoint subscribed to `live.created,live.started,live.idle,live.ended` (or `*`):
+
+1. Create / publish / unpublish / revoke as above (or use `scripts/live_lab_publish.py`).
+2. Ensure the **worker** is running (delivers pending rows every few ticks).
+3. Expect deliveries in order: `live.created` → `live.started` → (`live.idle` if encoder stops cleanly) → `live.ended` on revoke.
+
+Hard `live.ended` is revoke-only; health soft-fail emits `live.idle`, not `live.ended`. Details: [`docs/API.md`](docs/API.md#live-outbound-webhooks).
+
 ---
 
 ## Quick checklist

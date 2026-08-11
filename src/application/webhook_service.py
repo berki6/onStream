@@ -10,12 +10,33 @@ from sqlalchemy.orm import Session
 from src.application.error_codes import ErrorCode
 from src.application.errors import AppError
 from src.infrastructure.db import models
+from src.infrastructure.webhooks.signer import WEBHOOK_EVENTS
 from src.schemas.webhook import WebhookEndpointCreate
+
+
+def _normalize_events(events: List[str] | str) -> List[str]:
+    if isinstance(events, str):
+        items = [e.strip() for e in events.split(",") if e.strip()]
+    else:
+        items = [str(e).strip() for e in events if str(e).strip()]
+    if not items:
+        raise AppError(
+            "At least one webhook event is required",
+            code=ErrorCode.VALIDATION_BAD_REQUEST,
+        )
+    unknown = sorted({e for e in items if e != "*" and e not in WEBHOOK_EVENTS})
+    if unknown:
+        raise AppError(
+            f"Unknown webhook event(s): {', '.join(unknown)}",
+            code=ErrorCode.VALIDATION_BAD_REQUEST,
+        )
+    return items
 
 
 def create_endpoint(db: Session, user_id: int, body: WebhookEndpointCreate) -> Dict[str, Any]:
     secret = body.secret or secrets.token_urlsafe(32)
-    events = ",".join(body.events) if isinstance(body.events, list) else body.events
+    event_list = _normalize_events(body.events)
+    events = ",".join(event_list)
     ep = models.WebhookEndpoint(
         user_id=user_id,
         url=str(body.url),

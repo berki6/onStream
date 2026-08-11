@@ -13,7 +13,6 @@ from src.core.logger import get_logger
 from src.infrastructure.db import models
 from src.infrastructure.db.repositories import live_stream_repository
 from src.infrastructure.media import live_abr
-from src.infrastructure.webhooks.delivery import enqueue_event
 
 logger = get_logger(__name__)
 
@@ -102,28 +101,29 @@ def get_health_snapshot(db: Session, stream: models.LiveStream) -> Dict[str, Any
     }
 
 
-def _mark_stale_ended(db: Session, stream: models.LiveStream, reason: str) -> None:
+def _mark_stale_idle(db: Session, stream: models.LiveStream, reason: str) -> None:
     from src.core import metrics as metrics_mod
+    from src.infrastructure.webhooks.delivery import emit_live_event
 
     live_abr.stop_abr(stream.stream_id)
     # Soft-fail to idle so the stream remains visible/re-publishable.
     # Hard "ended" is reserved for explicit revoke/delete.
+    previous_status = stream.status
     stream = live_stream_repository.set_idle(db, stream)
-    final_status = "idle"
 
     try:
-        enqueue_event(
+        emit_live_event(
             db,
-            stream.user_id,
-            "live.ended",
-            {
-                "stream_id": stream.stream_id,
-                "status": final_status,
+            stream,
+            "live.idle",
+            extra={
                 "reason": reason,
+                "previous_status": previous_status,
+                "source": "health",
             },
         )
     except Exception as exc:
-        logger.warning("Failed to enqueue live.ended for %s: %s", stream.stream_id, exc)
+        logger.warning("Failed to enqueue live.idle for %s: %s", stream.stream_id, exc)
 
     try:
         metrics_mod.LIVE_STREAMS_STALE_TOTAL.labels(reason=reason).inc()
@@ -134,9 +134,8 @@ def _mark_stale_ended(db: Session, stream: models.LiveStream, reason: str) -> No
         pass
 
     logger.info(
-        "Live health: marked %s as %s (%s)",
+        "Live health: marked %s as idle (%s)",
         stream.stream_id,
-        final_status,
         reason,
     )
 
@@ -195,12 +194,12 @@ def check_live_streams(db: Session) -> int:
                     stream.stream_id,
                 )
                 continue
-            _mark_stale_ended(db, stream, "missing_playlist")
+            _mark_stale_idle(db, stream, "missing_playlist")
             transitioned += 1
             continue
 
         if age is not None and age > settings.LIVE_STALE_SECONDS:
-            _mark_stale_ended(db, stream, "stale_playlist")
+            _mark_stale_idle(db, stream, "stale_playlist")
             transitioned += 1
 
     return transitioned
