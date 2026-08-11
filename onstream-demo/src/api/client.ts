@@ -70,6 +70,11 @@ type RequestOptions = {
   form?: boolean;
 };
 
+/** Public hydrate helper for AuthProvider boot (expired access + refresh). */
+export async function tryRefreshAccessToken(): Promise<string | null> {
+  return refreshAccessToken();
+}
+
 async function refreshAccessToken(): Promise<string | null> {
   const refresh = await storage.getRefreshToken();
   if (!refresh) return null;

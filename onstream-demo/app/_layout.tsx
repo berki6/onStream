@@ -16,7 +16,6 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import React, { useEffect } from "react";
-import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 
@@ -39,8 +38,11 @@ const navTheme: Theme = {
   },
 };
 
-/** Keep native splash up until fonts + SecureStore session are ready. */
-function BootSplash({ fontsLoaded }: { fontsLoaded: boolean }) {
+/**
+ * Keep the native splash until fonts + atomic session hydrate finish.
+ * Matches Expo Router auth guide (SplashScreenController pattern).
+ */
+function SplashController({ fontsLoaded }: { fontsLoaded: boolean }) {
   const { ready } = useAuth();
 
   useEffect(() => {
@@ -52,16 +54,61 @@ function BootSplash({ fontsLoaded }: { fontsLoaded: boolean }) {
   return null;
 }
 
-function AuthBoot({ children }: { children: React.ReactNode }) {
-  const { ready } = useAuth();
-  if (!ready) {
-    return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
+/**
+ * Single auth policy via Stack.Protected (Expo Router SDK 53+).
+ * No useEffect redirects — unavailable groups never mount.
+ */
+function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
+  const { ready, signedIn } = useAuth();
+
+  // Do not mount the stack until session is known — prevents a false
+  // guard={false} frame that would flash login for a stored session.
+  if (!fontsLoaded || !ready) {
+    return null;
   }
-  return <>{children}</>;
+
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: colors.bg },
+        headerStyle: { backgroundColor: colors.bgElevated },
+        headerTintColor: colors.text,
+        headerShadowVisible: false,
+        animation: "slide_from_right",
+      }}
+    >
+      <Stack.Protected guard={signedIn}>
+        <Stack.Screen name="index" options={{ animation: "none" }} />
+        <Stack.Screen name="(tabs)" options={{ animation: "none" }} />
+        <Stack.Screen
+          name="video/[id]"
+          options={{ headerShown: true, title: "Playback" }}
+        />
+        <Stack.Screen
+          name="live/[id]"
+          options={{ headerShown: true, title: "Live" }}
+        />
+        <Stack.Screen
+          name="live/create"
+          options={{
+            headerShown: true,
+            title: "New live",
+            presentation: "modal",
+            animation: "slide_from_bottom",
+          }}
+        />
+      </Stack.Protected>
+
+      <Stack.Protected guard={!signedIn}>
+        <Stack.Screen name="(auth)" options={{ animation: "none" }} />
+      </Stack.Protected>
+    </Stack>
+  );
 }
 
 export default function RootLayout() {
-  const [loaded] = useFonts({
+  const [fontsLoaded] = useFonts({
     DMSans_400Regular,
     DMSans_500Medium,
     DMSans_700Bold,
@@ -79,48 +126,9 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <ThemeProvider value={navTheme}>
             <AuthProvider>
-              <BootSplash fontsLoaded={loaded} />
+              <SplashController fontsLoaded={fontsLoaded} />
               <StatusBar style="light" />
-              {!loaded ? (
-                <View style={{ flex: 1, backgroundColor: colors.bg }} />
-              ) : (
-                <AuthBoot>
-                  <Stack
-                    screenOptions={{
-                      headerShown: false,
-                      contentStyle: { backgroundColor: colors.bg },
-                      headerStyle: { backgroundColor: colors.bgElevated },
-                      headerTintColor: colors.text,
-                      headerShadowVisible: false,
-                      animation: "slide_from_right",
-                    }}
-                  >
-                    <Stack.Screen name="index" />
-                    <Stack.Screen name="(auth)" />
-                    <Stack.Screen
-                      name="(tabs)"
-                      options={{ animation: "none" }}
-                    />
-                    <Stack.Screen
-                      name="video/[id]"
-                      options={{ headerShown: true, title: "Playback" }}
-                    />
-                    <Stack.Screen
-                      name="live/[id]"
-                      options={{ headerShown: true, title: "Live" }}
-                    />
-                    <Stack.Screen
-                      name="live/create"
-                      options={{
-                        headerShown: true,
-                        title: "New live",
-                        presentation: "modal",
-                        animation: "slide_from_bottom",
-                      }}
-                    />
-                  </Stack>
-                </AuthBoot>
-              )}
+              <RootNavigator fontsLoaded={fontsLoaded} />
             </AuthProvider>
           </ThemeProvider>
         </QueryClientProvider>

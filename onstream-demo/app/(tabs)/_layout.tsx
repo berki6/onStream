@@ -1,17 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Redirect, Tabs } from "expo-router";
+import { Tabs } from "expo-router";
 import React from "react";
 
-import { useAuth } from "@/context/AuthContext";
 import { colors } from "@/theme/tokens";
 
+/** Authed tabs — parent Stack.Protected already enforces signedIn. */
 export default function TabsLayout() {
-  const { ready, signedIn } = useAuth();
-
-  if (ready && !signedIn) {
-    return <Redirect href="/(auth)/login" />;
-  }
-
   return (
     <Tabs
       screenOptions={{

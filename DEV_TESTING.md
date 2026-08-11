@@ -74,7 +74,7 @@ More encoder/player recipes: [`docs/PLAYBACK_CLIENTS.md`](docs/PLAYBACK_CLIENTS.
 |------|--------|-------|
 | Auth (Expo / Scalar) | **Ready** | Register, login, refresh, sign-out coded |
 | VOD (Expo / API) | **Ready** | Upload → worker → READY → token → HLS (verified by `scripts/e2e_smoke.py`) |
-| VOD on a **physical phone** | **Config** | `PUBLIC_API_BASE_URL` must be LAN IP (this machine: `http://192.168.1.2:8000`) |
+| VOD on a **physical phone** | **Config** | `PUBLIC_API_BASE_URL` must be LAN IP (this machine: `http://192.168.43.246:8000`) |
 | Live create / token / revoke | **Ready** | Verified by smoke; manual publish via OBS or FFmpeg (below) |
 | `/demo/` | **Playback + captions** | Paste URL; subtitle track menu when master has captions; no upload/login by design |
 | Captions in demo UI | **Ready** | Status + Open in `/demo/` for track menu; Expo player has no full track picker |
@@ -97,7 +97,7 @@ More encoder/player recipes: [`docs/PLAYBACK_CLIENTS.md`](docs/PLAYBACK_CLIENTS.
 ```env
 DEMO_PLAYER_ENABLED=true
 LIVE_ENABLED=true
-PUBLIC_API_BASE_URL=http://192.168.1.2:8000
+PUBLIC_API_BASE_URL=http://192.168.43.246:8000
 ```
 
 **Phone / Expo Go on device:** `PUBLIC_API_BASE_URL` and Expo’s API base must both use the PC’s LAN IP (not `localhost`). Restart the API after changing `.env`.
@@ -162,7 +162,7 @@ Scan the QR with **Expo Go** (same Wi‑Fi).
 | Android emulator | `http://10.0.2.2:8000` |
 | iOS simulator / PC browser | `http://localhost:8000` |
 
-Optional default: copy `onstream-demo/.env.example` → `.env` and set `EXPO_PUBLIC_API_BASE_URL` (already points at `192.168.1.2` in the example).
+Optional default: copy `onstream-demo/.env.example` → `.env` and set `EXPO_PUBLIC_API_BASE_URL` (already points at `192.168.1.3` in the example).
 
 ### Automated API smoke (after stack is up)
 
