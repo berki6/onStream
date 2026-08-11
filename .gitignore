@@ -230,3 +230,5 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# Local test fixture (keep on disk; do not commit)
+tests/media/test-video.mp4

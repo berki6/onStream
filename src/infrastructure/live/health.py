@@ -106,13 +106,10 @@ def _mark_stale_ended(db: Session, stream: models.LiveStream, reason: str) -> No
     from src.core import metrics as metrics_mod
 
     live_abr.stop_abr(stream.stream_id)
-    # Prefer idle for soft disconnect; revoke→ended for hard missing playlist
-    if reason == "missing_playlist":
-        stream = live_stream_repository.revoke(db, stream)
-        final_status = "ended"
-    else:
-        stream = live_stream_repository.set_idle(db, stream)
-        final_status = "idle"
+    # Soft-fail to idle so the stream remains visible/re-publishable.
+    # Hard "ended" is reserved for explicit revoke/delete.
+    stream = live_stream_repository.set_idle(db, stream)
+    final_status = "idle"
 
     try:
         enqueue_event(
@@ -144,9 +141,26 @@ def _mark_stale_ended(db: Session, stream: models.LiveStream, reason: str) -> No
     )
 
 
+def _within_hls_grace(stream: models.LiveStream) -> bool:
+    """Skip missing-playlist teardown while MediaMTX is still writing first segments."""
+    started = stream.started_at
+    if started is None:
+        return False
+    try:
+        from datetime import datetime, timezone
+
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        age = (datetime.now(timezone.utc) - started).total_seconds()
+    except Exception:
+        return False
+    grace = max(int(settings.LIVE_STALE_SECONDS), 15)
+    return age < grace
+
+
 def check_live_streams(db: Session) -> int:
     """
-    Scan status=live streams; mark idle/ended when playlist is missing or stale.
+    Scan status=live streams; mark idle when playlist is missing or stale.
 
     Returns the number of streams transitioned.
     """
@@ -174,6 +188,13 @@ def check_live_streams(db: Session) -> int:
                 pass
 
         if playlist is None:
+            # HLS muxer needs a few seconds after publish auth before index.m3u8 exists.
+            if _within_hls_grace(stream):
+                logger.debug(
+                    "Live health: %s missing playlist but within HLS grace; skipping",
+                    stream.stream_id,
+                )
+                continue
             _mark_stale_ended(db, stream, "missing_playlist")
             transitioned += 1
             continue
