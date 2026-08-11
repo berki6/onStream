@@ -52,7 +52,14 @@ export default function VideosScreen() {
       <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
         <View style={{ flex: 1 }}>
           <Text style={styles.kicker}>Library</Text>
-          <Text style={styles.title}>OnStream</Text>
+          <Text
+            style={styles.title}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
+          >
+            OnStream
+          </Text>
         </View>
         <Button
           label={uploading ? "Uploading…" : "Upload"}
@@ -152,8 +159,9 @@ const styles = StyleSheet.create({
   title: {
     color: colors.brand,
     fontFamily: "Syne_800ExtraBold",
-    fontSize: 34,
+    fontSize: 32,
     letterSpacing: -0.8,
+    flexShrink: 1,
   },
   list: {
     paddingHorizontal: spacing.lg,

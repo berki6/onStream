@@ -1,18 +1,12 @@
 import { Link } from "expo-router";
 import React, { useState } from "react";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApiError } from "@/api/client";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
+import { FormScroll } from "@/components/FormScroll";
 import { Screen } from "@/components/Screen";
 import { useAuth } from "@/context/AuthContext";
 import { colors, spacing } from "@/theme/tokens";
@@ -28,70 +22,64 @@ export default function RegisterScreen() {
 
   return (
     <Screen>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      <FormScroll
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: insets.top + spacing.xl, paddingBottom: insets.bottom + 24 },
+        ]}
       >
-        <ScrollView
-          contentContainerStyle={[
-            styles.content,
-            { paddingTop: insets.top + spacing.xl, paddingBottom: insets.bottom + 24 },
-          ]}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={styles.hero}>
-            <Text style={styles.brand}>Join</Text>
-            <Text style={styles.tag}>
-              Password needs upper, lower, number, and a special character.
-            </Text>
-          </View>
+        <View style={styles.hero}>
+          <Text style={styles.brand}>Join</Text>
+          <Text style={styles.tag}>
+            Password needs upper, lower, number, and a special character.
+          </Text>
+        </View>
 
-          <View style={styles.form}>
-            <Field
-              label="Username"
-              value={username}
-              onChangeText={setUsername}
-              autoCapitalize="none"
-            />
-            <Field
-              label="Email"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-            <Field
-              label="Password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-            <Button
-              label="Create account"
-              loading={loading}
-              onPress={async () => {
-                setLoading(true);
-                setError(null);
-                try {
-                  await signUp({
-                    username: username.trim(),
-                    email: email.trim(),
-                    password,
-                  });
-                } catch (e) {
-                  setError(e instanceof ApiError ? e.message : "Register failed");
-                } finally {
-                  setLoading(false);
-                }
-              }}
-            />
-            <Link href="/(auth)/login" style={styles.link}>
-              Back to sign in
-            </Link>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        <View style={styles.form}>
+          <Field
+            label="Username"
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="none"
+          />
+          <Field
+            label="Email"
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
+          />
+          <Field
+            label="Password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <Button
+            label="Create account"
+            loading={loading}
+            onPress={async () => {
+              setLoading(true);
+              setError(null);
+              try {
+                await signUp({
+                  username: username.trim(),
+                  email: email.trim(),
+                  password,
+                });
+              } catch (e) {
+                setError(e instanceof ApiError ? e.message : "Register failed");
+              } finally {
+                setLoading(false);
+              }
+            }}
+          />
+          <Link href="/(auth)/login" style={styles.link}>
+            Back to sign in
+          </Link>
+        </View>
+      </FormScroll>
     </Screen>
   );
 }

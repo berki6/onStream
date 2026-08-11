@@ -1,12 +1,13 @@
 import { Stack, useRouter } from "expo-router";
 import React, { useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import { ApiError } from "@/api/client";
 import { createLiveStream, LiveStream } from "@/api/live";
 import { Button } from "@/components/Button";
 import { CopyRow } from "@/components/CopyRow";
 import { Field } from "@/components/Field";
+import { FormScroll } from "@/components/FormScroll";
 import { Screen } from "@/components/Screen";
 import { colors, spacing } from "@/theme/tokens";
 
@@ -27,7 +28,7 @@ export default function CreateLiveScreen() {
           headerTitleStyle: { fontFamily: "Syne_700Bold" },
         }}
       />
-      <ScrollView contentContainerStyle={styles.content}>
+      <FormScroll contentContainerStyle={styles.content}>
         <Text style={styles.lead}>
           Stream key, WHIP, and WHEP are shown once. Copy them before leaving.
         </Text>
@@ -82,7 +83,7 @@ export default function CreateLiveScreen() {
             />
           </View>
         )}
-      </ScrollView>
+      </FormScroll>
     </Screen>
   );
 }

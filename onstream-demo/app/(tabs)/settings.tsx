@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { checkHealth, getApiBase, setApiBase } from "@/api/client";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
+import { FormScroll } from "@/components/FormScroll";
 import { Screen } from "@/components/Screen";
 import { useAuth } from "@/context/AuthContext";
 import { colors, spacing } from "@/theme/tokens";
@@ -22,14 +23,21 @@ export default function SettingsScreen() {
 
   return (
     <Screen>
-      <ScrollView
+      <FormScroll
         contentContainerStyle={[
           styles.content,
           { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + 32 },
         ]}
       >
         <Text style={styles.kicker}>Lab</Text>
-        <Text style={styles.title}>OnStream</Text>
+        <Text
+          style={styles.title}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.75}
+        >
+          OnStream
+        </Text>
         <Text style={styles.body}>
           Signed in as {username || "—"}. Point this demo at your engine, then
           exercise VOD upload, signed HLS, live create, and health.
@@ -76,7 +84,7 @@ export default function SettingsScreen() {
         </View>
 
         <Button label="Sign out" variant="danger" onPress={signOut} />
-      </ScrollView>
+      </FormScroll>
     </Screen>
   );
 }

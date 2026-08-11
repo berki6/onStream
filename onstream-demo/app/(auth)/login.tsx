@@ -1,18 +1,12 @@
 import { Link } from "expo-router";
 import React, { useState } from "react";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApiError, checkHealth, getApiBase, setApiBase } from "@/api/client";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
+import { FormScroll } from "@/components/FormScroll";
 import { Screen } from "@/components/Screen";
 import { useAuth } from "@/context/AuthContext";
 import { colors, spacing } from "@/theme/tokens";
@@ -29,81 +23,82 @@ export default function LoginScreen() {
 
   return (
     <Screen>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      <FormScroll
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: insets.top + spacing.xl, paddingBottom: insets.bottom + 24 },
+        ]}
       >
-        <ScrollView
-          contentContainerStyle={[
-            styles.content,
-            { paddingTop: insets.top + spacing.xl, paddingBottom: insets.bottom + 24 },
-          ]}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={styles.hero}>
-            <Text style={styles.brand}>OnStream</Text>
-            <Text style={styles.tag}>Demo lab for VOD, live HLS, and tokens</Text>
-          </View>
+        <View style={styles.hero}>
+          <Text
+            style={styles.brand}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
+          >
+            OnStream
+          </Text>
+          <Text style={styles.tag}>Demo lab for VOD, live HLS, and tokens</Text>
+        </View>
 
-          <View style={styles.form}>
-            <Field
-              label="API base URL"
-              value={apiBase}
-              onChangeText={setApiBaseLocal}
-              autoCapitalize="none"
-              autoCorrect={false}
-              hint="Phone must reach your PC IP, not localhost (e.g. http://192.168.x.x:8000)"
-            />
-            <Field
-              label="Username"
-              value={username}
-              onChangeText={setUsername}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <Field
-              label="Password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
+        <View style={styles.form}>
+          <Field
+            label="API base URL"
+            value={apiBase}
+            onChangeText={setApiBaseLocal}
+            autoCapitalize="none"
+            autoCorrect={false}
+            hint="Phone must reach your PC IP, not localhost (e.g. http://192.168.x.x:8000)"
+          />
+          <Field
+            label="Username"
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Field
+            label="Password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
 
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-            {health ? <Text style={styles.health}>{health}</Text> : null}
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {health ? <Text style={styles.health}>{health}</Text> : null}
 
-            <Button
-              label="Sign in"
-              loading={loading}
-              onPress={async () => {
-                setLoading(true);
-                setError(null);
-                try {
-                  await setApiBase(apiBase);
-                  await signIn(username.trim(), password);
-                } catch (e) {
-                  setError(e instanceof ApiError ? e.message : "Sign in failed");
-                } finally {
-                  setLoading(false);
-                }
-              }}
-            />
-
-            <Button
-              label="Ping API health"
-              variant="ghost"
-              onPress={async () => {
+          <Button
+            label="Sign in"
+            loading={loading}
+            onPress={async () => {
+              setLoading(true);
+              setError(null);
+              try {
                 await setApiBase(apiBase);
-                const h = await checkHealth();
-                setHealth(h ? `API reachable · ${JSON.stringify(h)}` : "Unreachable");
-              }}
-            />
+                await signIn(username.trim(), password);
+              } catch (e) {
+                setError(e instanceof ApiError ? e.message : "Sign in failed");
+              } finally {
+                setLoading(false);
+              }
+            }}
+          />
 
-            <Link href="/(auth)/register" style={styles.link}>
-              Create an account
-            </Link>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+          <Button
+            label="Ping API health"
+            variant="ghost"
+            onPress={async () => {
+              await setApiBase(apiBase);
+              const h = await checkHealth();
+              setHealth(h ? `API reachable · ${JSON.stringify(h)}` : "Unreachable");
+            }}
+          />
+
+          <Link href="/(auth)/register" style={styles.link}>
+            Create an account
+          </Link>
+        </View>
+      </FormScroll>
     </Screen>
   );
 }
@@ -117,8 +112,8 @@ const styles = StyleSheet.create({
   brand: {
     color: colors.brand,
     fontFamily: "Syne_800ExtraBold",
-    fontSize: 48,
-    letterSpacing: -1.2,
+    fontSize: 40,
+    letterSpacing: -1,
   },
   tag: {
     color: colors.textMuted,

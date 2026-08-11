@@ -11,6 +11,7 @@ import { StatusBar } from "expo-status-bar";
 import React, { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { colors } from "@/theme/tokens";
@@ -67,37 +68,39 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AuthProvider>
-        <StatusBar style="light" />
-        <AuthGate>
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: colors.bg },
-              animation: "fade",
-            }}
-          >
-            <Stack.Screen name="(auth)" />
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen
-              name="video/[id]"
-              options={{ headerShown: true, title: "Playback", animation: "slide_from_right" }}
-            />
-            <Stack.Screen
-              name="live/[id]"
-              options={{ headerShown: true, title: "Live", animation: "slide_from_right" }}
-            />
-            <Stack.Screen
-              name="live/create"
-              options={{
-                headerShown: true,
-                title: "New live",
-                presentation: "modal",
+      <KeyboardProvider>
+        <AuthProvider>
+          <StatusBar style="light" />
+          <AuthGate>
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: colors.bg },
+                animation: "fade",
               }}
-            />
-          </Stack>
-        </AuthGate>
-      </AuthProvider>
+            >
+              <Stack.Screen name="(auth)" />
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen
+                name="video/[id]"
+                options={{ headerShown: true, title: "Playback", animation: "slide_from_right" }}
+              />
+              <Stack.Screen
+                name="live/[id]"
+                options={{ headerShown: true, title: "Live", animation: "slide_from_right" }}
+              />
+              <Stack.Screen
+                name="live/create"
+                options={{
+                  headerShown: true,
+                  title: "New live",
+                  presentation: "modal",
+                }}
+              />
+            </Stack>
+          </AuthGate>
+        </AuthProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }
