@@ -1,4 +1,5 @@
 import { Stack, useLocalSearchParams } from "expo-router";
+import * as Linking from "expo-linking";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -9,7 +10,7 @@ import {
 } from "react-native";
 import { useFocusEffect } from "expo-router";
 
-import { ApiError } from "@/api/client";
+import { ApiError, getApiBase } from "@/api/client";
 import {
   createPlaybackToken,
   getVideo,
@@ -31,7 +32,7 @@ function captionsLabel(video: Video | null): string {
     const lang = video.detected_language
       ? ` · ${video.detected_language}`
       : "";
-    return `Ready${lang}`;
+    return `Ready${lang} — in HLS playlist`;
   }
   if (IN_FLIGHT.has(status)) return "Pending (after READY)";
   if (status === "READY") return "Pending or not enabled";
@@ -44,9 +45,13 @@ export default function VideoDetailScreen() {
   const [video, setVideo] = useState<Video | null>(null);
   const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [tokenLoading, setTokenLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
   const focusedRef = useRef(true);
+
+  const captionsReady = Boolean(video?.caption_vtt_path);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -73,8 +78,6 @@ export default function VideoDetailScreen() {
 
   useEffect(() => {
     const status = String(video?.status || "").toUpperCase();
-    // Poll while transcoding. For captions after READY, only briefly — AI may
-    // be disabled and caption_vtt_path will never appear.
     const waitingCaptions = status === "READY" && !video?.caption_vtt_path;
     if (!IN_FLIGHT.has(status) && !waitingCaptions) return;
 
@@ -90,6 +93,14 @@ export default function VideoDetailScreen() {
     }, 2500);
     return () => clearInterval(timer);
   }, [video?.status, video?.caption_vtt_path, load]);
+
+  const ensurePlaybackUrl = useCallback(async () => {
+    if (playbackUrl) return playbackUrl;
+    if (!id) throw new Error("Missing video id");
+    const res = await createPlaybackToken(id);
+    setPlaybackUrl(res.data.playback_url);
+    return res.data.playback_url;
+  }, [id, playbackUrl]);
 
   return (
     <Screen>
@@ -116,6 +127,12 @@ export default function VideoDetailScreen() {
             <View style={styles.infoBox}>
               <Text style={styles.section}>Captions</Text>
               <Text style={styles.infoLine}>{captionsLabel(video)}</Text>
+              {captionsReady ? (
+                <Text style={styles.infoDim}>
+                  expo-video has limited track UI — use /demo/ for the captions
+                  menu (master must include EXT-X-MEDIA SUBTITLES).
+                </Text>
+              ) : null}
               {video.caption_vtt_path ? (
                 <Text style={styles.infoDim}>{video.caption_vtt_path}</Text>
               ) : null}
@@ -124,6 +141,7 @@ export default function VideoDetailScreen() {
 
           <HlsPlayer uri={playbackUrl} title={video?.title} />
 
+          {note ? <Text style={styles.note}>{note}</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <Button
@@ -133,6 +151,7 @@ export default function VideoDetailScreen() {
               if (!id) return;
               setTokenLoading(true);
               setError(null);
+              setNote(null);
               try {
                 const res = await createPlaybackToken(id);
                 setPlaybackUrl(res.data.playback_url);
@@ -142,6 +161,43 @@ export default function VideoDetailScreen() {
                 );
               } finally {
                 setTokenLoading(false);
+              }
+            }}
+          />
+
+          <Button
+            label="Open in /demo/ (captions)"
+            variant="ghost"
+            loading={demoLoading}
+            disabled={String(video?.status || "").toUpperCase() !== "READY"}
+            onPress={async () => {
+              setDemoLoading(true);
+              setError(null);
+              setNote(null);
+              try {
+                const url = await ensurePlaybackUrl();
+                const demo = `${getApiBase()}/demo/?url=${encodeURIComponent(url)}`;
+                const can = await Linking.canOpenURL(demo);
+                if (!can) {
+                  setNote(`Open this on the PC browser: ${demo}`);
+                  return;
+                }
+                await Linking.openURL(demo);
+                setNote(
+                  captionsReady
+                    ? "Opened /demo/ with this playback URL — use the Captions menu."
+                    : "Opened /demo/ — captions appear after the AI captions job finishes."
+                );
+              } catch (e) {
+                setError(
+                  e instanceof ApiError
+                    ? e.message
+                    : e instanceof Error
+                      ? e.message
+                      : "Could not open /demo/"
+                );
+              } finally {
+                setDemoLoading(false);
               }
             }}
           />
@@ -186,6 +242,12 @@ const styles = StyleSheet.create({
     color: colors.textDim,
     fontFamily: "DMSans_400Regular",
     fontSize: 12,
+    lineHeight: 17,
+  },
+  note: {
+    color: colors.textMuted,
+    fontFamily: "DMSans_500Medium",
+    fontSize: 13,
   },
   error: {
     color: colors.danger,

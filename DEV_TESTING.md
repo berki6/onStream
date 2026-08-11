@@ -77,7 +77,8 @@ More encoder/player recipes: [`docs/PLAYBACK_CLIENTS.md`](docs/PLAYBACK_CLIENTS.
 | VOD on a **physical phone** | **Config** | `PUBLIC_API_BASE_URL` must be LAN IP (this machine: `http://192.168.1.2:8000`) |
 | Live create / token / revoke | **Ready** | Verified by smoke; manual publish via OBS or FFmpeg (below) |
 | `/demo/` | **Playback + captions** | Paste URL; subtitle track menu when master has captions; no upload/login by design |
-| Captions in demo UI | **Ready (status)** | Video detail shows caption ready/pending + language; no in-player track picker yet |
+| Captions in demo UI | **Ready** | Status + Open in `/demo/` for track menu; Expo player has no full track picker |
+| Live list ended history | **Ready** | `include_ended=true`; Expo shows Active + Recently ended |
 | Direct upload `/v1/uploads` in Expo | **Not in Expo** | Multipart `/v1/videos/` only |
 | WHIP publish from the app | **Not in Expo** | Copy WHIP URL → external encoder |
 

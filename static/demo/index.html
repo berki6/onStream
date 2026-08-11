@@ -98,6 +98,14 @@
     const captionStatus = document.getElementById("captionStatus");
     let hls;
 
+    // Prefill from ?url= (Expo "Open in /demo/" bridge)
+    try {
+      const prefill = new URLSearchParams(window.location.search).get("url");
+      if (prefill) {
+        input.value = prefill;
+      }
+    } catch (_) { /* ignore */ }
+
     function resetCaptionUi(message) {
       captionSelect.innerHTML = '<option value="-1">Off / none</option>';
       captionSelect.value = "-1";
@@ -201,6 +209,11 @@
         resetCaptionUi("HLS not supported");
       }
     });
+
+    if (input.value.trim()) {
+      // Lab bridge: Expo opens /demo/?url=...
+      document.getElementById("play").click();
+    }
   </script>
 </body>
 </html>
