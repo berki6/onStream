@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { checkHealth, getApiBase, setApiBase } from "@/api/client";
+import { getApiBase, pingHealthLabel, setApiBase } from "@/api/client";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
 import { FormScroll } from "@/components/FormScroll";
@@ -66,8 +66,7 @@ export default function SettingsScreen() {
             variant="ghost"
             onPress={async () => {
               await setApiBase(apiBase);
-              const h = await checkHealth();
-              setHealth(h ? JSON.stringify(h) : "unreachable");
+              setHealth(await pingHealthLabel());
             }}
           />
           <Text style={styles.mono}>{health}</Text>

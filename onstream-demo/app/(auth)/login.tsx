@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { ApiError, checkHealth, getApiBase, setApiBase } from "@/api/client";
+import { ApiError, getApiBase, pingHealthLabel, setApiBase } from "@/api/client";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
 import { FormScroll } from "@/components/FormScroll";
@@ -89,8 +89,7 @@ export default function LoginScreen() {
             variant="ghost"
             onPress={async () => {
               await setApiBase(apiBase);
-              const h = await checkHealth();
-              setHealth(h ? `API reachable · ${JSON.stringify(h)}` : "Unreachable");
+              setHealth(await pingHealthLabel());
             }}
           />
 

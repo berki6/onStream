@@ -157,13 +157,32 @@ export async function apiRequest<T>(
 }
 
 export async function checkHealth(): Promise<{ status?: string } | null> {
+  const url = `${getApiBase()}/health`;
   try {
-    const res = await fetch(`${getApiBase()}/health`, {
+    const res = await fetch(url, {
       headers: { Accept: "application/json" },
     });
     if (!res.ok) return null;
     return (await res.json()) as { status?: string };
   } catch {
     return null;
+  }
+}
+
+/** Same as checkHealth, but returns a UI string including the URL tried. */
+export async function pingHealthLabel(): Promise<string> {
+  const base = getApiBase();
+  const url = `${base}/health`;
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) return `Unreachable · HTTP ${res.status} · ${url}`;
+    const body = (await res.json()) as { data?: { status?: string }; status?: string };
+    const status = body?.data?.status ?? body?.status ?? "ok";
+    return `API reachable · ${status} · ${url}`;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "network error";
+    return `Unreachable · ${msg} · ${url}`;
   }
 }
