@@ -160,10 +160,11 @@ def get_stream(db: Session, stream_id: str, user_id: int) -> dict:
     validate_stream_id(stream_id)
     bind_context(stream_id=stream_id, user_id=user_id)
     stream = live_stream_repository.get_by_stream_id(db, stream_id)
-    if not stream or stream.status == "ended":
+    if not stream:
         raise AppError("Live stream not found", code=ErrorCode.LIVE_NOT_FOUND)
     if stream.user_id != user_id:
         raise AppError("Access denied", code=ErrorCode.LIVE_FORBIDDEN)
+    # Owner may still fetch ended streams (lab UI after revoke).
     return _to_response(stream)
 
 
@@ -177,14 +178,13 @@ def delete_stream(db: Session, stream_id: str, user_id: int) -> dict:
     if stream.user_id != user_id:
         raise AppError("Access denied", code=ErrorCode.LIVE_FORBIDDEN)
 
-    # Kick publisher via MediaMTX API (soft-fail), then stop ABR
+    # Kick publisher via MediaMTX API (soft-fail), then stop ABR.
+    # Path name is live/{stream_key} (stored as hls_path), not stream_id.
     try:
         from src.infrastructure.live import mediamtx_client
 
         if stream.hls_path:
             mediamtx_client.kick_publisher(stream.hls_path)
-        # Also try stream_id path variants
-        mediamtx_client.kick_publisher(f"live/{stream.stream_id}")
     except Exception as exc:
         logger.warning("MediaMTX kick on delete failed for %s: %s", stream_id, exc)
 
@@ -231,11 +231,11 @@ def issue_live_token(
 
 
 def get_stream_health(db: Session, stream_id: str, user_id: int) -> dict:
-    """Owner-only live health snapshot."""
+    """Owner-only live health snapshot (including ended streams)."""
     _require_live_enabled()
     validate_stream_id(stream_id)
     stream = live_stream_repository.get_by_stream_id(db, stream_id)
-    if not stream or stream.status == "ended":
+    if not stream:
         raise AppError("Live stream not found", code=ErrorCode.LIVE_NOT_FOUND)
     if stream.user_id != user_id:
         raise AppError("Access denied", code=ErrorCode.LIVE_FORBIDDEN)

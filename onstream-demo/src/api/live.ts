@@ -53,10 +53,9 @@ export async function createLiveStream(title: string, isPublic = false) {
 }
 
 export async function deleteLiveStream(streamId: string) {
-  return apiRequest<ApiEnvelope<{ deleted: boolean }>>(
-    `/v1/live/${streamId}`,
-    { method: "DELETE" }
-  );
+  return apiRequest<ApiEnvelope<LiveStream>>(`/v1/live/${streamId}`, {
+    method: "DELETE",
+  });
 }
 
 export async function getLiveHealth(streamId: string) {

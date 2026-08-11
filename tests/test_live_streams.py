@@ -100,11 +100,21 @@ def test_list_get_delete(test_user, db_session: Session):
     assert deleted.status_code == 200
     assert deleted.json()["data"]["status"] == "ended"
 
-    missing = client.get(
+    # Owner can still fetch ended streams (lab UI after revoke)
+    still = client.get(
         f"/v1/live/{stream_id}", headers={"Authorization": f"Bearer {token}"}
     )
-    assert missing.status_code == 404
+    assert still.status_code == 200
+    assert still.json()["data"]["status"] == "ended"
 
+    # Ended streams drop out of the active list
+    listed_after = client.get(
+        "/v1/live/", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert listed_after.status_code == 200
+    assert stream_id not in [
+        r["stream_id"] for r in listed_after.json()["data"]
+    ]
 
 def test_mediamtx_auth_accepts_valid_key_rejects_bad(test_user, db_session: Session):
     token = _auth_token()

@@ -8,8 +8,24 @@ from src.core.config import settings
 from src.core.logger import get_logger
 from src.infrastructure.ai.captions.base import CaptionsProvider
 from src.infrastructure.ai.policy import fail_closed
+from src.infrastructure.media.captions import normalize_segments
 
 logger = get_logger(__name__)
+
+
+def _unpack_transcribe_result(raw: Any) -> tuple[Any, Any]:
+    """
+    faster-whisper returns (segments_iterable, info).
+
+    Guard against odd return shapes / accidental wrapping so callers never see
+    a naked ``ValueError: too many values to unpack``.
+    """
+    if isinstance(raw, tuple) and len(raw) == 2:
+        return raw[0], raw[1]
+    if isinstance(raw, list) and len(raw) == 2:
+        return raw[0], raw[1]
+    # Single iterable of segments (no info object)
+    return raw, None
 
 
 class FasterWhisperCaptionsProvider(CaptionsProvider):
@@ -23,15 +39,9 @@ class FasterWhisperCaptionsProvider(CaptionsProvider):
             model = WhisperModel(
                 model_name or settings.WHISPER_MODEL, device="cpu", compute_type="int8"
             )
-            segments_iter, info = model.transcribe(path, beam_size=1)
-            segments = [
-                {
-                    "start": float(s.start),
-                    "end": float(s.end),
-                    "text": (s.text or "").strip(),
-                }
-                for s in segments_iter
-            ]
+            raw = model.transcribe(path, beam_size=1)
+            segments_iter, info = _unpack_transcribe_result(raw)
+            segments = normalize_segments(list(segments_iter) if segments_iter else [])
             if not segments:
                 duration = probe_duration(path) or 0.0
                 logger.warning(
@@ -39,7 +49,9 @@ class FasterWhisperCaptionsProvider(CaptionsProvider):
                     path,
                     duration,
                 )
-            lang = getattr(info, "language", None) or "en"
+            lang = "en"
+            if info is not None:
+                lang = str(getattr(info, "language", None) or "en")
             return {"language": lang, "segments": segments}
         except Exception as e:
             if fail_closed():

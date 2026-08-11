@@ -24,6 +24,21 @@ import { colors, spacing } from "@/theme/tokens";
 
 const IN_FLIGHT = new Set(["PENDING", "PROCESSING", "QUEUED", "UPLOADING"]);
 
+function captionsLabel(video: Video | null): string {
+  if (!video) return "—";
+  const status = String(video.status || "").toUpperCase();
+  if (video.caption_vtt_path) {
+    const lang = video.detected_language
+      ? ` · ${video.detected_language}`
+      : "";
+    return `Ready${lang}`;
+  }
+  if (IN_FLIGHT.has(status)) return "Pending (after READY)";
+  if (status === "READY") return "Pending or not enabled";
+  if (status === "ERROR" || status === "QUARANTINED") return "Unavailable";
+  return "Not ready";
+}
+
 export default function VideoDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [video, setVideo] = useState<Video | null>(null);
@@ -58,12 +73,23 @@ export default function VideoDetailScreen() {
 
   useEffect(() => {
     const status = String(video?.status || "").toUpperCase();
-    if (!IN_FLIGHT.has(status)) return;
+    // Poll while transcoding. For captions after READY, only briefly — AI may
+    // be disabled and caption_vtt_path will never appear.
+    const waitingCaptions = status === "READY" && !video?.caption_vtt_path;
+    if (!IN_FLIGHT.has(status) && !waitingCaptions) return;
+
+    let ticks = 0;
+    const maxTicks = waitingCaptions && !IN_FLIGHT.has(status) ? 12 : Infinity;
     const timer = setInterval(() => {
+      ticks += 1;
+      if (ticks > maxTicks) {
+        clearInterval(timer);
+        return;
+      }
       if (focusedRef.current) load();
     }, 2500);
     return () => clearInterval(timer);
-  }, [video?.status, load]);
+  }, [video?.status, video?.caption_vtt_path, load]);
 
   return (
     <Screen>
@@ -83,6 +109,16 @@ export default function VideoDetailScreen() {
             <View style={styles.meta}>
               <StatusPill status={video.status} />
               <Text style={styles.id}>{video.upload_id}</Text>
+            </View>
+          ) : null}
+
+          {video ? (
+            <View style={styles.infoBox}>
+              <Text style={styles.section}>Captions</Text>
+              <Text style={styles.infoLine}>{captionsLabel(video)}</Text>
+              {video.caption_vtt_path ? (
+                <Text style={styles.infoDim}>{video.caption_vtt_path}</Text>
+              ) : null}
             </View>
           ) : null}
 
@@ -134,6 +170,22 @@ const styles = StyleSheet.create({
     color: colors.textDim,
     fontFamily: "DMSans_400Regular",
     fontSize: 13,
+  },
+  infoBox: { gap: 4 },
+  section: {
+    color: colors.text,
+    fontFamily: "Syne_700Bold",
+    fontSize: 16,
+  },
+  infoLine: {
+    color: colors.textMuted,
+    fontFamily: "DMSans_400Regular",
+    fontSize: 14,
+  },
+  infoDim: {
+    color: colors.textDim,
+    fontFamily: "DMSans_400Regular",
+    fontSize: 12,
   },
   error: {
     color: colors.danger,

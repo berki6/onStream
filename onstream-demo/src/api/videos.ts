@@ -8,6 +8,9 @@ export type Video = {
   is_public: boolean;
   hls_path?: string | null;
   thumbnail_path?: string | null;
+  caption_vtt_path?: string | null;
+  transcript_path?: string | null;
+  detected_language?: string | null;
   quality_score?: number | null;
   created_at?: string | null;
 };

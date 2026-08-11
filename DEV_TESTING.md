@@ -77,7 +77,7 @@ More encoder/player recipes: [`docs/PLAYBACK_CLIENTS.md`](docs/PLAYBACK_CLIENTS.
 | VOD on a **physical phone** | **Config** | `PUBLIC_API_BASE_URL` must be LAN IP (this machine: `http://192.168.1.2:8000`) |
 | Live create / token / revoke | **Ready** | Verified by smoke; manual publish via OBS or FFmpeg (below) |
 | `/demo/` | **Playback only** | Paste URL; no upload/login by design |
-| Captions in demo UI | **Not in Expo** | Backend/AI can inject into playlist; demo does not show caption status |
+| Captions in demo UI | **Ready (status)** | Video detail shows caption ready/pending + language; no in-player track picker yet |
 | Direct upload `/v1/uploads` in Expo | **Not in Expo** | Multipart `/v1/videos/` only |
 | WHIP publish from the app | **Not in Expo** | Copy WHIP URL → external encoder |
 
@@ -265,7 +265,7 @@ curl.exe -X DELETE "http://127.0.0.1:8000/v1/live/<stream_id>" `
 What revoke does:
 
 1. Marks the stream `ended` in the DB
-2. Attempts MediaMTX publisher kick (API soft-fails if kick routes 404 on your MediaMTX build)
+2. Kicks the MediaMTX publisher by resolving `source.id` on the path, then `POST /v3/rtmpconns/kick/{id}` (or webrtc/srt equivalents). Soft-fails if the path is already idle
 3. OnStream playback refuses that stream (`get_playable_stream` → not found)
 
 What players should do (phone / VLC / `/demo/`):
@@ -276,8 +276,10 @@ What players should do (phone / VLC / `/demo/`):
 
 What may **not** stop:
 
-- FFmpeg/OBS can keep pushing RTMP if MediaMTX kick did not land
+- If kick soft-fails (MediaMTX down / unknown source type), FFmpeg/OBS can keep pushing RTMP
 - Viewers still cannot watch via OnStream once status is `ended`
+
+Owner GET of an ended stream still works (lab detail after revoke). Ended streams are omitted from the live list.
 
 Confirmed check: `GET /v1/playback/live/<stream_id>/master.m3u8` → **404** after revoke.
 

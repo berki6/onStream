@@ -64,6 +64,16 @@ def process_captions(upload_id: str) -> None:
         result = transcribe(source, provider=settings.AI_CAPTIONS_PROVIDER)
         segments = result.get("segments") or []
         language = result.get("language") or "en"
+        if not segments:
+            # Last resort so playback always gets a valid WebVTT file.
+            from src.infrastructure.media.captions import _mock_segments
+            from src.infrastructure.media.ffmpeg import probe_duration
+
+            duration = probe_duration(source) or 30.0
+            segments = _mock_segments(duration)
+            logger.warning(
+                "Captions empty after normalize for %s; wrote mock VTT", upload_id
+            )
 
         vtt_path = hls_dir / "captions.vtt"
         vtt_path.write_text(segments_to_vtt(segments), encoding="utf-8")

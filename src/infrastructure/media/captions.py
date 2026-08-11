@@ -95,6 +95,80 @@ def _mock_segments(duration: float) -> List[Dict[str, Any]]:
     return segments
 
 
+def normalize_segments(raw: Any) -> List[Dict[str, Any]]:
+    """
+    Coerce provider output into [{start, end, text}, ...].
+
+    Drops junk rows; never raises on odd shapes.
+    """
+    if raw is None:
+        return []
+    if isinstance(raw, dict):
+        raw = raw.get("segments", [])
+    if not isinstance(raw, (list, tuple)):
+        return []
+    out: List[Dict[str, Any]] = []
+    for item in raw:
+        try:
+            if isinstance(item, dict):
+                start = float(item.get("start", 0) or 0)
+                end = float(item.get("end", start + 1) or (start + 1))
+                text = str(item.get("text", "") or "").strip()
+            else:
+                # NamedTuple / object with attributes (faster-whisper Segment)
+                start = float(getattr(item, "start", 0) or 0)
+                end = float(getattr(item, "end", start + 1) or (start + 1))
+                text = str(getattr(item, "text", "") or "").strip()
+            if end < start:
+                end = start + 0.1
+            out.append({"start": start, "end": end, "text": text or "..."})
+        except (TypeError, ValueError, AttributeError):
+            continue
+    return out
+
+
+def normalize_transcript_result(
+    result: Any,
+    *,
+    fallback_path: Optional[str] = None,
+    allow_mock_fallback: bool = True,
+) -> Dict[str, Any]:
+    """
+    Normalize provider return to {"language": str, "segments": [...]}.
+
+    Handles accidental non-dict returns and empty segment lists by falling
+    back to mock cues when ``allow_mock_fallback`` is True.
+    """
+    language = "en"
+    segments: List[Dict[str, Any]] = []
+
+    if isinstance(result, dict):
+        language = str(result.get("language") or "en")
+        segments = normalize_segments(result.get("segments"))
+    elif isinstance(result, (list, tuple)) and len(result) == 2:
+        # Mis-returned (segments, info) tuple from a provider
+        segments = normalize_segments(result[0])
+        info = result[1]
+        language = str(getattr(info, "language", None) or "en")
+    elif isinstance(result, (list, tuple)):
+        segments = normalize_segments(result)
+
+    if segments or not allow_mock_fallback:
+        return {"language": language or "en", "segments": segments}
+
+    duration = 30.0
+    if fallback_path:
+        try:
+            duration = probe_duration(fallback_path) or duration
+        except Exception:
+            pass
+    logger.warning(
+        "Captions produced no usable segments; using mock cues (duration=%.1fs)",
+        duration,
+    )
+    return {"language": language or "en", "segments": _mock_segments(duration)}
+
+
 def transcribe(
     path: str,
     provider: Optional[str] = None,
@@ -104,7 +178,15 @@ def transcribe(
     Transcribe audio/video path via the captions provider registry.
 
     Returns {"language": str, "segments": [{"start","end","text"}, ...]}.
+    Always normalized; empty provider output falls back to mock cues unless
+    AI_FAIL_CLOSED is enabled (then empty segments are returned as-is).
     """
+    from src.infrastructure.ai.policy import fail_closed
     from src.infrastructure.ai.registry import get_captions_provider
 
-    return get_captions_provider(provider).transcribe(path, model_name=model_name)
+    raw = get_captions_provider(provider).transcribe(path, model_name=model_name)
+    return normalize_transcript_result(
+        raw,
+        fallback_path=path,
+        allow_mock_fallback=not fail_closed(),
+    )

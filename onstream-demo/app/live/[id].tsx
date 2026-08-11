@@ -32,7 +32,11 @@ export default function LiveDetailScreen() {
   const [health, setHealth] = useState<LiveHealth | null>(null);
   const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [revoking, setRevoking] = useState(false);
+
+  const ended = String(stream?.status || "").toLowerCase() === "ended";
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -75,12 +79,25 @@ export default function LiveDetailScreen() {
             </View>
           ) : null}
 
-          <HlsPlayer uri={playbackUrl} title={stream?.title} />
+          {ended ? (
+            <Text style={styles.endedNote}>
+              Stream revoked. New playlist requests return 404. Buffered
+              seconds may finish, then the player stalls. The encoder may keep
+              publishing until kicked or stopped.
+            </Text>
+          ) : null}
+
+          <HlsPlayer
+            uri={ended ? null : playbackUrl}
+            title={stream?.title}
+          />
 
           {health ? (
             <View style={styles.healthBox}>
               <Text style={styles.section}>Health</Text>
               <Text style={styles.healthLine}>
+                Status {health.status}
+                {" · "}
                 Playlist {health.playlist_present ? "present" : "missing"}
                 {health.playlist_age_seconds != null
                   ? ` · age ${health.playlist_age_seconds.toFixed(1)}s`
@@ -90,36 +107,64 @@ export default function LiveDetailScreen() {
             </View>
           ) : null}
 
+          {note ? <Text style={styles.note}>{note}</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <Button
             label="Issue live playback token"
+            disabled={ended}
             onPress={async () => {
-              if (!id) return;
+              if (!id || ended) return;
               try {
                 const res = await createLiveToken(id);
                 setPlaybackUrl(res.data.playback_url);
+                setNote(null);
               } catch (e) {
                 setError(e instanceof ApiError ? e.message : "Token failed");
               }
             }}
           />
           <Button label="Refresh health" variant="ghost" onPress={load} />
-          <Button
-            label="Revoke stream"
-            variant="danger"
-            onPress={async () => {
-              if (!id) return;
-              try {
-                await deleteLiveStream(id);
-                router.back();
-              } catch (e) {
-                setError(e instanceof ApiError ? e.message : "Delete failed");
-              }
-            }}
-          />
+          {!ended ? (
+            <Button
+              label="Revoke stream"
+              variant="danger"
+              loading={revoking}
+              onPress={async () => {
+                if (!id) return;
+                setRevoking(true);
+                setError(null);
+                try {
+                  const res = await deleteLiveStream(id);
+                  setStream(res.data);
+                  setPlaybackUrl(null);
+                  setNote(
+                    "Revoked. Playback through OnStream is ended; refresh health if needed."
+                  );
+                  try {
+                    const h = await getLiveHealth(id);
+                    setHealth(h.data);
+                  } catch {
+                    /* health optional after revoke */
+                  }
+                } catch (e) {
+                  setError(e instanceof ApiError ? e.message : "Delete failed");
+                } finally {
+                  setRevoking(false);
+                }
+              }}
+            />
+          ) : (
+            <Button
+              label="Back to live list"
+              variant="ghost"
+              onPress={() => router.back()}
+            />
+          )}
 
-          {playbackUrl ? <CopyRow label="Playback URL" value={playbackUrl} /> : null}
+          {playbackUrl && !ended ? (
+            <CopyRow label="Playback URL" value={playbackUrl} />
+          ) : null}
           {stream?.playback_url ? (
             <CopyRow label="Public playback" value={stream.playback_url} />
           ) : null}
@@ -146,6 +191,17 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontFamily: "DMSans_400Regular",
     fontSize: 14,
+  },
+  endedNote: {
+    color: colors.textMuted,
+    fontFamily: "DMSans_400Regular",
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  note: {
+    color: colors.textMuted,
+    fontFamily: "DMSans_500Medium",
+    fontSize: 13,
   },
   error: { color: colors.danger, fontFamily: "DMSans_500Medium" },
 });

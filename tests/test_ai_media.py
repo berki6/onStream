@@ -83,6 +83,43 @@ def test_segments_to_vtt_unit():
     assert "Hello" in vtt
     assert "World" in vtt
     assert "-->" in vtt
+    assert "00:00:00.000 --> 00:00:01.500" in vtt
+
+
+def test_normalize_transcript_result_handles_tuple_and_empty():
+    from src.infrastructure.media.captions import normalize_transcript_result
+
+    class _Info:
+        language = "fr"
+
+    class _Seg:
+        def __init__(self, start, end, text):
+            self.start = start
+            self.end = end
+            self.text = text
+
+    out = normalize_transcript_result(
+        ([_Seg(0, 1, "Bonjour"), _Seg(1, 2, "monde")], _Info()),
+        allow_mock_fallback=False,
+    )
+    assert out["language"] == "fr"
+    assert len(out["segments"]) == 2
+    assert out["segments"][0]["text"] == "Bonjour"
+
+    empty = normalize_transcript_result(
+        {"language": "en", "segments": []},
+        allow_mock_fallback=True,
+    )
+    assert empty["language"] == "en"
+    assert len(empty["segments"]) >= 1
+    assert empty["segments"][0]["text"]
+
+    # Accidental raw (segments, info) dict-less return still normalizes
+    weird = normalize_transcript_result(
+        ([_Seg(0, 1.5, "Hi")], _Info()),
+        allow_mock_fallback=False,
+    )
+    assert weird["segments"][0]["start"] == 0.0
 
 
 def test_chapters_from_segments_unit():
