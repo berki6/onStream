@@ -29,7 +29,7 @@ Your `.env` already expects:
 
 | Port | Role |
 |------|------|
-| `1935` | RTMP (OBS) |
+| `1935` | RTMP (OBS / FFmpeg) |
 | `8888` | HLS (internal) |
 | `8889` | WebRTC WHIP/WHEP |
 | `9997` | MediaMTX HTTP API (kick) |
@@ -53,7 +53,7 @@ python start_worker.py
 C:\src\mediamtx\mediamtx.exe "C:\Users\berek\OneDrive\Documents\DevFiles\Project-Python\onStream\configs\mediamtx.windows.yml"
 ```
 
-With API + worker + MediaMTX running, live create → OBS publish → playback works.
+With API + worker + MediaMTX running, live create → OBS **or** FFmpeg publish → playback works.
 
 ---
 
@@ -75,7 +75,7 @@ More encoder/player recipes: [`docs/PLAYBACK_CLIENTS.md`](docs/PLAYBACK_CLIENTS.
 | Auth (Expo / Scalar) | **Ready** | Register, login, refresh, sign-out coded |
 | VOD (Expo / API) | **Ready** | Upload → worker → READY → token → HLS (verified by `scripts/e2e_smoke.py`) |
 | VOD on a **physical phone** | **Config** | `PUBLIC_API_BASE_URL` must be LAN IP (this machine: `http://192.168.1.2:8000`) |
-| Live create / token / revoke | **Ready** | Verified by smoke; OBS publish is the remaining manual step |
+| Live create / token / revoke | **Ready** | Verified by smoke; manual publish via OBS or FFmpeg (below) |
 | `/demo/` | **Playback only** | Paste URL; no upload/login by design |
 | Captions in demo UI | **Not in Expo** | Backend/AI can inject into playlist; demo does not show caption status |
 | Direct upload `/v1/uploads` in Expo | **Not in Expo** | Multipart `/v1/videos/` only |
@@ -172,7 +172,7 @@ ffmpeg -y -f lavfi -i testsrc=duration=2:size=320x240:rate=30 -f lavfi -i sine=f
 .\.venv\Scripts\python.exe scripts\e2e_smoke.py
 ```
 
-Covers: health, `/demo/`, register/login, VOD upload→READY→master.m3u8, live create/health/token/revoke, MediaMTX API. Does **not** replace OBS publish.
+Covers: health, `/demo/`, register/login, VOD upload→READY→master.m3u8, live create/health/token/revoke, MediaMTX API. Does **not** replace a real RTMP publish (OBS or FFmpeg).
 
 ---
 
@@ -199,17 +199,89 @@ Covers: health, `/demo/`, register/login, VOD upload→READY→master.m3u8, live
 
 ## Step-by-step: live end-to-end
 
+Shared setup, then pick **one** publisher (OBS or FFmpeg). Do not create a second stream mid-test — reuse the stream you just created.
+
+### 1. Create the stream
+
 1. Ensure API + worker + **MediaMTX** are running (API first — auth webhook).
-2. Expo **Live** → **Create stream**.
-3. **Immediately copy** stream key / RTMP URL / WHIP / WHEP (plaintext key is returned **once**).
-4. OBS:
-   - Service: Custom
-   - Server: `rtmp://localhost:1935/live` (or the RTMP URL from create)
-   - Stream key: the plaintext key from step 3
-5. Start streaming in OBS. MediaMTX should allow publish after OnStream auth.
-6. Expo live detail → health should move toward live; request playback token → play.
-7. Alternate: paste live `playback_url` into `http://localhost:8000/demo/` or VLC.
-8. **Revoke** in Expo → publisher should be kicked; playback stops accepting new viewers.
+2. Expo **Live** → **Create stream** (or Scalar `POST /v1/live`).
+3. **Immediately copy** the plaintext stream key / RTMP URL / WHIP / WHEP (key is shown **once**).
+4. Note the `stream_id` (needed for revoke / health).
+
+### 2a. Publish with OBS
+
+1. OBS → Settings → Stream:
+   - Service: **Custom**
+   - Server: `rtmp://127.0.0.1:1935/live` (or the RTMP URL from create)
+   - Stream key: plaintext key from step 1
+2. Start Streaming. MediaMTX should allow publish after OnStream auth.
+3. Continue at [§3 Verify playback](#3-verify-playback).
+
+### 2b. Publish with FFmpeg (no OBS)
+
+Use when OBS/Streamlabs is unavailable. Loops the repo sample clip into RTMP until you stop it.
+
+```powershell
+# Replace <STREAM_KEY> with the plaintext key from create (not stream_id)
+ffmpeg -re -stream_loop -1 `
+  -i "C:\Users\berek\OneDrive\Documents\DevFiles\Project-Python\onStream\tests\media\test-video.mp4" `
+  -c:v libx264 -pix_fmt yuv420p -preset ultrafast -tune zerolatency `
+  -c:a aac -f flv `
+  "rtmp://127.0.0.1:1935/live/<STREAM_KEY>"
+```
+
+Expect:
+
+- FFmpeg keeps running (no fatal auth/disconnect errors)
+- MediaMTX shows the path online and HLS converting under `LIVE_HLS_DIR` (`data/live`)
+
+Leave FFmpeg running until playback is confirmed. Stop with `Ctrl+C` in that terminal (or `Stop-Process -Name ffmpeg`).
+
+### 3. Verify playback
+
+On the **same** stream detail (phone Expo, or PC players):
+
+1. Tap **Refresh health** — expect playlist present / `live` (often ~5–10s after publish).
+2. Tap **Issue playback token** (or Play).
+3. Video should start (FFmpeg path loops `tests/media/test-video.mp4`).
+4. Optional: paste the live `playback_url` into `http://localhost:8000/demo/` or open in VLC.
+
+VLC tip: live HLS is a sliding window — the right-hand duration may look tiny while the left time climbs; that is normal.
+
+### 4. Revoke (and what you should see)
+
+Revoke ends the **OnStream** stream. It is not the same as stopping the encoder.
+
+| How | Command / UI |
+|-----|----------------|
+| Expo | Live detail → **Revoke** |
+| API | `DELETE /v1/live/<stream_id>` with user JWT |
+
+```powershell
+curl.exe -X DELETE "http://127.0.0.1:8000/v1/live/<stream_id>" `
+  -H "Authorization: Bearer <access_token>"
+```
+
+What revoke does:
+
+1. Marks the stream `ended` in the DB
+2. Attempts MediaMTX publisher kick (API soft-fails if kick routes 404 on your MediaMTX build)
+3. OnStream playback refuses that stream (`get_playable_stream` → not found)
+
+What players should do (phone / VLC / `/demo/`):
+
+- Buffered segments may play a few more seconds
+- Next playlist refresh → **404** (`Live stream not found`)
+- Picture stalls / errors; the live window does not continue
+
+What may **not** stop:
+
+- FFmpeg/OBS can keep pushing RTMP if MediaMTX kick did not land
+- Viewers still cannot watch via OnStream once status is `ended`
+
+Confirmed check: `GET /v1/playback/live/<stream_id>/master.m3u8` → **404** after revoke.
+
+After the revoke demo, stop the encoder (`Ctrl+C` / stop OBS) if it is still publishing.
 
 ---
 
@@ -218,7 +290,8 @@ Covers: health, `/demo/`, register/login, VOD upload→READY→master.m3u8, live
 - [ ] `/health` OK
 - [ ] Register / login (Expo or Scalar)
 - [ ] VOD upload → READY → play (Expo and/or `/demo/`)
-- [ ] Live create → OBS publish → play → revoke
+- [ ] Live create → OBS **or** FFmpeg publish → play → revoke
+- [ ] After revoke: playback 404; stop encoder if still running
 - [ ] Phone: LAN `PUBLIC_API_BASE_URL` + matching Expo API base
 - [ ] Optional: captions appear in master playlist after AI jobs (not shown in Expo UI)
 
@@ -227,6 +300,6 @@ Covers: health, `/demo/`, register/login, VOD upload→READY→master.m3u8, live
 ## Out of scope for the demo UI
 
 - Direct-upload browser flow (`/v1/uploads`) — use Scalar/curl if needed
-- In-app WHIP publish — use OBS or a WHIP client with the copied URL
+- In-app WHIP publish — use OBS, FFmpeg (RTMP), or a WHIP client with the copied URL
 - Password-reset email UX in Expo
 - Captions / moderation status screens
