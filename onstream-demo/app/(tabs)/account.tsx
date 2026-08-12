@@ -3,7 +3,13 @@ import * as Haptics from "expo-haptics";
 import * as Linking from "expo-linking";
 import { useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { getApiBase, pingHealthLabel, setApiBase } from "@/api/client";
@@ -20,6 +26,8 @@ export default function AccountScreen() {
   const [apiBase, setApiBaseLocal] = useState(getApiBase());
   const [health, setHealth] = useState<string>("—");
   const [saved, setSaved] = useState(false);
+  const [healthBusy, setHealthBusy] = useState(false);
+  const [saveBusy, setSaveBusy] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -30,24 +38,26 @@ export default function AccountScreen() {
 
   return (
     <Screen>
+      <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.kicker}>Account</Text>
+          <Text
+            style={styles.title}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
+          >
+            You
+          </Text>
+        </View>
+      </View>
+
       <FormScroll
         contentContainerStyle={[
           styles.content,
-          {
-            paddingTop: insets.top + spacing.lg,
-            paddingBottom: insets.bottom + 40,
-          },
+          { paddingBottom: insets.bottom + 40 },
         ]}
       >
-        <Text style={styles.kicker}>Account</Text>
-        <Text
-          style={styles.title}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.75}
-        >
-          You
-        </Text>
         <Text style={styles.body}>
           Session and engine connection for this device.
         </Text>
@@ -65,39 +75,85 @@ export default function AccountScreen() {
         </View>
 
         <View style={styles.block}>
-          <Text style={styles.section}>Connection</Text>
-          <Field
-            label="API base URL"
-            value={apiBase}
-            onChangeText={(v) => {
-              setApiBaseLocal(v);
-              setSaved(false);
-            }}
-            autoCapitalize="none"
-            hint="Use your LAN IP for a physical phone (Expo Go)."
-          />
-          <Button
-            label={saved ? "Saved" : "Save API URL"}
-            onPress={async () => {
-              await setApiBase(apiBase);
-              setSaved(true);
-              try {
-                await Haptics.notificationAsync(
-                  Haptics.NotificationFeedbackType.Success
-                );
-              } catch {
-                /* noop */
-              }
-            }}
-          />
-          <Button
-            label="Check /health"
-            variant="ghost"
-            onPress={async () => {
-              await setApiBase(apiBase);
-              setHealth(await pingHealthLabel());
-            }}
-          />
+          <View style={styles.sectionRow}>
+            <Text style={styles.section}>Connection</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Check API health"
+              disabled={healthBusy}
+              onPress={async () => {
+                setHealthBusy(true);
+                try {
+                  await setApiBase(apiBase);
+                  setHealth(await pingHealthLabel());
+                } finally {
+                  setHealthBusy(false);
+                }
+              }}
+              style={({ pressed }) => [
+                styles.iconBtn,
+                pressed && !healthBusy && { opacity: 0.85 },
+                healthBusy && { opacity: 0.5 },
+              ]}
+            >
+              {healthBusy ? (
+                <ActivityIndicator color={colors.brand} size="small" />
+              ) : (
+                <Ionicons name="pulse-outline" size={22} color={colors.text} />
+              )}
+            </Pressable>
+          </View>
+          <View style={styles.urlRow}>
+            <View style={styles.urlField}>
+              <Field
+                label="API base URL"
+                value={apiBase}
+                onChangeText={(v) => {
+                  setApiBaseLocal(v);
+                  setSaved(false);
+                }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                hint="Use your LAN IP for a physical phone (Expo Go)."
+              />
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={saved ? "API URL saved" : "Save API URL"}
+              disabled={saveBusy}
+              onPress={async () => {
+                setSaveBusy(true);
+                try {
+                  await setApiBase(apiBase);
+                  setSaved(true);
+                  try {
+                    await Haptics.notificationAsync(
+                      Haptics.NotificationFeedbackType.Success
+                    );
+                  } catch {
+                    /* noop */
+                  }
+                } finally {
+                  setSaveBusy(false);
+                }
+              }}
+              style={({ pressed }) => [
+                styles.saveBeside,
+                pressed && !saveBusy && { opacity: 0.85 },
+                saveBusy && { opacity: 0.5 },
+              ]}
+            >
+              {saveBusy ? (
+                <ActivityIndicator color={colors.brand} size="small" />
+              ) : (
+                <Ionicons
+                  name={saved ? "checkmark-circle" : "save-outline"}
+                  size={22}
+                  color={saved ? colors.brand : colors.text}
+                />
+              )}
+            </Pressable>
+          </View>
           <Text style={styles.mono}>{health}</Text>
 
           <Pressable
@@ -127,9 +183,18 @@ export default function AccountScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: {
+  header: {
     paddingHorizontal: spacing.lg,
-    gap: spacing.md,
+    paddingBottom: spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  iconBtn: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
   },
   kicker: {
     color: colors.textMuted,
@@ -141,8 +206,12 @@ const styles = StyleSheet.create({
   title: {
     color: colors.brand,
     fontFamily: "Syne_800ExtraBold",
-    fontSize: 40,
-    letterSpacing: -1,
+    fontSize: 32,
+    letterSpacing: -0.8,
+  },
+  content: {
+    paddingHorizontal: spacing.lg,
+    gap: spacing.md,
   },
   body: {
     color: colors.textMuted,
@@ -180,10 +249,33 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   block: { gap: 12, marginTop: 8 },
+  sectionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
   section: {
     color: colors.text,
     fontFamily: "Syne_700Bold",
     fontSize: 18,
+    flex: 1,
+  },
+  urlRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  urlField: {
+    flex: 1,
+    minWidth: 0,
+  },
+  saveBeside: {
+    width: 44,
+    height: 52,
+    marginTop: 28,
+    alignItems: "center",
+    justifyContent: "center",
   },
   mono: {
     color: colors.brandDim,

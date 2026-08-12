@@ -20,27 +20,29 @@ export default function LabScreen() {
 
   return (
     <Screen>
+      <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.kicker}>Lab</Text>
+          <Text
+            style={styles.title}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
+          >
+            Tools
+          </Text>
+        </View>
+        <View style={styles.heroIcon}>
+          <Ionicons name="flask" size={22} color={colors.brand} />
+        </View>
+      </View>
+
       <FormScroll
         contentContainerStyle={[
           styles.content,
-          {
-            paddingTop: insets.top + spacing.lg,
-            paddingBottom: insets.bottom + 40,
-          },
+          { paddingBottom: insets.bottom + 40 },
         ]}
       >
-        <View style={styles.heroIcon}>
-          <Ionicons name="flask" size={26} color={colors.brand} />
-        </View>
-        <Text style={styles.kicker}>Lab</Text>
-        <Text
-          style={styles.title}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.75}
-        >
-          Tools
-        </Text>
         <Text style={styles.body}>
           Operator surfaces for moderation, webhooks, and browser helpers.
           Connection settings are under Account.
@@ -91,7 +93,9 @@ export default function LabScreen() {
         <Text style={styles.group}>Guide</Text>
         <View style={styles.guide}>
           <Text style={styles.guideLine}>1. Set API URL on Account</Text>
-          <Text style={styles.guideLine}>2. Upload or go live from Library / Live</Text>
+          <Text style={styles.guideLine}>
+            2. Upload or go live from Library / Live
+          </Text>
           <Text style={styles.guideLine}>3. Subscribe webhooks → fire an event</Text>
           <Text style={styles.guideLine}>4. Refresh delivery log</Text>
         </View>
@@ -101,18 +105,20 @@ export default function LabScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: {
+  header: {
     paddingHorizontal: spacing.lg,
-    gap: 10,
+    paddingBottom: spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
   },
   heroIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.brandSoft,
-    marginBottom: 4,
   },
   kicker: {
     color: colors.textMuted,
@@ -124,8 +130,12 @@ const styles = StyleSheet.create({
   title: {
     color: colors.brand,
     fontFamily: "Syne_800ExtraBold",
-    fontSize: 40,
-    letterSpacing: -1,
+    fontSize: 32,
+    letterSpacing: -0.8,
+  },
+  content: {
+    paddingHorizontal: spacing.lg,
+    gap: 10,
   },
   body: {
     color: colors.textMuted,
