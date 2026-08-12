@@ -7,8 +7,15 @@ alembic.ini
 sample.mp4
 data/
 .vscode
+node_modules/
+# MediaMTX auto-generated TLS (local)
+auto.crt
+auto.key
 # Environment Variables
 .env
+
+# Local working notes (not for the repo)
+TODO.md
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -226,3 +233,5 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# Local test fixture (keep on disk; do not commit)
+tests/media/test-video.mp4

@@ -2,8 +2,8 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from src.main import app
-from src.core.database import get_db
-from src.schema import models
+from src.infrastructure.db.session import get_db
+from src.infrastructure.db import models
 from tests.conftest import override_get_db
 import tempfile
 from pathlib import Path
@@ -20,11 +20,11 @@ class TestStreamRouter:
     def test_stream_playlist_success(self, db_session, mocker):
         """Test successful HLS playlist streaming."""
         # Mock video duration probe
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 120.0
 
         # Create test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -38,7 +38,7 @@ class TestStreamRouter:
 
         # Login
         response = client.post(
-            "/auth/login", data={"username": "streamuser", "password": "testpass"}
+            "/v1/auth/login", data={"username": "streamuser", "password": "testpass"}
         )
         assert response.status_code == 200
         token = response.json()["data"]["access_token"]
@@ -46,7 +46,7 @@ class TestStreamRouter:
 
         # Create and process video
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "Stream Test Video"},
             files={"file": ("stream.mp4", b"fake content", "video/mp4")},
             headers=headers,
@@ -81,7 +81,7 @@ segment_000.ts
         db_session.commit()
 
         # Test playlist streaming
-        response = client.get(f"/stream/{upload_id}/playlist.m3u8", headers=headers)
+        response = client.get(f"/v1/playback/{upload_id}/master.m3u8", headers=headers)
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/vnd.apple.mpegurl"
         assert "#EXTM3U" in response.text
@@ -99,7 +99,7 @@ segment_000.ts
     def test_stream_playlist_invalid_upload_id(self):
         """Test streaming with invalid upload ID format."""
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -113,20 +113,20 @@ segment_000.ts
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "invaliduser", "password": "testpass"}
+            "/v1/auth/login", data={"username": "invaliduser", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Test invalid upload ID (too short)
-        response = client.get("/stream/abc/playlist.m3u8", headers=headers)
+        response = client.get("/v1/playback/abc/master.m3u8", headers=headers)
         assert response.status_code == 400
-        assert "Invalid upload ID format" in response.json()["detail"]
+        assert "Invalid upload ID format" in response.json()["error"]["message"]
 
         # Test invalid upload ID (wrong characters)
-        response = client.get("/stream/abcO1234/playlist.m3u8", headers=headers)
+        response = client.get("/v1/playback/abcO1234/master.m3u8", headers=headers)
         assert response.status_code == 400
-        assert "Invalid upload ID format" in response.json()["detail"]
+        assert "Invalid upload ID format" in response.json()["error"]["message"]
 
         # Cleanup
         db_session.delete(user)
@@ -135,7 +135,7 @@ segment_000.ts
     def test_stream_playlist_video_not_found(self):
         """Test streaming playlist for non-existent video."""
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -149,26 +149,26 @@ segment_000.ts
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "notfounduser", "password": "testpass"}
+            "/v1/auth/login", data={"username": "notfounduser", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
-        response = client.get("/stream/abcdefgh/playlist.m3u8", headers=headers)
+        response = client.get("/v1/playback/abcdefgh/master.m3u8", headers=headers)
         assert response.status_code == 404
-        assert "Video not found" in response.json()["detail"]
+        assert "Video not found" in response.json()["error"]["message"]
 
         # Cleanup
         db_session.delete(user)
         db_session.commit()
 
-    @patch("src.routers.videos.probe_video_duration", return_value=120.0)
+    @patch("src.infrastructure.media.ffmpeg.probe_duration", return_value=120.0)
     def test_stream_playlist_unauthorized(self, mock_probe):
         """Test streaming playlist for video owned by another user."""
         db_session = next(override_get_db())
 
         # Create two users
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
 
@@ -190,20 +190,20 @@ segment_000.ts
 
         # Login as user2
         response = client.post(
-            "/auth/login", data={"username": "otheruser", "password": "testpass"}
+            "/v1/auth/login", data={"username": "otheruser", "password": "testpass"}
         )
         token2 = response.json()["data"]["access_token"]
         headers2 = {"Authorization": f"Bearer {token2}"}
 
         # Create video for user1
         response = client.post(
-            "/auth/login", data={"username": "owneruser", "password": "testpass"}
+            "/v1/auth/login", data={"username": "owneruser", "password": "testpass"}
         )
         token1 = response.json()["data"]["access_token"]
         headers1 = {"Authorization": f"Bearer {token1}"}
 
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "Private Video"},
             files={"file": ("private.mp4", b"content", "video/mp4")},
             headers=headers1,
@@ -211,9 +211,9 @@ segment_000.ts
         upload_id = response.json()["data"]["upload_id"]
 
         # Try to access with user2
-        response = client.get(f"/stream/{upload_id}/playlist.m3u8", headers=headers2)
+        response = client.get(f"/v1/playback/{upload_id}/master.m3u8", headers=headers2)
         assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert "Access denied" in response.json()["error"]["message"]
 
         # Cleanup
         video = (
@@ -227,13 +227,13 @@ segment_000.ts
         db_session.delete(user2)
         db_session.commit()
 
-    @patch("src.routers.videos.probe_video_duration", return_value=120.0)
+    @patch("src.infrastructure.media.ffmpeg.probe_duration", return_value=120.0)
     def test_stream_playlist_video_not_ready(self, mock_probe):
         """Test streaming playlist for video that is not ready."""
         db_session = next(override_get_db())
 
         # Create user and video in PENDING status
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -246,13 +246,13 @@ segment_000.ts
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "pendinguser", "password": "testpass"}
+            "/v1/auth/login", data={"username": "pendinguser", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "Pending Video"},
             files={"file": ("pending.mp4", b"content", "video/mp4")},
             headers=headers,
@@ -260,9 +260,9 @@ segment_000.ts
         upload_id = response.json()["data"]["upload_id"]
 
         # Try to stream before processing
-        response = client.get(f"/stream/{upload_id}/playlist.m3u8", headers=headers)
+        response = client.get(f"/v1/playback/{upload_id}/master.m3u8", headers=headers)
         assert response.status_code == 409
-        assert "Video is not ready for streaming" in response.json()["detail"]
+        assert "Video is not ready for streaming" in response.json()["error"]["message"]
 
         # Cleanup
         video = (
@@ -275,13 +275,13 @@ segment_000.ts
         db_session.delete(user)
         db_session.commit()
 
-    @patch("src.routers.videos.probe_video_duration", return_value=120.0)
+    @patch("src.infrastructure.media.ffmpeg.probe_duration", return_value=120.0)
     def test_stream_playlist_missing_file(self, mock_probe):
         """Test streaming playlist when HLS file doesn't exist."""
         db_session = next(override_get_db())
 
         # Create user and video
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -294,13 +294,13 @@ segment_000.ts
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "missinguser", "password": "testpass"}
+            "/v1/auth/login", data={"username": "missinguser", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "Missing HLS Video"},
             files={"file": ("missing.mp4", b"content", "video/mp4")},
             headers=headers,
@@ -317,9 +317,9 @@ segment_000.ts
         video.hls_path = "/nonexistent/path/index.m3u8"
         db_session.commit()
 
-        response = client.get(f"/stream/{upload_id}/playlist.m3u8", headers=headers)
+        response = client.get(f"/v1/playback/{upload_id}/master.m3u8", headers=headers)
         assert response.status_code == 404
-        assert "Stream playlist not available" in response.json()["detail"]
+        assert "Stream playlist not available" in response.json()["error"]["message"]
 
         # Cleanup
         db_session.delete(video)
@@ -329,7 +329,7 @@ segment_000.ts
     def test_stream_playlist_path_traversal_upload_id(self):
         """Test path traversal prevention in upload_id parameter for playlist."""
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -343,21 +343,21 @@ segment_000.ts
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "pathtravuser", "password": "testpass"}
+            "/v1/auth/login", data={"username": "pathtravuser", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Test path traversal in upload_id
         traversal_attempts = [
-            "../../../etc/passwd/playlist.m3u8",
-            "..\\..\\..\\windows\\system32\\config\\sam/playlist.m3u8",
-            "....//....//....//etc/passwd/playlist.m3u8",
-            "upload_id/../../../root/.bashrc/playlist.m3u8",
+            "../../../etc/passwd/master.m3u8",
+            "..\\..\\..\\windows\\system32\\config\\sam/master.m3u8",
+            "....//....//....//etc/passwd/master.m3u8",
+            "upload_id/../../../root/.bashrc/master.m3u8",
         ]
 
         for attempt in traversal_attempts:
-            response = client.get(f"/stream/{attempt}", headers=headers)
+            response = client.get(f"/v1/playback/{attempt}", headers=headers)
             assert response.status_code in [
                 400,
                 404,
@@ -372,7 +372,7 @@ segment_000.ts
         db_session = next(override_get_db())
 
         # Create user and video
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("Testpass123!")
         user = models.User(
@@ -385,15 +385,15 @@ segment_000.ts
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "segpathtrav", "password": "Testpass123!"}
+            "/v1/auth/login", data={"username": "segpathtrav", "password": "Testpass123!"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Mock video duration probe
-        with patch("src.routers.videos.probe_video_duration", return_value=120.0):
+        with patch("src.infrastructure.media.ffmpeg.probe_duration", return_value=120.0):
             response = client.post(
-                "/videos/",
+                "/v1/videos/",
                 data={"title": "Path Traversal Test Video"},
                 files={"file": ("pathtrav.mp4", b"content", "video/mp4")},
                 headers=headers,
@@ -422,7 +422,7 @@ segment_000.ts
         ]
 
         for attempt in traversal_attempts:
-            response = client.get(f"/stream/{upload_id}/{attempt}", headers=headers)
+            response = client.get(f"/v1/playback/{upload_id}/{attempt}", headers=headers)
             assert (
                 response.status_code == 404
             )  # Should not access files outside HLS directory
@@ -441,7 +441,7 @@ segment_000.ts
         db_session = next(override_get_db())
 
         # Create two users
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("Testpass123!")
         user1 = models.User(
@@ -462,21 +462,21 @@ segment_000.ts
 
         # Login both users
         response = client.post(
-            "/auth/login", data={"username": "streamuser1", "password": "Testpass123!"}
+            "/v1/auth/login", data={"username": "streamuser1", "password": "Testpass123!"}
         )
         token1 = response.json()["data"]["access_token"]
         headers1 = {"Authorization": f"Bearer {token1}"}
 
         response = client.post(
-            "/auth/login", data={"username": "streamuser2", "password": "Testpass123!"}
+            "/v1/auth/login", data={"username": "streamuser2", "password": "Testpass123!"}
         )
         token2 = response.json()["data"]["access_token"]
         headers2 = {"Authorization": f"Bearer {token2}"}
 
         # User1 uploads a video
-        with patch("src.routers.videos.probe_video_duration", return_value=120.0):
+        with patch("src.infrastructure.media.ffmpeg.probe_duration", return_value=120.0):
             response = client.post(
-                "/videos/",
+                "/v1/videos/",
                 data={"title": "User1 Private Video"},
                 files={"file": ("private.mp4", b"content", "video/mp4")},
                 headers=headers1,
@@ -505,20 +505,20 @@ segment_000.ts
         db_session.commit()
 
         # User2 tries to access User1's playlist
-        response = client.get(f"/stream/{upload_id}/playlist.m3u8", headers=headers2)
+        response = client.get(f"/v1/playback/{upload_id}/master.m3u8", headers=headers2)
         assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert "Access denied" in response.json()["error"]["message"]
 
         # User2 tries to access User1's segment
-        response = client.get(f"/stream/{upload_id}/segment_000.ts", headers=headers2)
+        response = client.get(f"/v1/playback/{upload_id}/segment_000.ts", headers=headers2)
         assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert "Access denied" in response.json()["error"]["message"]
 
         # User1 can access their own stream
-        response = client.get(f"/stream/{upload_id}/playlist.m3u8", headers=headers1)
+        response = client.get(f"/v1/playback/{upload_id}/master.m3u8", headers=headers1)
         assert response.status_code == 200
 
-        response = client.get(f"/stream/{upload_id}/segment_000.ts", headers=headers1)
+        response = client.get(f"/v1/playback/{upload_id}/segment_000.ts", headers=headers1)
         assert response.status_code == 200
 
         # Cleanup
@@ -534,7 +534,7 @@ segment_000.ts
     def test_stream_invalid_upload_id_format(self):
         """Test streaming with invalid upload_id formats."""
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -548,7 +548,7 @@ segment_000.ts
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "invalididuser", "password": "testpass"}
+            "/v1/auth/login", data={"username": "invalididuser", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
@@ -567,7 +567,7 @@ segment_000.ts
         for invalid_id in invalid_ids:
             try:
                 response = client.get(
-                    f"/stream/{invalid_id}/playlist.m3u8", headers=headers
+                    f"/v1/playback/{invalid_id}/master.m3u8", headers=headers
                 )
                 # Should either return 404 (video not found) or 400/422 (validation error)
                 assert response.status_code in [400, 404, 422]
@@ -579,13 +579,13 @@ segment_000.ts
         db_session.delete(user)
         db_session.commit()
 
-    @patch("src.routers.videos.probe_video_duration", return_value=120.0)
+    @patch("src.infrastructure.media.ffmpeg.probe_duration", return_value=120.0)
     def test_stream_segment_success(self, mock_probe):
         """Test successful HLS segment streaming."""
         db_session = next(override_get_db())
 
         # Create user and video
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -598,13 +598,13 @@ segment_000.ts
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "segmentuser", "password": "testpass"}
+            "/v1/auth/login", data={"username": "segmentuser", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "Segment Test Video"},
             files={"file": ("segment.mp4", b"content", "video/mp4")},
             headers=headers,
@@ -631,7 +631,7 @@ segment_000.ts
         db_session.commit()
 
         # Test segment streaming
-        response = client.get(f"/stream/{upload_id}/segment_000.ts", headers=headers)
+        response = client.get(f"/v1/playback/{upload_id}/segment_000.ts", headers=headers)
         assert response.status_code == 200
         assert response.headers["content-type"] == "video/MP2T"
         assert response.content == b"fake segment data"
@@ -648,7 +648,7 @@ segment_000.ts
     def test_stream_segment_invalid_name(self):
         """Test streaming segment with invalid segment name."""
         # Create and login test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -662,32 +662,32 @@ segment_000.ts
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "invalidseguser", "password": "testpass"}
+            "/v1/auth/login", data={"username": "invalidseguser", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Test invalid segment name with path traversal
         response = client.get(
-            "/stream/abcdefgh/../../../etc/passwd.ts", headers=headers
+            "/v1/playback/abcdefgh/../../../etc/passwd.ts", headers=headers
         )
         assert response.status_code == 404  # Video not found (path traversal prevented)
 
         # Test segment name without .ts extension
-        response = client.get("/stream/abcdefgh/segment_000", headers=headers)
+        response = client.get("/v1/playback/abcdefgh/segment_000", headers=headers)
         assert response.status_code == 404  # Route not found (missing .ts extension)
 
         # Cleanup
         db_session.delete(user)
         db_session.commit()
 
-    @patch("src.routers.videos.probe_video_duration", return_value=120.0)
+    @patch("src.infrastructure.media.ffmpeg.probe_duration", return_value=120.0)
     def test_stream_segment_not_found(self, mock_probe):
         """Test streaming segment that doesn't exist."""
         db_session = next(override_get_db())
 
         # Create user and video
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         user = models.User(
@@ -700,13 +700,13 @@ segment_000.ts
         db_session.refresh(user)
 
         response = client.post(
-            "/auth/login", data={"username": "segnotfound", "password": "testpass"}
+            "/v1/auth/login", data={"username": "segnotfound", "password": "testpass"}
         )
         token = response.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "Segment Not Found Video"},
             files={"file": ("segnot.mp4", b"content", "video/mp4")},
             headers=headers,
@@ -727,9 +727,9 @@ segment_000.ts
         db_session.commit()
 
         # Try to stream non-existent segment
-        response = client.get(f"/stream/{upload_id}/nonexistent.ts", headers=headers)
+        response = client.get(f"/v1/playback/{upload_id}/nonexistent.ts", headers=headers)
         assert response.status_code == 404
-        assert "Stream segment not found" in response.json()["detail"]
+        assert "Stream segment not found" in response.json()["error"]["message"]
 
         # Cleanup
         import shutil

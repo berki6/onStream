@@ -3,15 +3,23 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from src.main import app
-from src.core.auth import get_password_hash
-from src.schema import models
-from src.core.database import get_db
+from src.core.security.passwords import get_password_hash
+from src.core.config import settings
+from src.infrastructure.db import models
+from src.infrastructure.db.session import get_db
+
+# Disable auth rate limiting in tests
+settings.AUTH_RATE_LIMIT_PER_MINUTE = 0
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///./tests/test.db"
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# App no longer calls create_all at import; tests own their schema.
+models.Base.metadata.drop_all(bind=engine)
+models.Base.metadata.create_all(bind=engine)
 
 
 def override_get_db():

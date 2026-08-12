@@ -1,9 +1,2 @@
-*
-
-# But not these files...
-!.gitignore
-!SCHEMA.md
-# etc...
-
-# ...even if they are in subdirectories
-!*/
+# Historical drafts only — keep current docs tracked
+Archive/

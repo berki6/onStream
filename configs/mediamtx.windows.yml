@@ -1,0 +1,56 @@
+# MediaMTX — Windows / local (no Docker)
+# Use: C:\src\mediamtx\mediamtx.exe <path-to-this-file>
+# Docs: https://mediamtx.org/
+
+logLevel: info
+logDestinations: [stdout]
+
+###############################################
+# Control API
+
+api: yes
+apiAddress: :9997
+
+###############################################
+# Authentication (HTTP webhook → OnStream API)
+
+authMethod: http
+authHTTPAddress: http://127.0.0.1:8000/v1/live/mediamtx-auth
+authHTTPExclude:
+  - action: api
+  - action: metrics
+  - action: pprof
+
+###############################################
+# RTMP
+
+rtmp: yes
+rtmpAddress: :1935
+
+###############################################
+# WebRTC (WHIP publish / WHEP playback)
+
+webrtc: yes
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189
+
+###############################################
+# HLS (must match LIVE_HLS_DIR in .env → data/live)
+
+hls: yes
+hlsAddress: :8888
+hlsAlwaysRemux: yes
+hlsVariant: mpegts
+hlsSegmentCount: 7
+hlsSegmentDuration: 2s
+hlsDirectory: C:/Users/berek/OneDrive/Documents/DevFiles/Project-Python/onStream/data/live
+hlsMuxerCloseAfter: 30s
+
+###############################################
+# Paths
+
+pathDefaults:
+  source: publisher
+
+paths:
+  all_others:

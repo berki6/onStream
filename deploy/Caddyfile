@@ -1,0 +1,31 @@
+# OnStream edge reverse proxy (profile: edge)
+# docker compose --profile edge up caddy
+
+{
+	auto_https off
+}
+
+:80 {
+	# API + demo static (when DEMO_PLAYER_ENABLED)
+	handle /v1/* {
+		reverse_proxy api:8000
+	}
+	handle /metrics {
+		reverse_proxy api:8000
+	}
+	handle /demo/* {
+		reverse_proxy api:8000
+	}
+	handle /health* {
+		reverse_proxy api:8000
+	}
+
+	# MediaMTX WebRTC (WHIP/WHEP)
+	handle /live/* {
+		reverse_proxy mediamtx:8889
+	}
+
+	handle {
+		reverse_proxy api:8000
+	}
+}

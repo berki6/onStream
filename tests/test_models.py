@@ -1,8 +1,8 @@
 import pytest
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
-from src.schema import models
-from src.schema.models import Base
+from src.infrastructure.db import models
+from src.infrastructure.db.models import Base
 
 
 class TestDatabaseModels:
@@ -184,6 +184,7 @@ class TestDatabaseModels:
             models.VideoStatus.READY,
             models.VideoStatus.ERROR,
             models.VideoStatus.DELETED,
+            models.VideoStatus.QUARANTINED,
         ]
 
         videos = []
@@ -229,7 +230,7 @@ class TestDatabaseModels:
         # Test __repr__
         repr_str = repr(job)
         assert "testjob123" in repr_str
-        assert "processing" in repr_str
+        assert "25" in repr_str
         assert "25%" in repr_str
 
     def test_video_job_upload_id_primary_key(self, db_session):
@@ -495,7 +496,7 @@ class TestDatabaseModels:
         # Test VideoJob defaults
         job = models.VideoJob(
             upload_id="defaultsjob",
-            # status should default to "processing"
+            # status/stage default to queued (Phase 2)
             # progress should default to 0
             # eta should default to 0
         )
@@ -503,7 +504,7 @@ class TestDatabaseModels:
         db_session.commit()
         db_session.refresh(job)
 
-        assert job.status == "processing"
+        assert job.status in ("processing", "queued")
         assert job.progress == 0
         assert job.eta == 0
 

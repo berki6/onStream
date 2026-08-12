@@ -1,0 +1,33 @@
+from src.api.v1.routes import (
+    api_keys,
+    auth,
+    health,
+    jobs,
+    live,
+    live_playback,
+    moderation,
+    playback,
+    playlists,
+    search,
+    share_links,
+    uploads,
+    videos,
+    webhooks,
+)
+
+__all__ = [
+    "api_keys",
+    "auth",
+    "health",
+    "jobs",
+    "live",
+    "live_playback",
+    "moderation",
+    "playback",
+    "playlists",
+    "search",
+    "share_links",
+    "uploads",
+    "videos",
+    "webhooks",
+]

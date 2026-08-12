@@ -1,0 +1,13 @@
+# Example MediaMTX overlay when using the Compose `turn` profile (coturn).
+# Copy relevant keys into mediamtx.yml or mount this file when enabling TURN.
+#
+# ICE servers for WebRTC clients behind NAT. Adjust credentials to match coturn.
+#
+# Usage:
+#   docker compose --profile turn -f docker-compose.yml -f docker-compose.turn.yml up
+
+webrtcICEServers2:
+  - url: turn:coturn:3478
+    username: onstream
+    password: onstreamturn
+  - url: stun:stun.l.google.com:19302

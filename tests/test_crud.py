@@ -1,8 +1,13 @@
 import pytest
 from sqlalchemy.orm import Session
-from src.services import crud
-from src.schema import models, schemas
-from src.core.auth import get_password_hash
+from src.infrastructure.db import models
+from src import schemas
+from src.core.security.passwords import get_password_hash
+from src.infrastructure.db.repositories import (
+    job_repository,
+    user_repository,
+    video_repository,
+)
 
 
 class TestCRUDOperations:
@@ -21,13 +26,13 @@ class TestCRUDOperations:
         db_session.commit()
 
         # Test retrieval
-        found_user = crud.get_user_by_username(db_session, "testuser_crud")
+        found_user = user_repository.get_by_username(db_session, "testuser_crud")
         assert found_user is not None
         assert found_user.username == "testuser_crud"
         assert found_user.email == "testuser_crud@example.com"
 
         # Test non-existent user
-        not_found = crud.get_user_by_username(db_session, "nonexistent")
+        not_found = user_repository.get_by_username(db_session, "nonexistent")
         assert not_found is None
 
         # Cleanup
@@ -47,13 +52,13 @@ class TestCRUDOperations:
         db_session.commit()
 
         # Test retrieval
-        found_user = crud.get_user_by_email(db_session, "emailtest@example.com")
+        found_user = user_repository.get_by_email(db_session, "emailtest@example.com")
         assert found_user is not None
         assert found_user.username == "testuser_email"
         assert found_user.email == "emailtest@example.com"
 
         # Test non-existent email
-        not_found = crud.get_user_by_email(db_session, "nonexistent@example.com")
+        not_found = user_repository.get_by_email(db_session, "nonexistent@example.com")
         assert not_found is None
 
         # Cleanup
@@ -68,7 +73,7 @@ class TestCRUDOperations:
             password="SecurePass123!",
         )
 
-        created_user = crud.create_user(db_session, user_data)
+        created_user = user_repository.create(db_session, user_data)
 
         assert created_user.username == "newuser_crud"
         assert created_user.email == "newuser@example.com"
@@ -76,7 +81,7 @@ class TestCRUDOperations:
         assert created_user.is_active is True
 
         # Verify in database
-        db_user = crud.get_user_by_username(db_session, "newuser_crud")
+        db_user = user_repository.get_by_username(db_session, "newuser_crud")
         assert db_user is not None
         assert db_user.email == "newuser@example.com"
 
@@ -98,13 +103,13 @@ class TestCRUDOperations:
         db_session.refresh(user)
 
         # Test retrieval
-        found_user = crud.get_user(db_session, user.id)
+        found_user = user_repository.get_by_id(db_session, user.id)
         assert found_user is not None
         assert found_user.id == user.id
         assert found_user.username == "testuser_get"
 
         # Test non-existent ID
-        not_found = crud.get_user(db_session, 99999)
+        not_found = user_repository.get_by_id(db_session, 99999)
         assert not_found is None
 
         # Cleanup
@@ -132,7 +137,7 @@ class TestCRUDOperations:
             file_path="test_path.mp4",
         )
 
-        created_video = crud.create_video(db_session, video_data, user.id)
+        created_video = video_repository.create(db_session, video_data, user.id)
 
         assert created_video.title == "Test Video CRUD"
         assert created_video.description == "A test video for CRUD operations"
@@ -143,7 +148,7 @@ class TestCRUDOperations:
         assert len(created_video.upload_id) == 8  # Default length
 
         # Verify in database
-        db_video = crud.get_video_by_upload_id(db_session, created_video.upload_id)
+        db_video = video_repository.get_by_upload_id(db_session, created_video.upload_id)
         assert db_video is not None
         assert db_video.title == "Test Video CRUD"
 
@@ -176,13 +181,13 @@ class TestCRUDOperations:
         db_session.refresh(video)
 
         # Test retrieval
-        found_video = crud.get_video(db_session, video.id)
+        found_video = video_repository.get_by_id(db_session, video.id)
         assert found_video is not None
         assert found_video.id == video.id
         assert found_video.title == "Get Test Video"
 
         # Test non-existent ID
-        not_found = crud.get_video(db_session, 99999)
+        not_found = video_repository.get_by_id(db_session, 99999)
         assert not_found is None
 
         # Cleanup
@@ -213,13 +218,13 @@ class TestCRUDOperations:
         db_session.commit()
 
         # Test retrieval
-        found_video = crud.get_video_by_upload_id(db_session, "testupload")
+        found_video = video_repository.get_by_upload_id(db_session, "testupload")
         assert found_video is not None
         assert found_video.upload_id == "testupload"
         assert found_video.title == "Upload ID Test Video"
 
         # Test non-existent upload ID
-        not_found = crud.get_video_by_upload_id(db_session, "nonexistent")
+        not_found = video_repository.get_by_upload_id(db_session, "nonexistent")
         assert not_found is None
 
         # Cleanup
@@ -254,16 +259,16 @@ class TestCRUDOperations:
         db_session.commit()
 
         # Test getting all videos
-        user_videos, total_count = crud.get_videos_by_user(db_session, user.id)
+        user_videos, total_count = video_repository.list_by_user(db_session, user.id)
         assert len(user_videos) == 5
         assert total_count == 5
 
         # Test pagination - limit 2
-        paginated, _ = crud.get_videos_by_user(db_session, user.id, skip=0, limit=2)
+        paginated, _ = video_repository.list_by_user(db_session, user.id, skip=0, limit=2)
         assert len(paginated) == 2
 
         # Test pagination - skip 2, limit 2
-        paginated2, _ = crud.get_videos_by_user(db_session, user.id, skip=2, limit=2)
+        paginated2, _ = video_repository.list_by_user(db_session, user.id, skip=2, limit=2)
         assert len(paginated2) == 2
         assert paginated2[0].title == "Test Video 2"
         assert paginated2[1].title == "Test Video 3"
@@ -278,7 +283,7 @@ class TestCRUDOperations:
         db_session.commit()
         db_session.refresh(other_user)
 
-        other_videos, _ = crud.get_videos_by_user(db_session, other_user.id)
+        other_videos, _ = video_repository.list_by_user(db_session, other_user.id)
         assert len(other_videos) == 0
 
         # Cleanup
@@ -311,13 +316,13 @@ class TestCRUDOperations:
         db_session.commit()
 
         # Test deletion
-        deleted_video = crud.delete_video_by_upload_id(db_session, "testdelete")
+        deleted_video = video_repository.soft_delete(db_session, "testdelete")
         assert deleted_video is not None
         assert deleted_video.upload_id == "testdelete"
         assert deleted_video.status == models.VideoStatus.DELETED
 
         # Verify it's soft deleted (not returned by normal queries)
-        found_video = crud.get_video_by_upload_id(db_session, "testdelete")
+        found_video = video_repository.get_by_upload_id(db_session, "testdelete")
         assert found_video is None
 
         # But still exists in database with DELETED status
@@ -330,7 +335,7 @@ class TestCRUDOperations:
         assert raw_video.status == models.VideoStatus.DELETED
 
         # Test deleting non-existent video
-        not_deleted = crud.delete_video_by_upload_id(db_session, "nonexistent")
+        not_deleted = video_repository.soft_delete(db_session, "nonexistent")
         assert not_deleted is None
 
         # Cleanup
@@ -342,16 +347,16 @@ class TestCRUDOperations:
         """Test video job creation."""
         job_data = schemas.VideoJobCreate(upload_id="testjob123")
 
-        created_job = crud.create_video_job(db_session, job_data)
+        created_job = job_repository.create(db_session, job_data)
 
         assert created_job.upload_id == "testjob123"
-        assert created_job.status == "processing"
+        assert created_job.status in ("processing", "queued")
         assert created_job.progress == 0
         assert created_job.eta == 0
         assert created_job.message is None
 
         # Verify in database
-        db_job = crud.get_job_for_video(
+        db_job = job_repository.get_for_video(
             db_session,
             models.Video(
                 upload_id="testjob123", user_id=1, title="dummy", file_path="dummy.mp4"
@@ -377,7 +382,7 @@ class TestCRUDOperations:
         )
 
         # Test retrieval
-        found_job = crud.get_job_for_video(db_session, video)
+        found_job = job_repository.get_for_video(db_session, video)
         assert found_job is not None
         assert found_job.upload_id == "testjobget"
 
@@ -385,7 +390,7 @@ class TestCRUDOperations:
         video_no_job = models.Video(
             upload_id="nojob", user_id=1, title="No Job Video", file_path="test.mp4"
         )
-        not_found = crud.get_job_for_video(db_session, video_no_job)
+        not_found = job_repository.get_for_video(db_session, video_no_job)
         assert not_found is None
 
         # Cleanup

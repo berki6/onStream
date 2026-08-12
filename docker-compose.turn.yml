@@ -1,0 +1,30 @@
+# Optional overlay for coturn with published ports (when host networking is not used).
+# Usage:
+#   docker compose --profile turn -f docker-compose.yml -f docker-compose.turn.yml up
+#
+# Then set MediaMTX ICE servers (see configs/mediamtx.turn.example.yml):
+#   webrtcICEServers2 with turn:localhost:3478 and matching credentials.
+
+services:
+  coturn:
+    profiles: ["turn"]
+    image: coturn/coturn:latest
+    network_mode: bridge
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "5349:5349"
+      - "5349:5349/udp"
+      - "49160-49200:49160-49200/udp"
+    environment:
+      DETECT_EXTERNAL_IP: "yes"
+    command:
+      - "-n"
+      - "--log-file=stdout"
+      - "--listening-port=3478"
+      - "--fingerprint"
+      - "--lt-cred-mech"
+      - "--user=onstream:onstreamturn"
+      - "--realm=onstream.local"
+      - "--min-port=49160"
+      - "--max-port=49200"

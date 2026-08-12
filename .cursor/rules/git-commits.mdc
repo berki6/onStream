@@ -1,0 +1,13 @@
+---
+description: Never commit unless the user explicitly asks
+alwaysApply: true
+---
+
+# Git commits — explicit only
+
+**CRITICAL:** Create a git commit **only** when the user explicitly asks to commit (e.g. “commit”, “commit this”, “make a commit”).
+
+- Do **not** commit because work “looks done”, a feature shipped, tests passed, or you are “going with the flow”.
+- Do **not** invent a commit as a default wrap-up step.
+- If commit intent is unclear, ask first — do not assume.
+- Staging, committing, and pushing are separate: only do what the user named.

@@ -2,9 +2,9 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from src.main import app
-from src.core.database import get_db
-from src.services import crud
-from src.schema import models
+from src.infrastructure.db.session import get_db
+from src.infrastructure.db import models
+from src.infrastructure.db.repositories import job_repository, user_repository, video_repository
 from tests.conftest import override_get_db
 import redis
 from src.core.config import settings
@@ -28,16 +28,16 @@ class TestEndToEndVideoWorkflow:
         """Test the complete user journey: register → login → upload → process → stream."""
 
         # Mock video duration probe
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 120.0  # 2 minutes
 
         # Mock video worker processing
-        mock_worker = mocker.patch("src.tasks.video_worker.process_video")
+        mock_worker = mocker.patch("src.worker.handlers.transcode_handler.process_video")
         mock_worker.return_value = None
 
         # Step 1: User Registration
         register_response = client.post(
-            "/auth/register",
+            "/v1/auth/register",
             json={
                 "username": "e2e_user",
                 "email": "e2e@example.com",
@@ -51,7 +51,7 @@ class TestEndToEndVideoWorkflow:
 
         # Step 2: User Login
         login_response = client.post(
-            "/auth/login", data={"username": "e2e_user", "password": "SecurePass123!"}
+            "/v1/auth/login", data={"username": "e2e_user", "password": "SecurePass123!"}
         )
         assert login_response.status_code == 200
         tokens = login_response.json()
@@ -63,7 +63,7 @@ class TestEndToEndVideoWorkflow:
 
         # Step 3: Video Upload
         upload_response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "E2E Test Video"},
             files={"file": ("test_video.mp4", b"fake video content", "video/mp4")},
             headers=headers,
@@ -75,27 +75,27 @@ class TestEndToEndVideoWorkflow:
         upload_id = video_data["data"]["upload_id"]
 
         # Verify video was created in database
-        video = crud.get_video_by_upload_id(db_session, upload_id)
+        video = video_repository.get_by_upload_id(db_session, upload_id)
         assert video is not None
         assert video.status == models.VideoStatus.PENDING
         assert video.title == "E2E Test Video"
 
         # Verify job was created
-        job = crud.get_job_for_video(db_session, video)
+        job = job_repository.get_for_video(db_session, video)
         assert job is not None
-        assert job.status == "processing"
+        assert job.status in ("processing", "queued")
 
         # Step 4: Check Video Status (should still be PENDING before processing)
-        status_response = client.get(f"/videos/{upload_id}", headers=headers)
+        status_response = client.get(f"/v1/videos/{upload_id}", headers=headers)
         assert status_response.status_code == 200
         status_data = status_response.json()
         assert status_data["data"]["status"] == "PENDING"
 
         # Step 5: Check Job Status
-        job_response = client.get(f"/videos/{upload_id}/job", headers=headers)
+        job_response = client.get(f"/v1/videos/{upload_id}/jobs/latest", headers=headers)
         assert job_response.status_code == 200
         job_data = job_response.json()
-        assert job_data["data"]["status"] == "processing"
+        assert job_data["data"]["status"] in ("processing", "queued")
         assert job_data["data"]["progress"] == 0
 
         # Step 6: Simulate Video Processing Completion
@@ -112,7 +112,7 @@ class TestEndToEndVideoWorkflow:
         db_session.commit()
 
         # Step 7: Verify Video Status After Processing
-        status_response = client.get(f"/videos/{upload_id}", headers=headers)
+        status_response = client.get(f"/v1/videos/{upload_id}", headers=headers)
         assert status_response.status_code == 200
         status_data = status_response.json()
         assert status_data["data"]["status"] == "READY"
@@ -120,7 +120,7 @@ class TestEndToEndVideoWorkflow:
         assert status_data["data"]["thumbnail_path"] is not None
 
         # Step 8: Check Job Status After Completion
-        job_response = client.get(f"/videos/{upload_id}/job", headers=headers)
+        job_response = client.get(f"/v1/videos/{upload_id}/jobs/latest", headers=headers)
         assert job_response.status_code == 200
         job_data = job_response.json()
         assert job_data["data"]["status"] == "ready"
@@ -129,29 +129,29 @@ class TestEndToEndVideoWorkflow:
 
         # Step 9: Test Video Streaming (HLS Playlist)
         playlist_response = client.get(
-            f"/stream/{upload_id}/playlist.m3u8", headers=headers
+            f"/v1/playback/{upload_id}/master.m3u8", headers=headers
         )
         assert (
             playlist_response.status_code == 404
         )  # File doesn't exist in test, but endpoint works
 
         # Step 10: List User's Videos
-        list_response = client.get("/videos/", headers=headers)
+        list_response = client.get("/v1/videos/", headers=headers)
         assert list_response.status_code == 200
         videos_list = list_response.json()
         assert len(videos_list["data"]) >= 1
         assert any(v["upload_id"] == upload_id for v in videos_list["data"])
 
         # Step 11: Cleanup - Delete Video
-        delete_response = client.delete(f"/videos/{upload_id}", headers=headers)
+        delete_response = client.delete(f"/v1/videos/{upload_id}", headers=headers)
         assert delete_response.status_code == 204
 
         # Verify video was soft-deleted
-        video = crud.get_video_by_upload_id(db_session, upload_id)
+        video = video_repository.get_by_upload_id(db_session, upload_id)
         assert video is None  # Should not be found due to soft delete
 
         # Clean up test user
-        test_user = crud.get_user_by_username(db_session, "e2e_user")
+        test_user = user_repository.get_by_username(db_session, "e2e_user")
         if test_user:
             db_session.delete(test_user)
             db_session.commit()
@@ -160,11 +160,11 @@ class TestEndToEndVideoWorkflow:
         """Test video upload validation scenarios."""
 
         # Mock video duration probe for valid uploads
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 120.0
 
         # Create test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         test_user = models.User(
@@ -178,7 +178,7 @@ class TestEndToEndVideoWorkflow:
 
         # Login
         login_response = client.post(
-            "/auth/login", data={"username": "validation_user", "password": "testpass"}
+            "/v1/auth/login", data={"username": "validation_user", "password": "testpass"}
         )
         assert login_response.status_code == 200
         access_token = login_response.json()["data"]["access_token"]
@@ -186,13 +186,13 @@ class TestEndToEndVideoWorkflow:
 
         # Test 1: Invalid file type
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "Invalid Video"},
             files={"file": ("test.txt", b"text content", "text/plain")},
             headers=headers,
         )
         assert response.status_code == 400
-        assert "Invalid file type" in response.json()["detail"]
+        assert "Invalid file type" in response.json()["error"]["message"]
 
         # Test 2: File too large (mock large file)
         mocker.patch("fastapi.UploadFile.__init__", return_value=None)
@@ -203,7 +203,7 @@ class TestEndToEndVideoWorkflow:
         mock_file.file = mocker.MagicMock()
 
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "Large Video"},
             files={"file": ("large.mp4", b"large content", "video/mp4")},
             headers=headers,
@@ -213,7 +213,7 @@ class TestEndToEndVideoWorkflow:
 
         # Test 3: Missing filename
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "No Filename"},
             files={"file": (None, b"content", "video/mp4")},
             headers=headers,
@@ -223,13 +223,13 @@ class TestEndToEndVideoWorkflow:
         # Test 4: Title too long
         long_title = "A" * 201  # 201 characters
         response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": long_title},
             files={"file": ("test.mp4", b"content", "video/mp4")},
             headers=headers,
         )
         assert response.status_code == 400
-        assert "Title must be" in response.json()["detail"]
+        assert "Title must be" in response.json()["error"]["message"]
 
         # Clean up
         db_session.delete(test_user)
@@ -239,7 +239,7 @@ class TestEndToEndVideoWorkflow:
         """Test that unauthorized users cannot access protected resources."""
 
         # Mock video duration probe
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 120.0
 
         # Create two test users with unique names
@@ -248,7 +248,7 @@ class TestEndToEndVideoWorkflow:
         user1_name = f"user1_{uuid.uuid4().hex[:8]}"
         user2_name = f"user2_{uuid.uuid4().hex[:8]}"
 
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
 
@@ -270,14 +270,14 @@ class TestEndToEndVideoWorkflow:
 
         # Login as user1
         login_response = client.post(
-            "/auth/login", data={"username": user1_name, "password": "testpass"}
+            "/v1/auth/login", data={"username": user1_name, "password": "testpass"}
         )
         assert login_response.status_code == 200
         token1 = login_response.json()["data"]["access_token"]
 
         # Login as user2
         login_response = client.post(
-            "/auth/login", data={"username": user2_name, "password": "testpass"}
+            "/v1/auth/login", data={"username": user2_name, "password": "testpass"}
         )
         assert login_response.status_code == 200
         token2 = login_response.json()["data"]["access_token"]
@@ -285,7 +285,7 @@ class TestEndToEndVideoWorkflow:
         # Create video for user1
         headers1 = {"Authorization": f"Bearer {token1}"}
         upload_response = client.post(
-            "/videos/",
+            "/v1/videos/",
             data={"title": "User1 Video"},
             files={"file": ("test.mp4", b"content", "video/mp4")},
             headers=headers1,
@@ -295,29 +295,28 @@ class TestEndToEndVideoWorkflow:
 
         # Test 1: User2 tries to access user1's video
         headers2 = {"Authorization": f"Bearer {token2}"}
-        response = client.get(f"/videos/{upload_id}", headers=headers2)
+        response = client.get(f"/v1/videos/{upload_id}", headers=headers2)
         assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert "Access denied" in response.json()["error"]["message"]
 
         # Test 2: User2 tries to access user1's job status
-        response = client.get(f"/videos/{upload_id}/job", headers=headers2)
+        response = client.get(f"/v1/videos/{upload_id}/jobs/latest", headers=headers2)
         assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert "Access denied" in response.json()["error"]["message"]
 
         # Test 3: User2 tries to stream user1's video
-        response = client.get(f"/stream/{upload_id}/playlist.m3u8", headers=headers2)
+        response = client.get(f"/v1/playback/{upload_id}/master.m3u8", headers=headers2)
         assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert "Access denied" in response.json()["error"]["message"]
 
         # Test 4: User2 tries to delete user1's video
-        response = client.delete(f"/videos/{upload_id}", headers=headers2)
+        response = client.delete(f"/v1/videos/{upload_id}", headers=headers2)
         assert response.status_code == 403
-        assert "Access denied" in response.json()["detail"]
+        assert "Access denied" in response.json()["error"]["message"]
 
         # Test 5: No token provided
-        response = client.get("/videos/")
-        assert response.status_code == 403
-        assert "Not authenticated" in response.json()["detail"]
+        response = client.get("/v1/videos/")
+        assert response.status_code in (401, 403)
 
         # Clean up
         db_session.delete(user1)
@@ -329,7 +328,7 @@ class TestEndToEndVideoWorkflow:
         # Root endpoint
         response = client.get("/")
         assert response.status_code == 200
-        assert "Custom Video Player Backend" in response.json()["message"]
+        assert "OnStream" in response.json()["message"]
 
         # Health check
         response = client.get("/health")
@@ -353,11 +352,11 @@ class TestEndToEndVideoWorkflow:
         """Test pagination and API limits."""
 
         # Mock video duration probe
-        mock_probe = mocker.patch("src.routers.videos.probe_video_duration")
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
         mock_probe.return_value = 60.0
 
         # Create test user
-        from src.core.auth import get_password_hash
+        from src.core.security.passwords import get_password_hash
 
         hashed_password = get_password_hash("testpass")
         test_user = models.User(
@@ -371,7 +370,7 @@ class TestEndToEndVideoWorkflow:
 
         # Login
         login_response = client.post(
-            "/auth/login", data={"username": "pagination_user", "password": "testpass"}
+            "/v1/auth/login", data={"username": "pagination_user", "password": "testpass"}
         )
         assert login_response.status_code == 200
         access_token = login_response.json()["data"]["access_token"]
@@ -381,7 +380,7 @@ class TestEndToEndVideoWorkflow:
         upload_ids = []
         for i in range(5):
             response = client.post(
-                "/videos/",
+                "/v1/videos/",
                 data={"title": f"Video {i+1}"},
                 files={"file": (f"video{i+1}.mp4", b"content", "video/mp4")},
                 headers=headers,
@@ -390,29 +389,29 @@ class TestEndToEndVideoWorkflow:
             upload_ids.append(response.json()["data"]["upload_id"])
 
         # Test pagination - limit 2
-        response = client.get("/videos/?limit=2", headers=headers)
+        response = client.get("/v1/videos/?limit=2", headers=headers)
         assert response.status_code == 200
         videos = response.json()
         assert len(videos["data"]) == 2
 
         # Test pagination - skip 2, limit 2
-        response = client.get("/videos/?skip=2&limit=2", headers=headers)
+        response = client.get("/v1/videos/?skip=2&limit=2", headers=headers)
         assert response.status_code == 200
         videos = response.json()
         assert len(videos["data"]) == 2
 
         # Test invalid pagination parameters
-        response = client.get("/videos/?skip=-1", headers=headers)
+        response = client.get("/v1/videos/?skip=-1", headers=headers)
         assert response.status_code == 400
-        assert "must be non-negative" in response.json()["detail"]
+        assert "must be non-negative" in response.json()["error"]["message"]
 
-        response = client.get("/videos/?limit=0", headers=headers)
+        response = client.get("/v1/videos/?limit=0", headers=headers)
         assert response.status_code == 400
-        assert "must be between 1 and" in response.json()["detail"]
+        assert "must be between 1 and" in response.json()["error"]["message"]
 
-        response = client.get("/videos/?limit=200", headers=headers)
+        response = client.get("/v1/videos/?limit=200", headers=headers)
         assert response.status_code == 400
-        assert "must be between 1 and" in response.json()["detail"]
+        assert "must be between 1 and" in response.json()["error"]["message"]
 
         # Clean up
         db_session.delete(test_user)

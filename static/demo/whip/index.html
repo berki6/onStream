@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OnStream · WHIP publish</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --fg: #e8eef4;
+      --accent: #3d9cf0;
+      --muted: #8b9aab;
+      --danger: #e85d5d;
+      --ok: #3ecf8e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: radial-gradient(ellipse at top, #1a2836 0%, var(--bg) 55%);
+      color: var(--fg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+    h1 { font-weight: 600; letter-spacing: -0.02em; margin: 0 0 0.5rem; }
+    p { color: var(--muted); margin: 0 0 1.25rem; max-width: 40rem; text-align: center; line-height: 1.45; }
+    .panel {
+      width: min(720px, 100%);
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    label { font-size: 0.85rem; color: var(--muted); }
+    input {
+      width: 100%;
+      padding: 0.65rem 0.85rem;
+      border: 1px solid #2a3a4a;
+      border-radius: 6px;
+      background: #121a22;
+      color: var(--fg);
+    }
+    .row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    button {
+      padding: 0.65rem 1.1rem;
+      border: none;
+      border-radius: 6px;
+      background: var(--accent);
+      color: #041018;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button.ghost {
+      background: transparent;
+      color: var(--fg);
+      border: 1px solid #2a3a4a;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    video {
+      width: 100%;
+      background: #000;
+      border-radius: 8px;
+      aspect-ratio: 16 / 9;
+    }
+    #status { min-height: 1.4rem; font-size: 0.9rem; color: var(--muted); }
+    #status.ok { color: var(--ok); }
+    #status.err { color: var(--danger); }
+    code { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <h1>Go Live · WHIP</h1>
+  <p>
+    Camera / mic → WebRTC WHIP → MediaMTX. Paste the <code>whip_url</code> from
+    live create (shown once), or open this page from Expo’s Go Live button.
+    Use a LAN <code>PUBLIC_WEBRTC_BASE_URL</code> on a phone browser.
+  </p>
+  <div class="panel">
+    <label for="whip">WHIP URL</label>
+    <input id="whip" type="url" placeholder="http://192.168.x.x:8889/live/KEY/whip" autocomplete="off" />
+    <video id="preview" playsinline muted autoplay></video>
+    <div class="row">
+      <button id="go" type="button">Go Live</button>
+      <button id="stop" class="ghost" type="button" disabled>Stop</button>
+    </div>
+    <div id="status">Idle</div>
+  </div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const whipInput = document.getElementById("whip");
+    const preview = document.getElementById("preview");
+    const statusEl = document.getElementById("status");
+    const goBtn = document.getElementById("go");
+    const stopBtn = document.getElementById("stop");
+
+    if (params.get("whip")) {
+      whipInput.value = params.get("whip");
+    }
+
+    let pc = null;
+    let media = null;
+    let sessionUrl = null;
+
+    function setStatus(text, kind) {
+      statusEl.textContent = text;
+      statusEl.className = kind || "";
+    }
+
+    function waitIce(pc) {
+      if (pc.iceGatheringState === "complete") return Promise.resolve();
+      return new Promise((resolve) => {
+        const check = () => {
+          if (pc.iceGatheringState === "complete") {
+            pc.removeEventListener("icegatheringstatechange", check);
+            resolve();
+          }
+        };
+        pc.addEventListener("icegatheringstatechange", check);
+        setTimeout(resolve, 2500);
+      });
+    }
+
+    async function stop() {
+      try {
+        if (sessionUrl) {
+          await fetch(sessionUrl, { method: "DELETE" }).catch(() => {});
+        }
+      } finally {
+        sessionUrl = null;
+        if (pc) {
+          pc.close();
+          pc = null;
+        }
+        if (media) {
+          media.getTracks().forEach((t) => t.stop());
+          media = null;
+        }
+        preview.srcObject = null;
+        goBtn.disabled = false;
+        stopBtn.disabled = true;
+        setStatus("Stopped");
+      }
+    }
+
+    goBtn.addEventListener("click", async () => {
+      const whipUrl = whipInput.value.trim();
+      if (!whipUrl) {
+        setStatus("WHIP URL required", "err");
+        return;
+      }
+      goBtn.disabled = true;
+      setStatus("Requesting camera…");
+      try {
+        media = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: true,
+        });
+        preview.srcObject = media;
+        pc = new RTCPeerConnection({
+          iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+        });
+        media.getTracks().forEach((t) => pc.addTrack(t, media));
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        await waitIce(pc);
+        setStatus("WHIP POST…");
+        const res = await fetch(whipUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/sdp" },
+          body: pc.localDescription.sdp,
+        });
+        if (res.status !== 201) {
+          const t = await res.text();
+          throw new Error(`WHIP failed HTTP ${res.status}: ${t.slice(0, 200)}`);
+        }
+        const loc = res.headers.get("Location");
+        if (loc) {
+          sessionUrl = new URL(loc, whipUrl).href;
+        }
+        const answer = await res.text();
+        await pc.setRemoteDescription({ type: "answer", sdp: answer });
+        stopBtn.disabled = false;
+        setStatus("Live — publishing to MediaMTX", "ok");
+      } catch (e) {
+        await stop();
+        setStatus(e instanceof Error ? e.message : String(e), "err");
+        goBtn.disabled = false;
+      }
+    });
+
+    stopBtn.addEventListener("click", () => stop());
+    window.addEventListener("beforeunload", () => {
+      if (sessionUrl) navigator.sendBeacon?.(sessionUrl); // best-effort; DELETE preferred
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OnStream · Reset password</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --fg: #e8eef4;
+      --accent: #3d9cf0;
+      --muted: #8b9aab;
+      --danger: #e85d5d;
+      --ok: #3ecf8e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: radial-gradient(ellipse at top, #1a2836 0%, var(--bg) 55%);
+      color: var(--fg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+    h1 { font-weight: 600; margin: 0 0 0.5rem; }
+    p { color: var(--muted); margin: 0 0 1.25rem; max-width: 36rem; text-align: center; line-height: 1.45; }
+    .panel { width: min(480px, 100%); display: flex; flex-direction: column; gap: 0.75rem; }
+    label { font-size: 0.85rem; color: var(--muted); }
+    input, textarea {
+      width: 100%;
+      padding: 0.65rem 0.85rem;
+      border: 1px solid #2a3a4a;
+      border-radius: 6px;
+      background: #121a22;
+      color: var(--fg);
+    }
+    button {
+      padding: 0.65rem 1.1rem;
+      border: none;
+      border-radius: 6px;
+      background: var(--accent);
+      color: #041018;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #status { min-height: 1.4rem; font-size: 0.9rem; color: var(--muted); }
+    #status.ok { color: var(--ok); }
+    #status.err { color: var(--danger); }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <h1>Reset password</h1>
+  <p>
+    Opens from the reset email / log driver link. Prefer the Expo app deep link
+    (<code>onstream://reset</code>) when testing on device.
+  </p>
+  <div class="panel">
+    <label for="token">Reset token</label>
+    <textarea id="token" rows="4"></textarea>
+    <label for="pw">New password</label>
+    <input id="pw" type="password" autocomplete="new-password" />
+    <label for="pw2">Confirm</label>
+    <input id="pw2" type="password" autocomplete="new-password" />
+    <button id="go" type="button">Update password</button>
+    <div id="status"></div>
+    <p><a href="/demo/">← Demo player</a></p>
+  </div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const tokenEl = document.getElementById("token");
+    const pw = document.getElementById("pw");
+    const pw2 = document.getElementById("pw2");
+    const statusEl = document.getElementById("status");
+    if (params.get("token")) tokenEl.value = params.get("token");
+
+    document.getElementById("go").addEventListener("click", async () => {
+      statusEl.className = "";
+      if (pw.value.length < 8) {
+        statusEl.textContent = "Password must be at least 8 characters";
+        statusEl.className = "err";
+        return;
+      }
+      if (pw.value !== pw2.value) {
+        statusEl.textContent = "Passwords do not match";
+        statusEl.className = "err";
+        return;
+      }
+      try {
+        const res = await fetch("/v1/auth/password-reset/confirm", {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            token: tokenEl.value.trim(),
+            new_password: pw.value,
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          throw new Error(
+            (json && json.error && json.error.message) || `HTTP ${res.status}`
+          );
+        }
+        statusEl.textContent = "Password updated. You can sign in on Expo.";
+        statusEl.className = "ok";
+      } catch (e) {
+        statusEl.textContent = e instanceof Error ? e.message : String(e);
+        statusEl.className = "err";
+      }
+    });
+  </script>
+</body>
+</html>
