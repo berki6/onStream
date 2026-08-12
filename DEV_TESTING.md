@@ -102,6 +102,15 @@ PUBLIC_API_BASE_URL=http://192.168.43.246:8000
 
 **Phone / Expo Go on device:** `PUBLIC_API_BASE_URL` and Expo’s API base must both use the PC’s LAN IP (not `localhost`). Restart the API after changing `.env`.
 
+When your Wi‑Fi IP changes, from repo root:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/sync_lan_ip.py
+```
+
+Updates only local `.env` and `onstream-demo/.env` (not committed examples/docs).  
+(`--dry-run` / `--ip 192.168.x.x` available.) Then restart API + Expo.
+
 Tokenized `playback_url` values are built from `PUBLIC_API_BASE_URL`. Expo’s in-app API base alone is not enough — the player follows the URL returned by the API.
 
 ---
