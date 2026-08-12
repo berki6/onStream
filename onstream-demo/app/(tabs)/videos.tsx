@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -11,7 +11,10 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { listSavedVideos } from "@/api/favorites";
+import { listContinueWatching } from "@/api/watch";
 import { ElasticRefreshFlatList } from "@/components/ElasticRefreshFlatList";
+import { LibraryShelves } from "@/components/LibraryShelves";
 import { Screen } from "@/components/Screen";
 import { StatusPill } from "@/components/StatusPill";
 import { VideoUploadComposer } from "@/components/VideoUploadComposer";
@@ -45,14 +48,25 @@ export default function VideosScreen() {
     refetch,
   } = useVideosQuery();
 
+  const continueQuery = useQuery({
+    queryKey: videoKeys.continue(),
+    queryFn: async () => (await listContinueWatching(12)).data,
+  });
+  const savedQuery = useQuery({
+    queryKey: videoKeys.saved(),
+    queryFn: async () => (await listSavedVideos(12)).data,
+  });
+
   useFocusEffect(
     useCallback(() => {
       focusedRef.current = true;
       refetch();
+      void continueQuery.refetch();
+      void savedQuery.refetch();
       return () => {
         focusedRef.current = false;
       };
-    }, [refetch])
+    }, [refetch, continueQuery.refetch, savedQuery.refetch])
   );
 
   useEffect(() => {
@@ -90,6 +104,17 @@ export default function VideosScreen() {
         </View>
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel="Search"
+          onPress={() => router.push("/search")}
+          style={({ pressed }) => [
+            styles.iconBtn,
+            pressed && { opacity: 0.88 },
+          ]}
+        >
+          <Ionicons name="search" size={22} color={colors.text} />
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
           accessibilityLabel="Add video"
           onPress={() => {
             setUploadError(null);
@@ -114,11 +139,24 @@ export default function VideosScreen() {
           keyExtractor={(item) => item.upload_id}
           contentContainerStyle={styles.list}
           onRefresh={async () => {
-            await refetch();
+            await Promise.all([
+              refetch(),
+              continueQuery.refetch(),
+              savedQuery.refetch(),
+            ]);
           }}
+          ListHeaderComponent={
+            <LibraryShelves
+              continueItems={continueQuery.data ?? []}
+              savedItems={savedQuery.data ?? []}
+            />
+          }
           ListEmptyComponent={
             <Pressable
-              onPress={() => setComposerOpen(true)}
+              onPress={() => {
+                setUploadError(null);
+                setComposerOpen(true);
+              }}
               style={({ pressed }) => [
                 styles.empty,
                 pressed && { opacity: 0.9 },
@@ -253,6 +291,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: colors.brand,
     borderRadius: radii.lg,
+  },
+  iconBtn: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.bgSoft,
   },
   kicker: {
     color: colors.textMuted,

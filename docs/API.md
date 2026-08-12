@@ -128,6 +128,26 @@ Video identifiers in paths are public `upload_id` values. Multipart create is th
 | POST | `/{video_id}/tokens` signed playback |
 | GET | `/{video_id}/job` (jobs router) |
 | GET | `/{video_id}/chapters` |
+| GET | `/continue` continue-watching shelf |
+| GET | `/history` watch history |
+| GET | `/saved` favorited videos |
+| POST | `/{video_id}/progress` upsert resume position |
+| GET | `/{video_id}/progress` |
+| PUT | `/{video_id}/favorite` |
+| DELETE | `/{video_id}/favorite` |
+
+## Share links — `/v1/share-links`
+
+DB-backed expiring watch links. Create returns plaintext token once; exchange (public) mints a short stream JWT.
+
+| Method | Path |
+|--------|------|
+| POST | `/` create (auth) |
+| GET | `/?video_id=` list (auth) |
+| DELETE | `/{public_id}` revoke (auth) |
+| POST | `/{public_id}/exchange` body `{ token }` (public) |
+
+Browser landing: `/demo/watch/?s={public_id}&t={token}`.
 
 ## Uploads — `/v1/uploads`
 
@@ -192,7 +212,7 @@ Payload shape: `{ "type", "created_at", "data": { stream_id, user_id, title, sta
 | `/api-keys` | API key management |
 | `/playlists` | user playlists |
 | `/moderation` | quarantine queue + review |
-| `/search` | keyword / semantic search |
+| `/search` | keyword (Postgres FTS + rank; ILIKE fallback) / semantic |
 
 ## Non-`/v1` operational endpoints
 
@@ -206,6 +226,7 @@ These routes are mounted on the application root for probes, metrics scrapers, a
 | `/metrics` | Prometheus (if enabled) |
 | `/scalar` | Scalar interactive API reference |
 | `/demo/` | static hls.js (if `DEMO_PLAYER_ENABLED`) |
+| `/demo/watch/` | anonymous share-link landing (`?s=` + `?t=`) |
 
 ## Client guides
 

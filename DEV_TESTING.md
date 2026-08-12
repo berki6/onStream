@@ -361,7 +361,7 @@ Hard `live.ended` is revoke-only; health soft-fail emits `live.idle`, not `live.
 Stack should already be up (API + worker + MediaMTX). In Expo Lab, set API base to your LAN
 (e.g. `http://192.168.1.6:8000`). Sign in as usual (`demo` / `DemoPass123!` if that’s your lab user).
 
-**Fast pass order:** Direct upload → play → captions/`master.m3u8` → Forgot password → Live create → Go Live WHIP → play → Lab moderation (if you have a quarantine item).
+**Fast pass order:** Direct upload → play → continue/resume → share link → search → favorites → captions/`master.m3u8` → Forgot password → Live create → Go Live WHIP → play → Lab moderation (if you have a quarantine item).
 
 ---
 
@@ -373,6 +373,17 @@ Stack should already be up (API + worker + MediaMTX). In Expo Lab, set API base 
 4. Open the video → play HLS.
 
 **Browser alt:** Lab → **Browser direct upload** (or `http://<LAN-IP>:8000/demo/upload/`) → paste a Bearer token from Scalar login → pick file → Upload.
+
+---
+
+### 1b) Continue watching, share links, search, favorites
+
+1. On a READY video: **Issue playback / Play** and watch past ~10s (progress saves in the background).
+2. Back to **Library** → **Continue watching** shelf appears → open it → player resumes near last position.
+3. On video detail → heart (Saved) → Library **Saved** shelf lists it.
+4. **Share link** → pick expiry → Create & copy → open `watch_url` in a browser (`/demo/watch/?s=…&t=…`) without login → video plays.
+5. Revoke the link in the share sheet → reload watch URL → expired/revoked error.
+6. Library → search icon → type a title keyword → ranked results → open video.
 
 ---
 
@@ -447,6 +458,6 @@ Worker injects `#EXT-X-MEDIA:TYPE=SUBTITLES` into `data/hls/{id}/master.m3u8` af
 
 ## Out of scope / remaining limits
 
-- Native in-Expo WebRTC encoder (Expo Go) — use `/demo/whip/` from the device browser
+- Native in-app WHIP — **Expo Go limit** (needs `expo-dev-client` + WebRTC); use `/demo/whip/` from the device browser
 - Production SMTP inbox branding beyond text/HTML body already sent
 - Multi-tenant admin moderation (queue is per authenticated owner)

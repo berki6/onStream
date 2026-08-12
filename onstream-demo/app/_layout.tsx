@@ -15,11 +15,14 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
+import * as NavigationBar from "expo-navigation-bar";
 import React, { useEffect } from "react";
+import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { CinemaSheetProvider } from "@/components/CinemaSheetHost";
 import { queryClient } from "@/query/client";
 import { colors } from "@/theme/tokens";
 
@@ -105,11 +108,26 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
             title: "Moderation",
           }}
         />
+        <Stack.Screen
+          name="search"
+          options={{
+            headerShown: false,
+            animation: "fade",
+          }}
+        />
       </Stack.Protected>
 
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="(auth)" options={{ animation: "none" }} />
       </Stack.Protected>
+
+      <Stack.Screen
+        name="watch"
+        options={{
+          headerShown: true,
+          title: "Shared video",
+        }}
+      />
     </Stack>
   );
 }
@@ -125,6 +143,13 @@ export default function RootLayout() {
 
   useEffect(() => {
     SystemUI.setBackgroundColorAsync(colors.bg).catch(() => undefined);
+    if (Platform.OS === "android") {
+      // Light icons on dark charcoal bar.
+      void NavigationBar.setButtonStyleAsync("light").catch(() => undefined);
+      void NavigationBar.setBackgroundColorAsync(colors.bg).catch(
+        () => undefined
+      );
+    }
   }, []);
 
   return (
@@ -133,9 +158,11 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <ThemeProvider value={navTheme}>
             <AuthProvider>
-              <SplashController fontsLoaded={fontsLoaded} />
-              <StatusBar style="light" />
-              <RootNavigator fontsLoaded={fontsLoaded} />
+              <CinemaSheetProvider>
+                <SplashController fontsLoaded={fontsLoaded} />
+                <StatusBar style="light" />
+                <RootNavigator fontsLoaded={fontsLoaded} />
+              </CinemaSheetProvider>
             </AuthProvider>
           </ThemeProvider>
         </QueryClientProvider>

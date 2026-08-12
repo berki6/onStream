@@ -11,6 +11,7 @@ from src.api.v1.routes import (
     playback,
     playlists,
     search,
+    share_links,
     uploads,
     videos,
     webhooks,
@@ -33,3 +34,6 @@ api_router.include_router(api_keys.router, prefix="/api-keys", tags=["api-keys"]
 api_router.include_router(playlists.router, prefix="/playlists", tags=["playlists"])
 api_router.include_router(moderation.router, prefix="/moderation", tags=["moderation"])
 api_router.include_router(search.router, prefix="/search", tags=["search"])
+api_router.include_router(
+    share_links.router, prefix="/share-links", tags=["share-links"]
+)

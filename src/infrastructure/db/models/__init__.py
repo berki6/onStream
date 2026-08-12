@@ -8,6 +8,11 @@ from src.infrastructure.db.base import (
     VideoStatus,
 )
 from src.infrastructure.db.models.api_key import ApiKey
+from src.infrastructure.db.models.engagement import (
+    ShareLink,
+    VideoFavorite,
+    VideoWatchProgress,
+)
 from src.infrastructure.db.models.idempotency import IdempotencyRecord
 from src.infrastructure.db.models.job import QueuedJob, VideoJob
 from src.infrastructure.db.models.live_stream import LiveStream
@@ -27,6 +32,9 @@ __all__ = [
     "Video",
     "VideoView",
     "VideoEmbedding",
+    "VideoWatchProgress",
+    "ShareLink",
+    "VideoFavorite",
     "LiveStream",
     "Playlist",
     "PlaylistVideo",

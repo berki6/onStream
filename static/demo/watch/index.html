@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OnStream · Shared watch</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
+  <style>
+    :root {
+      --bg: #0B1210;
+      --elev: #121A17;
+      --soft: #18211D;
+      --line: #24312B;
+      --fg: #E8F2ED;
+      --muted: #8FA399;
+      --dim: #5E7369;
+      --brand: #2EE6A6;
+      --danger: #FF6B6B;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "DM Sans", "Segoe UI", system-ui, sans-serif;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(46,230,166,0.12), transparent),
+        var(--bg);
+      color: var(--fg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2.5rem 1.25rem 3rem;
+    }
+    .brand {
+      font-family: Syne, "Segoe UI", sans-serif;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      font-size: 1.75rem;
+      color: var(--brand);
+      margin: 0 0 0.35rem;
+    }
+    .kicker {
+      color: var(--muted);
+      font-size: 0.75rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin: 0 0 2rem;
+    }
+    .stage {
+      width: min(860px, 100%);
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .panel {
+      background: var(--elev);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 1.25rem 1.35rem;
+    }
+    h1 {
+      font-family: Syne, "Segoe UI", sans-serif;
+      font-weight: 700;
+      font-size: 1.55rem;
+      letter-spacing: -0.03em;
+      margin: 0 0 0.35rem;
+    }
+    .meta { color: var(--muted); font-size: 0.9rem; margin: 0; }
+    video {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      display: block;
+    }
+    .state {
+      text-align: center;
+      padding: 2.5rem 1rem;
+    }
+    .state h2 {
+      font-family: Syne, sans-serif;
+      margin: 0 0 0.5rem;
+      font-size: 1.4rem;
+    }
+    .state p { color: var(--muted); margin: 0; line-height: 1.5; }
+    .danger h2 { color: var(--danger); }
+    .spinner {
+      width: 28px; height: 28px;
+      border: 2px solid var(--line);
+      border-top-color: var(--brand);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 1rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    a.home {
+      margin-top: 2rem;
+      color: var(--dim);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <p class="brand">OnStream</p>
+  <p class="kicker">Shared playback</p>
+  <div class="stage" id="root">
+    <div class="panel state">
+      <div class="spinner"></div>
+      <h2>Opening share…</h2>
+      <p>Exchanging credentials for a short-lived stream.</p>
+    </div>
+  </div>
+  <a class="home" href="/demo/">← Demo home</a>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const s = params.get("s");
+    const t = params.get("t");
+    const root = document.getElementById("root");
+    const apiBase = location.origin;
+
+    function showError(title, body) {
+      root.innerHTML = `
+        <div class="panel state danger">
+          <h2>${title}</h2>
+          <p>${body}</p>
+        </div>`;
+    }
+
+    async function main() {
+      if (!s || !t) {
+        showError("Invalid link", "This URL is missing share id or token.");
+        return;
+      }
+      let res;
+      try {
+        res = await fetch(`${apiBase}/v1/share-links/${encodeURIComponent(s)}/exchange`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ token: t }),
+        });
+      } catch (e) {
+        showError("Network error", "Could not reach the API.");
+        return;
+      }
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const code = json?.error?.code || "";
+        const msg = json?.error?.message || "Share unavailable.";
+        if (code === "SHARE_EXPIRED") showError("Expired", msg);
+        else if (code === "SHARE_REVOKED") showError("Revoked", msg);
+        else if (code === "SHARE_VIEW_LIMIT") showError("View limit", msg);
+        else showError("Unavailable", msg);
+        return;
+      }
+      const data = json.data || {};
+      const expires = data.expires_at
+        ? new Date(data.expires_at).toLocaleString()
+        : "—";
+      root.innerHTML = `
+        <div class="panel">
+          <h1>${escapeHtml(data.title || "Shared video")}</h1>
+          <p class="meta">Link expires ${escapeHtml(expires)}</p>
+        </div>
+        <video id="v" controls playsinline></video>
+      `;
+      const video = document.getElementById("v");
+      const url = data.playback_url;
+      if (window.Hls && Hls.isSupported()) {
+        const hls = new Hls();
+        hls.loadSource(url);
+        hls.attachMedia(video);
+      } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        video.src = url;
+      } else {
+        showError("Unsupported", "HLS playback is not supported in this browser.");
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    main();
+  </script>
+</body>
+</html>

@@ -50,6 +50,14 @@ from src.schemas.live import (
     LiveStreamResponse,
     MediaMTXAuthRequest,
 )
+from src.schemas.watch import ContinueItem, ProgressResponse, ProgressUpdate
+from src.schemas.share_link import (
+    ShareExchangeResponse,
+    ShareLinkCreate,
+    ShareLinkCreateResponse,
+    ShareLinkExchange,
+    ShareLinkResponse,
+)
 
 __all__ = [
     "APIResponse",
@@ -96,4 +104,12 @@ __all__ = [
     "LivePlaybackTokenCreate",
     "LivePlaybackTokenResponse",
     "MediaMTXAuthRequest",
+    "ProgressUpdate",
+    "ProgressResponse",
+    "ContinueItem",
+    "ShareLinkCreate",
+    "ShareLinkExchange",
+    "ShareLinkResponse",
+    "ShareLinkCreateResponse",
+    "ShareExchangeResponse",
 ]

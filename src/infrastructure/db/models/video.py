@@ -51,6 +51,15 @@ class Video(Base):
     embeddings = relationship(
         "VideoEmbedding", back_populates="video", cascade="all, delete-orphan"
     )
+    watch_progress = relationship(
+        "VideoWatchProgress", back_populates="video", cascade="all, delete-orphan"
+    )
+    share_links = relationship(
+        "ShareLink", back_populates="video", cascade="all, delete-orphan"
+    )
+    favorites = relationship(
+        "VideoFavorite", back_populates="video", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (Index("idx_videos_user_status", "user_id", "status"),)
 

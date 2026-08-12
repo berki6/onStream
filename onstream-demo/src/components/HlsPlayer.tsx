@@ -1,5 +1,5 @@
 import { useVideoPlayer, VideoView } from "expo-video";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { colors, radii } from "../theme/tokens";
@@ -7,16 +7,29 @@ import { colors, radii } from "../theme/tokens";
 type Props = {
   uri: string | null;
   title?: string;
+  initialPositionSeconds?: number;
+  onProgress?: (positionSeconds: number, durationSeconds: number) => void;
 };
 
-export function HlsPlayer({ uri, title }: Props) {
+export function HlsPlayer({
+  uri,
+  title,
+  initialPositionSeconds = 0,
+  onProgress,
+}: Props) {
   const [playing, setPlaying] = useState(false);
+  const seekDone = useRef(false);
+  const lastSent = useRef(0);
+  const onProgressRef = useRef(onProgress);
+  onProgressRef.current = onProgress;
+
   const player = useVideoPlayer(null, (p) => {
     p.loop = false;
   });
 
   useEffect(() => {
     let cancelled = false;
+    seekDone.current = false;
     (async () => {
       if (!uri) {
         player.pause();
@@ -25,13 +38,49 @@ export function HlsPlayer({ uri, title }: Props) {
       }
       await player.replaceAsync({ uri, contentType: "hls" as const });
       if (cancelled) return;
+      if (initialPositionSeconds > 2) {
+        try {
+          player.currentTime = initialPositionSeconds;
+        } catch {
+          /* seek may fail until buffered */
+        }
+        seekDone.current = true;
+      }
       player.play();
       setPlaying(true);
     })();
     return () => {
       cancelled = true;
     };
-  }, [uri, player]);
+  }, [uri, player, initialPositionSeconds]);
+
+  useEffect(() => {
+    if (!uri || !onProgressRef.current) return;
+    const id = setInterval(() => {
+      const pos = Number(player.currentTime) || 0;
+      const dur = Number(player.duration) || 0;
+      if (pos <= 0) return;
+      if (!seekDone.current && initialPositionSeconds > 2 && pos < 1) {
+        try {
+          player.currentTime = initialPositionSeconds;
+          seekDone.current = true;
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+      const now = Date.now();
+      if (now - lastSent.current < 4500) return;
+      lastSent.current = now;
+      onProgressRef.current?.(pos, dur > 0 ? dur : pos);
+    }, 2000);
+    return () => {
+      clearInterval(id);
+      const pos = Number(player.currentTime) || 0;
+      const dur = Number(player.duration) || 0;
+      if (pos > 0) onProgressRef.current?.(pos, dur > 0 ? dur : pos);
+    };
+  }, [uri, player, initialPositionSeconds]);
 
   if (!uri) {
     return (
@@ -64,6 +113,9 @@ export function HlsPlayer({ uri, title }: Props) {
             if (playing) {
               player.pause();
               setPlaying(false);
+              const pos = Number(player.currentTime) || 0;
+              const dur = Number(player.duration) || 0;
+              if (pos > 0) onProgressRef.current?.(pos, dur > 0 ? dur : pos);
             } else {
               player.play();
               setPlaying(true);

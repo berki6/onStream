@@ -30,6 +30,15 @@ class User(Base):
     live_streams = relationship(
         "LiveStream", back_populates="owner", cascade="all, delete-orphan"
     )
+    watch_progress = relationship(
+        "VideoWatchProgress", back_populates="user", cascade="all, delete-orphan"
+    )
+    share_links = relationship(
+        "ShareLink", back_populates="creator", cascade="all, delete-orphan"
+    )
+    favorites = relationship(
+        "VideoFavorite", back_populates="user", cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<User(username='{self.username}', id={self.id})>"

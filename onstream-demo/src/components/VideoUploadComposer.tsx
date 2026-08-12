@@ -1,27 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import * as Haptics from "expo-haptics";
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
-import { scheduleOnRN } from "react-native-worklets";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import React, { useMemo, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { ApiError } from "@/api/client";
 import { uploadVideoDirect } from "@/api/uploads";
 import { uploadVideoMultipart } from "@/api/videos";
+import { CinemaSheet } from "@/components/CinemaSheet";
 import { Field } from "@/components/Field";
 import { colors, radii, spacing } from "@/theme/tokens";
 
@@ -43,11 +29,6 @@ type Props = {
 };
 
 const DIRECT_THRESHOLD = 4 * 1024 * 1024; // 4 MiB — Mux-style prefer resumable for larger
-const OPEN_MS = 300;
-const CLOSE_MS = 240;
-const DISMISS_DRAG_PX = 110;
-const DISMISS_VELOCITY = 900;
-const SHEET_HEIGHT_FALLBACK = 420;
 
 function formatBytes(n: number | null): string {
   if (n == null || n <= 0) return "Size unknown";
@@ -64,24 +45,18 @@ function defaultMethod(size: number | null): UploadMethod {
 /**
  * Mux / YouTube Studio–inspired upload sheet:
  * pick → metadata → method → progress bar → done.
- *
- * Scrim + sheet fade/slide on the same progress value so the dimmer does not
- * linger after the sheet (native Modal `slide` caused that stagger).
  */
-export function VideoUploadComposer({ visible, onClose, onFinished }: Props) {
-  const insets = useSafeAreaInsets();
+export function VideoUploadComposer({
+  visible,
+  onClose,
+  onFinished,
+}: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [picked, setPicked] = useState<Picked | null>(null);
   const [title, setTitle] = useState("");
   const [method, setMethod] = useState<UploadMethod>("direct");
   const [pct, setPct] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  /** Keep Modal mounted until exit animation finishes. */
-  const [presented, setPresented] = useState(false);
-
-  const progress = useSharedValue(0);
-  const dragY = useSharedValue(0);
-  const sheetHeight = useSharedValue(SHEET_HEIGHT_FALLBACK);
 
   const stageLabel = useMemo(() => {
     if (phase === "uploading") {
@@ -104,103 +79,10 @@ export function VideoUploadComposer({ visible, onClose, onFinished }: Props) {
     setError(null);
   }
 
-  function finishExit() {
-    // Unmount first — resetting drag/progress while still mounted caused a
-    // one-frame pop/flash at the end of the close.
-    setPresented(false);
-    requestAnimationFrame(() => {
-      progress.value = 0;
-      dragY.value = 0;
-      reset();
-    });
-  }
-
-  // Mount Modal first at progress=0; never start the open timing while unmounted
-  // (that finished off-screen and made open feel instant).
-  useEffect(() => {
-    if (visible) {
-      progress.value = 0;
-      dragY.value = 0;
-      setPresented(true);
-      return;
-    }
-    if (!presented) return;
-    progress.value = withTiming(
-      0,
-      { duration: CLOSE_MS, easing: Easing.in(Easing.cubic) },
-      (finished) => {
-        if (finished) scheduleOnRN(finishExit);
-      }
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- drive only from `visible`
-  }, [visible]);
-
-  useEffect(() => {
-    if (!visible || !presented) return;
-    const id = requestAnimationFrame(() => {
-      progress.value = withTiming(1, {
-        duration: OPEN_MS,
-        easing: Easing.out(Easing.cubic),
-      });
-    });
-    return () => cancelAnimationFrame(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, presented]);
-
   function handleClose() {
     if (phase === "uploading") return;
     onClose();
   }
-
-  const handleCloseRef = useRef(handleClose);
-  handleCloseRef.current = handleClose;
-
-  function dismissFromDrag() {
-    handleCloseRef.current();
-  }
-
-  const panGesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .enabled(phase !== "uploading")
-        .activeOffsetY(8)
-        .failOffsetX([-20, 20])
-        .onUpdate((e) => {
-          dragY.value = Math.max(0, e.translationY);
-        })
-        .onEnd((e) => {
-          const shouldDismiss =
-            dragY.value > DISMISS_DRAG_PX || e.velocityY > DISMISS_VELOCITY;
-          if (shouldDismiss) {
-            scheduleOnRN(dismissFromDrag);
-          } else {
-            dragY.value = withTiming(0, {
-              duration: 180,
-              easing: Easing.out(Easing.cubic),
-            });
-          }
-        }),
-    [phase]
-  );
-
-  const backdropStyle = useAnimatedStyle(() => {
-    const h = Math.max(sheetHeight.value, SHEET_HEIGHT_FALLBACK);
-    const dragFade = Math.min(dragY.value / (h * 0.55), 0.9);
-    return { opacity: progress.value * (1 - dragFade) };
-  });
-
-  // Slide the full sheet height (iOS-style). Do not fade the sheet itself —
-  // opacity→0 at the end of a short slide was the close flash.
-  const sheetStyle = useAnimatedStyle(() => {
-    const h = Math.max(sheetHeight.value, SHEET_HEIGHT_FALLBACK);
-    return {
-      transform: [
-        {
-          translateY: (1 - progress.value) * h + dragY.value,
-        },
-      ],
-    };
-  });
 
   async function pickFile() {
     setError(null);
@@ -278,41 +160,12 @@ export function VideoUploadComposer({ visible, onClose, onFinished }: Props) {
   }
 
   return (
-    <Modal
-      visible={presented}
-      animationType="none"
-      transparent
-      onRequestClose={handleClose}
-      statusBarTranslucent
+    <CinemaSheet
+      visible={visible}
+      onClose={handleClose}
+      dismissEnabled={phase !== "uploading"}
+      onExited={reset}
     >
-      <GestureHandlerRootView style={styles.modalRoot}>
-        <Animated.View
-          pointerEvents="box-none"
-          style={[styles.backdrop, backdropStyle]}
-        >
-          <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
-        </Animated.View>
-        <Animated.View
-          style={[
-            styles.sheet,
-            { paddingBottom: Math.max(insets.bottom, 16) + 8 },
-            sheetStyle,
-          ]}
-          onLayout={(e) => {
-            const h = e.nativeEvent.layout.height;
-            if (h > 0) sheetHeight.value = h;
-          }}
-        >
-          <GestureDetector gesture={panGesture}>
-            <Animated.View
-              style={styles.handleHit}
-              accessibilityRole="adjustable"
-              accessibilityLabel="Drag down to dismiss"
-              accessibilityHint="Swipe down to close"
-            >
-              <View style={styles.handle} />
-            </Animated.View>
-          </GestureDetector>
           <View style={styles.sheetHead}>
             <View style={styles.sheetTitleRow}>
               <Ionicons name="cloud-upload" size={22} color={colors.brand} />
@@ -482,9 +335,7 @@ export function VideoUploadComposer({ visible, onClose, onFinished }: Props) {
               Tip: files over ~4 MB default to Resumable (direct upload session).
             </Text>
           ) : null}
-        </Animated.View>
-      </GestureHandlerRootView>
-    </Modal>
+    </CinemaSheet>
   );
 }
 
@@ -547,39 +398,6 @@ function Step({
 }
 
 const styles = StyleSheet.create({
-  modalRoot: {
-    flex: 1,
-    justifyContent: "flex-end",
-    overflow: "hidden",
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.32)",
-  },
-  sheet: {
-    backgroundColor: colors.bgElevated,
-    borderTopLeftRadius: radii.xl,
-    borderTopRightRadius: radii.xl,
-    paddingHorizontal: spacing.lg,
-    paddingTop: 10,
-    gap: 12,
-    borderTopWidth: 1,
-    borderColor: colors.line,
-  },
-  handleHit: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 10,
-    marginHorizontal: -spacing.lg,
-    paddingHorizontal: spacing.lg,
-  },
-  handle: {
-    alignSelf: "center",
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.line,
-  },
   sheetHead: {
     flexDirection: "row",
     alignItems: "center",

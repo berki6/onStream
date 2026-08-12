@@ -16,10 +16,16 @@ erDiagram
     User ||--o{ LiveStream : owns
     User ||--o{ Playlist : creates
     User ||--o{ VideoView : views
+    User ||--o{ VideoWatchProgress : resumes
+    User ||--o{ ShareLink : creates
+    User ||--o{ VideoFavorite : saves
     User ||--o{ ApiKey : has
     User ||--o{ WebhookEndpoint : owns
 
     Video ||--o{ VideoView : tracked_by
+    Video ||--o{ VideoWatchProgress : progress
+    Video ||--o{ ShareLink : shared_as
+    Video ||--o{ VideoFavorite : favorited_in
     Video ||--o{ PlaylistVideo : listed_in
     Video ||--o{ VideoEmbedding : embedded_as
     Video ||--o| VideoJob : progress
@@ -38,13 +44,16 @@ erDiagram
 | Table | Model | Responsibility |
 |-------|--------|----------------|
 | `users` | `User` | Credentials, ownership root |
-| `videos` | `Video` | VOD metadata; public id = `upload_id`; AI + `quality_score` columns |
+| `videos` | `Video` | VOD metadata; public id = `upload_id`; AI + `quality_score`; Postgres `search_vector` FTS |
+| `video_watch_progress` | `VideoWatchProgress` | Per-user resume position / completed |
+| `share_links` | `ShareLink` | Expiring share credentials (hashed token) |
+| `video_favorites` | `VideoFavorite` | Saved / liked videos |
 | `video_jobs` | `VideoJob` | User-visible transcode progress / stages |
 | `queued_jobs` | `QueuedJob` | Redis outage fallback queue rows |
 | `upload_sessions` | `UploadSession` | Direct upload lifecycle |
 | `live_streams` | `LiveStream` | Hashed stream keys, status, HLS paths |
 | `playlists` / `playlist_videos` | `Playlist*` | Optional ordered collections |
-| `video_views` | `VideoView` | Analytics |
+| `video_views` | `VideoView` | Analytics stub |
 | `video_embeddings` | `VideoEmbedding` | Semantic search vectors |
 | `webhook_endpoints` / `webhook_deliveries` | `Webhook*` | Outbound HMAC events |
 | `api_keys` | `ApiKey` | Machine auth (`X-API-Key`) |

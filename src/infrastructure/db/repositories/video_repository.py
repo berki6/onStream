@@ -77,20 +77,25 @@ def search_keyword(
     query: str,
     limit: int = 20,
 ):
-    """ILIKE keyword search over title/description for the user's videos."""
-    like = f"%{query}%"
-    return (
-        db.query(models.Video)
-        .filter(models.Video.user_id == user_id)
-        .filter(models.Video.status != VideoStatus.DELETED)
-        .filter(
-            (models.Video.title.ilike(like))
-            | (models.Video.description.ilike(like))
-            | (models.Video.suggested_title.ilike(like))
-            | (models.Video.suggested_tags.ilike(like))
-        )
-        .limit(limit)
-        .all()
+    """Keyword search: Postgres FTS when available, else ILIKE."""
+    from src.infrastructure.db.repositories import engagement_repository
+
+    ranked = engagement_repository.search_keyword_ranked(
+        db, user_id, query, limit=limit
+    )
+    return [v for v, _score in ranked]
+
+
+def search_keyword_with_scores(
+    db: Session,
+    user_id: int,
+    query: str,
+    limit: int = 20,
+):
+    from src.infrastructure.db.repositories import engagement_repository
+
+    return engagement_repository.search_keyword_ranked(
+        db, user_id, query, limit=limit
     )
 
 

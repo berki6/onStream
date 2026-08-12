@@ -31,16 +31,19 @@ def search(
     mode = (mode or "keyword").lower()
 
     if mode == "keyword":
-        videos = video_repository.search_keyword(db, user_id, q, limit=limit)
+        ranked = video_repository.search_keyword_with_scores(
+            db, user_id, q, limit=limit
+        )
         results = [
             {
                 "upload_id": v.upload_id,
                 "title": v.title,
                 "description": v.description,
-                "score": 1.0,
+                "thumbnail_path": v.thumbnail_path,
+                "score": float(score),
                 "status": v.status.value if hasattr(v.status, "value") else str(v.status),
             }
-            for v in videos
+            for v, score in ranked
         ]
         return {"mode": "keyword", "q": q, "results": results}
 
