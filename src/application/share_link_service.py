@@ -99,12 +99,14 @@ def create(
 
     base = settings.PUBLIC_API_BASE_URL.rstrip("/")
     watch_url = f"{base}/demo/watch/?s={public_id}&t={token}"
+    app_url = f"onstream://watch?s={public_id}&t={token}"
     data = _serialize(link, upload_id)
     data.update(
         {
             "token": token,
             "watch_url": watch_url,
             "share_url": watch_url,
+            "app_url": app_url,
         }
     )
     return data

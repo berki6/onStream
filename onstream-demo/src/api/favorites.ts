@@ -18,3 +18,10 @@ export async function unfavoriteVideo(videoId: string) {
     { method: "DELETE" }
   );
 }
+
+export async function clearSavedVideos() {
+  return apiRequest<ApiEnvelope<{ cleared: boolean; deleted: number }>>(
+    `/v1/videos/saved`,
+    { method: "DELETE" }
+  );
+}

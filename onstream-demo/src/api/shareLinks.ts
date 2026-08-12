@@ -13,6 +13,7 @@ export type ShareLink = {
   token?: string;
   watch_url?: string;
   share_url?: string;
+  app_url?: string;
 };
 
 export type ShareExchange = {

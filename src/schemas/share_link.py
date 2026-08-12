@@ -37,6 +37,7 @@ class ShareLinkCreateResponse(ShareLinkResponse):
     token: str
     watch_url: str
     share_url: str
+    app_url: str = ""
 
 
 class ShareExchangeResponse(BaseModel):

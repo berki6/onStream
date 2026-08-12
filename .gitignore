@@ -14,6 +14,9 @@ auto.key
 # Environment Variables
 .env
 
+# Local working notes (not for the repo)
+TODO.md
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

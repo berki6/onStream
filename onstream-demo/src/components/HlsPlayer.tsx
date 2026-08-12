@@ -1,5 +1,11 @@
 import { useVideoPlayer, VideoView } from "expo-video";
-import React, { useEffect, useRef, useState } from "react";
+import React, {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { colors, radii } from "../theme/tokens";
@@ -11,12 +17,14 @@ type Props = {
   onProgress?: (positionSeconds: number, durationSeconds: number) => void;
 };
 
-export function HlsPlayer({
-  uri,
-  title,
-  initialPositionSeconds = 0,
-  onProgress,
-}: Props) {
+export type HlsPlayerHandle = {
+  seekTo: (seconds: number) => void;
+};
+
+export const HlsPlayer = forwardRef<HlsPlayerHandle, Props>(function HlsPlayer(
+  { uri, title, initialPositionSeconds = 0, onProgress },
+  ref
+) {
   const [playing, setPlaying] = useState(false);
   const seekDone = useRef(false);
   const lastSent = useRef(0);
@@ -30,6 +38,25 @@ export function HlsPlayer({
   const player = useVideoPlayer(null, (p) => {
     p.loop = false;
   });
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      seekTo(seconds: number) {
+        const t = Math.max(0, seconds);
+        resumeTarget.current = t;
+        seekDone.current = false;
+        try {
+          player.currentTime = t;
+        } catch {
+          /* retry via progress loop */
+        }
+        player.play();
+        setPlaying(true);
+      },
+    }),
+    [player]
+  );
 
   // Capture resume target once per uri — do not re-seek when progress query updates.
   if (uri !== loadedUri.current) {
@@ -167,7 +194,7 @@ export function HlsPlayer({
       </View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   wrap: {

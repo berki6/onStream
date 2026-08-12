@@ -106,3 +106,32 @@ def list_history(db: Session, user_id: int, limit: int = 50) -> List[Dict[str, A
     limit = max(1, min(int(limit or 50), 100))
     rows = engagement_repository.list_history(db, user_id, limit=limit)
     return [_continue_item(p, v) for p, v in rows]
+
+
+def delete_progress(db: Session, user_id: int, upload_id: str) -> Dict[str, Any]:
+    validate_public_video_id(upload_id)
+    video = video_repository.get_by_upload_id(db, upload_id)
+    if not video or video.user_id != user_id:
+        raise AppError("Video not found", code=ErrorCode.VIDEO_NOT_FOUND)
+    engagement_repository.delete_progress(db, user_id, video.id)
+    return {"upload_id": upload_id, "cleared": True}
+
+
+def dismiss_continue(db: Session, user_id: int, upload_id: str) -> Dict[str, Any]:
+    """Remove from Continue shelf only — History keeps the row."""
+    validate_public_video_id(upload_id)
+    video = video_repository.get_by_upload_id(db, upload_id)
+    if not video or video.user_id != user_id:
+        raise AppError("Video not found", code=ErrorCode.VIDEO_NOT_FOUND)
+    engagement_repository.dismiss_from_continue(db, user_id, video.id)
+    return {"upload_id": upload_id, "dismissed": True}
+
+
+def clear_history(db: Session, user_id: int) -> Dict[str, Any]:
+    deleted = engagement_repository.clear_progress(db, user_id)
+    return {"cleared": True, "deleted": deleted}
+
+
+def clear_continue(db: Session, user_id: int) -> Dict[str, Any]:
+    dismissed = engagement_repository.clear_continue(db, user_id)
+    return {"cleared": True, "deleted": dismissed}

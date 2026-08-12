@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useRouter, type Href } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -80,6 +80,12 @@ export default function VideosScreen() {
     return () => clearInterval(id);
   }, [items, refetch]);
 
+  const savedIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const v of savedQuery.data ?? []) set.add(v.upload_id);
+    return set;
+  }, [savedQuery.data]);
+
   const listError =
     uploadError ||
     (isError
@@ -102,6 +108,17 @@ export default function VideosScreen() {
             OnStream
           </Text>
         </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Watch history"
+          onPress={() => router.push("/library/history" as Href)}
+          style={({ pressed }) => [
+            styles.iconBtn,
+            pressed && { opacity: 0.88 },
+          ]}
+        >
+          <Ionicons name="time-outline" size={22} color={colors.text} />
+        </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Search"
@@ -137,7 +154,10 @@ export default function VideosScreen() {
         <ElasticRefreshFlatList
           data={items}
           keyExtractor={(item) => item.upload_id}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[
+            styles.list,
+            items.length === 0 && styles.listEmpty,
+          ]}
           onRefresh={async () => {
             await Promise.all([
               refetch(),
@@ -152,33 +172,55 @@ export default function VideosScreen() {
             />
           }
           ListEmptyComponent={
-            <Pressable
-              onPress={() => {
-                setUploadError(null);
-                setComposerOpen(true);
-              }}
-              style={({ pressed }) => [
-                styles.empty,
-                pressed && { opacity: 0.9 },
-              ]}
-            >
+            <View style={styles.empty}>
               <View style={styles.emptyIcon}>
                 <Ionicons
-                  name="cloud-upload-outline"
+                  name="film-outline"
                   size={32}
                   color={colors.brand}
                 />
               </View>
-              <Text style={styles.emptyTitle}>No videos yet</Text>
+              <Text style={styles.emptyKicker}>First run</Text>
+              <Text style={styles.emptyTitle}>Your library is empty</Text>
               <Text style={styles.emptyBody}>
-                Add a clip to exercise ABR, tokens, captions, and HLS — Quick
-                multipart or Resumable direct upload.
+                Upload a short clip to exercise ABR encode, playback tokens,
+                captions, and continue watching.
               </Text>
-              <View style={styles.emptyCta}>
-                <Ionicons name="add-circle" size={18} color={colors.bg} />
-                <Text style={styles.emptyCtaText}>Add video</Text>
+              <View style={styles.emptySteps}>
+                <Text style={styles.emptyStep}>1. Add a video (Quick or Resumable)</Text>
+                <Text style={styles.emptyStep}>2. Wait until status is READY</Text>
+                <Text style={styles.emptyStep}>3. Play — progress shows up under Continue</Text>
               </View>
-            </Pressable>
+              <Pressable
+                onPress={() => {
+                  setUploadError(null);
+                  setComposerOpen(true);
+                }}
+                style={({ pressed }) => [
+                  styles.emptyCta,
+                  pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] },
+                ]}
+              >
+                <Ionicons name="add-circle" size={18} color={colors.bg} />
+                <Text style={styles.emptyCtaText}>Add your first video</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => router.push("/(tabs)/settings" as Href)}
+                style={({ pressed }) => [
+                  styles.emptySecondary,
+                  pressed && { opacity: 0.8 },
+                ]}
+              >
+                <Text style={styles.emptySecondaryText}>
+                  Or open Lab for browser upload tools
+                </Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={16}
+                  color={colors.brand}
+                />
+              </Pressable>
+            </View>
           }
           renderItem={({ item }) => {
             const hint = videoPipelineHint(item);
@@ -221,6 +263,9 @@ export default function VideosScreen() {
                   <Text style={styles.cardTitle} numberOfLines={1}>
                     {item.title}
                   </Text>
+                  {savedIds.has(item.upload_id) ? (
+                    <Ionicons name="heart" size={16} color={colors.live} />
+                  ) : null}
                   <StatusPill status={item.status} />
                 </View>
                 <Text style={[styles.hint, { color: HINT_COLOR[hint.tone] }]}>
@@ -321,6 +366,9 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
     gap: 12,
   },
+  listEmpty: {
+    flexGrow: 1,
+  },
   card: {
     borderRadius: radii.lg,
     borderWidth: 1,
@@ -360,7 +408,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   empty: {
-    paddingVertical: 40,
+    paddingVertical: 28,
     paddingHorizontal: 4,
     gap: 10,
     alignItems: "flex-start",
@@ -376,16 +424,41 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 4,
   },
+  emptyKicker: {
+    color: colors.brand,
+    fontFamily: "DMSans_700Bold",
+    fontSize: 12,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+  },
   emptyTitle: {
     color: colors.text,
     fontFamily: "Syne_700Bold",
-    fontSize: 22,
+    fontSize: 26,
+    letterSpacing: -0.4,
   },
   emptyBody: {
     color: colors.textMuted,
     fontFamily: "DMSans_400Regular",
     fontSize: 15,
     lineHeight: 22,
+  },
+  emptySteps: {
+    marginTop: 4,
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.bgSoft,
+    alignSelf: "stretch",
+  },
+  emptyStep: {
+    color: colors.textMuted,
+    fontFamily: "DMSans_500Medium",
+    fontSize: 13,
+    lineHeight: 18,
   },
   emptyCta: {
     marginTop: 8,
@@ -401,6 +474,17 @@ const styles = StyleSheet.create({
     color: colors.bg,
     fontFamily: "DMSans_700Bold",
     fontSize: 15,
+  },
+  emptySecondary: {
+    marginTop: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  emptySecondaryText: {
+    color: colors.brand,
+    fontFamily: "DMSans_500Medium",
+    fontSize: 13,
   },
   error: {
     color: colors.danger,

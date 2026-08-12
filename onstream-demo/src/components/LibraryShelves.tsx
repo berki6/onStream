@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useRouter, type Href } from "expo-router";
 import React from "react";
 import {
   Pressable,
@@ -26,6 +26,32 @@ type Props = {
   savedItems: Video[];
 };
 
+function SectionHead({
+  title,
+  href,
+}: {
+  title: string;
+  href: Href;
+}) {
+  const router = useRouter();
+  return (
+    <View style={styles.headRow}>
+      <Text style={styles.heading}>{title}</Text>
+      <Pressable
+        hitSlop={8}
+        onPress={() => router.push(href)}
+        style={({ pressed }) => [styles.seeAll, pressed && { opacity: 0.75 }]}
+      >
+        <Text style={styles.seeAllText}>See all</Text>
+        <Ionicons name="chevron-forward" size={14} color={colors.brand} />
+      </Pressable>
+    </View>
+  );
+}
+
+/**
+ * Horizontal shelves — only render when the shelf has items (no empty states).
+ */
 export function LibraryShelves({ continueItems, savedItems }: Props) {
   const router = useRouter();
   if (continueItems.length === 0 && savedItems.length === 0) return null;
@@ -34,7 +60,7 @@ export function LibraryShelves({ continueItems, savedItems }: Props) {
     <View style={styles.wrap}>
       {continueItems.length > 0 ? (
         <View style={styles.section}>
-          <Text style={styles.heading}>Continue watching</Text>
+          <SectionHead title="Continue watching" href={"/library/continue" as Href} />
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -43,7 +69,9 @@ export function LibraryShelves({ continueItems, savedItems }: Props) {
             {continueItems.map((item) => (
               <Pressable
                 key={item.upload_id}
-                onPress={() => router.push(`/video/${item.upload_id}`)}
+                onPress={() =>
+                  router.push(`/video/${item.upload_id}?play=1` as Href)
+                }
                 style={({ pressed }) => [
                   styles.tile,
                   pressed && { opacity: 0.88 },
@@ -79,7 +107,7 @@ export function LibraryShelves({ continueItems, savedItems }: Props) {
 
       {savedItems.length > 0 ? (
         <View style={styles.section}>
-          <Text style={styles.heading}>Saved</Text>
+          <SectionHead title="Saved" href={"/library/saved" as Href} />
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -116,12 +144,27 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   section: { gap: spacing.sm },
+  headRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 2,
+  },
   heading: {
     color: colors.text,
     fontFamily: "Syne_700Bold",
     fontSize: 18,
     letterSpacing: -0.3,
-    paddingHorizontal: 2,
+  },
+  seeAll: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  seeAllText: {
+    color: colors.brand,
+    fontFamily: "DMSans_700Bold",
+    fontSize: 13,
   },
   row: {
     gap: 12,

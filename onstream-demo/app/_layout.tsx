@@ -117,6 +117,14 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
           }}
         />
         <Stack.Screen
+          name="library/[kind]"
+          options={{
+            headerShown: true,
+            title: "Library",
+            animation: "slide_from_right",
+          }}
+        />
+        <Stack.Screen
           name="search"
           options={{
             headerShown: false,

@@ -4,8 +4,10 @@ export const videoKeys = {
   detail: (id: string) => [...videoKeys.all, "detail", id] as const,
   continue: () => [...videoKeys.all, "continue"] as const,
   saved: () => [...videoKeys.all, "saved"] as const,
+  history: () => [...videoKeys.all, "history"] as const,
   progress: (id: string) => [...videoKeys.all, "progress", id] as const,
   shares: (id: string) => [...videoKeys.all, "shares", id] as const,
+  chapters: (id: string) => [...videoKeys.all, "chapters", id] as const,
 };
 
 export const searchKeys = {

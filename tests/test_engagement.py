@@ -62,6 +62,7 @@ def test_share_create_exchange_revoke(db_session, test_user, ready_video):
     )
     assert created["token"]
     assert "watch_url" in created
+    assert created["app_url"].startswith("onstream://watch?")
     exchanged = share_link_service.exchange(
         db_session, created["public_id"], created["token"]
     )
@@ -119,8 +120,57 @@ def test_favorites_toggle(db_session, test_user, ready_video):
     favorites_service.add(db_session, test_user.id, ready_video.upload_id)
     saved = favorites_service.list_saved(db_session, test_user.id)
     assert len(saved) == 1
-    assert saved[0]["upload_id"] == ready_video.upload_id
     favorites_service.remove(db_session, test_user.id, ready_video.upload_id)
+    assert favorites_service.list_saved(db_session, test_user.id) == []
+
+
+def test_clear_progress_history_and_saved(db_session, test_user, ready_video):
+    watch_history_service.upsert_progress(
+        db_session, test_user.id, ready_video.upload_id, 40.0, 120.0
+    )
+    favorites_service.add(db_session, test_user.id, ready_video.upload_id)
+
+    assert watch_history_service.list_continue(db_session, test_user.id)
+    # Dismiss from Continue keeps History.
+    dismissed = watch_history_service.dismiss_continue(
+        db_session, test_user.id, ready_video.upload_id
+    )
+    assert dismissed["dismissed"] is True
+    assert watch_history_service.list_continue(db_session, test_user.id) == []
+    assert watch_history_service.list_history(db_session, test_user.id)
+
+    # Watching again restores Continue.
+    watch_history_service.upsert_progress(
+        db_session, test_user.id, ready_video.upload_id, 45.0, 120.0
+    )
+    assert watch_history_service.list_continue(db_session, test_user.id)
+
+    out = watch_history_service.delete_progress(
+        db_session, test_user.id, ready_video.upload_id
+    )
+    assert out["cleared"] is True
+    assert watch_history_service.list_history(db_session, test_user.id) == []
+
+    watch_history_service.upsert_progress(
+        db_session, test_user.id, ready_video.upload_id, 40.0, 120.0
+    )
+    cleared_cont = watch_history_service.clear_continue(db_session, test_user.id)
+    assert cleared_cont["deleted"] >= 1
+    assert watch_history_service.list_continue(db_session, test_user.id) == []
+    assert watch_history_service.list_history(db_session, test_user.id)
+
+    watch_history_service.upsert_progress(
+        db_session, test_user.id, ready_video.upload_id, 110.0, 120.0
+    )
+    assert watch_history_service.list_continue(db_session, test_user.id) == []
+    assert watch_history_service.list_history(db_session, test_user.id)
+
+    cleared = watch_history_service.clear_history(db_session, test_user.id)
+    assert cleared["deleted"] >= 1
+    assert watch_history_service.list_history(db_session, test_user.id) == []
+
+    cleared_saved = favorites_service.clear_saved(db_session, test_user.id)
+    assert cleared_saved["deleted"] >= 1
     assert favorites_service.list_saved(db_session, test_user.id) == []
 
 

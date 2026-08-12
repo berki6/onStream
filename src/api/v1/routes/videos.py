@@ -112,6 +112,19 @@ def continue_watching(
     return api_ok(request, data, message="Continue watching")
 
 
+@router.delete("/continue", response_model=APIResponse)
+def clear_continue_watching(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    try:
+        data = watch_history_service.clear_continue(db, current_user.id)
+    except AppError as e:
+        raise_app_error(e)
+    return api_ok(request, data, message="Continue watching cleared")
+
+
 @router.get("/history", response_model=APIResponse)
 def watch_history(
     request: Request,
@@ -126,6 +139,19 @@ def watch_history(
     return api_ok(request, data, message="Watch history")
 
 
+@router.delete("/history", response_model=APIResponse)
+def clear_watch_history(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    try:
+        data = watch_history_service.clear_history(db, current_user.id)
+    except AppError as e:
+        raise_app_error(e)
+    return api_ok(request, data, message="Watch history cleared")
+
+
 @router.get("/saved", response_model=APIResponse)
 def list_saved_videos(
     request: Request,
@@ -138,6 +164,19 @@ def list_saved_videos(
     except AppError as e:
         raise_app_error(e)
     return api_ok(request, data, message="Saved videos")
+
+
+@router.delete("/saved", response_model=APIResponse)
+def clear_saved_videos(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    try:
+        data = favorites_service.clear_saved(db, current_user.id)
+    except AppError as e:
+        raise_app_error(e)
+    return api_ok(request, data, message="Saved list cleared")
 
 
 @router.get("/{video_id}", response_model=APIResponse)
@@ -255,6 +294,35 @@ def get_watch_progress(
     except AppError as e:
         raise_app_error(e)
     return api_ok(request, data, message="Progress")
+
+
+@router.delete("/{video_id}/progress", response_model=APIResponse)
+def delete_watch_progress(
+    request: Request,
+    video_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    try:
+        data = watch_history_service.delete_progress(db, current_user.id, video_id)
+    except AppError as e:
+        raise_app_error(e)
+    return api_ok(request, data, message="Progress cleared")
+
+
+@router.delete("/{video_id}/continue", response_model=APIResponse)
+def dismiss_continue_item(
+    request: Request,
+    video_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Hide one video from Continue watching; History is unchanged."""
+    try:
+        data = watch_history_service.dismiss_continue(db, current_user.id, video_id)
+    except AppError as e:
+        raise_app_error(e)
+    return api_ok(request, data, message="Removed from continue watching")
 
 
 @router.put("/{video_id}/favorite", response_model=APIResponse)

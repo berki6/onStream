@@ -129,10 +129,15 @@ Video identifiers in paths are public `upload_id` values. Multipart create is th
 | GET | `/{video_id}/job` (jobs router) |
 | GET | `/{video_id}/chapters` |
 | GET | `/continue` continue-watching shelf |
+| DELETE | `/continue` dismiss all from Continue (history kept) |
+| DELETE | `/{video_id}/continue` dismiss one from Continue (history kept) |
 | GET | `/history` watch history |
+| DELETE | `/history` clear all watch progress |
 | GET | `/saved` favorited videos |
+| DELETE | `/saved` clear all favorites |
 | POST | `/{video_id}/progress` upsert resume position |
 | GET | `/{video_id}/progress` |
+| DELETE | `/{video_id}/progress` clear resume for one video (removes from history too) |
 | PUT | `/{video_id}/favorite` |
 | DELETE | `/{video_id}/favorite` |
 
@@ -147,7 +152,7 @@ DB-backed expiring watch links. Create returns plaintext token once; exchange (p
 | DELETE | `/{public_id}` revoke (auth) |
 | POST | `/{public_id}/exchange` body `{ token }` (public) |
 
-Browser landing: `/demo/watch/?s={public_id}&t={token}`.
+Browser landing: `/demo/watch/?s={public_id}&t={token}`. Create also returns `app_url` (`onstream://watch?s=…&t=…`) for the Expo demo.
 
 ## Uploads — `/v1/uploads`
 

@@ -379,11 +379,14 @@ Stack should already be up (API + worker + MediaMTX). In Expo **Account**, set A
 ### 1b) Continue watching, share links, search, favorites
 
 1. On a READY video: **Issue playback / Play** and watch past ~10s (progress saves in the background).
-2. Back to **Library** → **Continue watching** shelf appears → open it → player resumes near last position.
-3. On video detail → heart (Saved) → Library **Saved** shelf lists it.
-4. **Share link** → pick expiry → Create & copy → open `watch_url` in a browser (`/demo/watch/?s=…&t=…`) without login → video plays.
-5. Revoke the link in the share sheet → reload watch URL → expired/revoked error.
-6. Library → search icon → type a title keyword → ranked results → open video.
+2. Back to **Library** → **Continue watching** shelf appears only when there is progress (no empty shelf) → open a tile or **See all** → player resumes near last position. On See all: **✕** removes one item; **Clear all** clears in-progress only.
+3. On video detail → heart (Saved) → Library **Saved** shelf lists it → **See all** for the full list; heart badge also shows on library rows. Unheart via ✕ or Clear all on Saved; **Clear** next to resume hint clears progress for that video.
+4. Library → clock icon → **Watch history** (Clear all wipes history + continue). Empty state only on that screen, not as a Library shelf.
+5. **Share link** → pick expiry + max views → Create & copy → prefer `app_url` (`onstream://watch?s=…&t=…`) in Expo, or browser `watch_url` (`/demo/watch/?s=…&t=…`) → video plays without login.
+6. Revoke the link in the share sheet → reload watch URL → expired/revoked error.
+7. Library → search icon → type a title keyword → ranked results → open video.
+8. Video detail → pencil → edit title/description → Save; or Delete (confirm) → back to Library.
+9. After captions/chapters jobs: detail **Chapters** list → tap a chapter → player seeks there.
 
 ---
 

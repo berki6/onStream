@@ -46,6 +46,7 @@ def upsert_progress(
             position_seconds=position_seconds,
             duration_seconds=duration_seconds,
             completed=completed,
+            hidden_from_continue=False,
             last_watched_at=now,
         )
         db.add(row)
@@ -62,10 +63,56 @@ def upsert_progress(
     if duration_seconds is not None:
         row.duration_seconds = duration_seconds
     row.completed = completed
+    # Watching again restores the item on Continue.
+    row.hidden_from_continue = False
     row.last_watched_at = now
     db.commit()
     db.refresh(row)
     return row
+
+
+def dismiss_from_continue(db: Session, user_id: int, video_id: int) -> bool:
+    row = get_progress(db, user_id, video_id)
+    if not row:
+        return False
+    row.hidden_from_continue = True
+    db.commit()
+    return True
+
+
+def delete_progress(db: Session, user_id: int, video_id: int) -> bool:
+    row = get_progress(db, user_id, video_id)
+    if not row:
+        return False
+    db.delete(row)
+    db.commit()
+    return True
+
+
+def clear_progress(db: Session, user_id: int) -> int:
+    deleted = (
+        db.query(models.VideoWatchProgress)
+        .filter(models.VideoWatchProgress.user_id == user_id)
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return int(deleted or 0)
+
+
+def clear_continue(db: Session, user_id: int) -> int:
+    """Hide in-progress rows from Continue; keep them in History."""
+    updated = (
+        db.query(models.VideoWatchProgress)
+        .filter(models.VideoWatchProgress.user_id == user_id)
+        .filter(models.VideoWatchProgress.completed.is_(False))
+        .filter(models.VideoWatchProgress.hidden_from_continue.is_(False))
+        .update(
+            {models.VideoWatchProgress.hidden_from_continue: True},
+            synchronize_session=False,
+        )
+    )
+    db.commit()
+    return int(updated or 0)
 
 
 def list_continue(
@@ -76,6 +123,7 @@ def list_continue(
         .join(models.Video, models.Video.id == models.VideoWatchProgress.video_id)
         .filter(models.VideoWatchProgress.user_id == user_id)
         .filter(models.VideoWatchProgress.completed.is_(False))
+        .filter(models.VideoWatchProgress.hidden_from_continue.is_(False))
         .filter(models.VideoWatchProgress.position_seconds > 5)
         .filter(models.Video.status == VideoStatus.READY)
         .filter(models.Video.user_id == user_id)
@@ -220,6 +268,16 @@ def remove_favorite(db: Session, user_id: int, video_id: int) -> bool:
     db.delete(row)
     db.commit()
     return True
+
+
+def clear_favorites(db: Session, user_id: int) -> int:
+    deleted = (
+        db.query(models.VideoFavorite)
+        .filter(models.VideoFavorite.user_id == user_id)
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return int(deleted or 0)
 
 
 def list_favorites(

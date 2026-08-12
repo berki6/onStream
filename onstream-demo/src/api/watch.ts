@@ -56,3 +56,31 @@ export async function upsertWatchProgress(
     }
   );
 }
+
+export async function clearWatchProgress(videoId: string) {
+  return apiRequest<ApiEnvelope<{ upload_id: string; cleared: boolean }>>(
+    `/v1/videos/${videoId}/progress`,
+    { method: "DELETE" }
+  );
+}
+
+export async function dismissContinueItem(videoId: string) {
+  return apiRequest<ApiEnvelope<{ upload_id: string; dismissed: boolean }>>(
+    `/v1/videos/${videoId}/continue`,
+    { method: "DELETE" }
+  );
+}
+
+export async function clearContinueWatching() {
+  return apiRequest<ApiEnvelope<{ cleared: boolean; deleted: number }>>(
+    `/v1/videos/continue`,
+    { method: "DELETE" }
+  );
+}
+
+export async function clearWatchHistory() {
+  return apiRequest<ApiEnvelope<{ cleared: boolean; deleted: number }>>(
+    `/v1/videos/history`,
+    { method: "DELETE" }
+  );
+}

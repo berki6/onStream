@@ -48,3 +48,8 @@ def list_saved(db: Session, user_id: int, limit: int = 50) -> List[Dict[str, Any
         item["favorited_at"] = fav.created_at
         out.append(item)
     return out
+
+
+def clear_saved(db: Session, user_id: int) -> Dict[str, Any]:
+    deleted = engagement_repository.clear_favorites(db, user_id)
+    return {"cleared": True, "deleted": deleted}

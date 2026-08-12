@@ -27,6 +27,8 @@ class VideoWatchProgress(Base):
     position_seconds = Column(Float, nullable=False, default=0.0)
     duration_seconds = Column(Float, nullable=True)
     completed = Column(Boolean, nullable=False, default=False)
+    # Dismiss from Continue shelf without wiping watch history.
+    hidden_from_continue = Column(Boolean, nullable=False, default=False)
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

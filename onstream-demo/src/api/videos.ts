@@ -15,6 +15,12 @@ export type Video = {
   created_at?: string | null;
 };
 
+export type VideoChapter = {
+  start: number;
+  end?: number;
+  title: string;
+};
+
 export type PlaybackToken = {
   token: string;
   expires_in: number;
@@ -29,6 +35,28 @@ export async function listVideos(skip = 0, limit = 50) {
 
 export async function getVideo(videoId: string) {
   return apiRequest<ApiEnvelope<Video>>(`/v1/videos/${videoId}`);
+}
+
+export async function updateVideo(
+  videoId: string,
+  body: { title?: string; description?: string | null; is_public?: boolean }
+) {
+  return apiRequest<ApiEnvelope<Video>>(`/v1/videos/${videoId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteVideo(videoId: string) {
+  await apiRequest<null>(`/v1/videos/${videoId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getVideoChapters(videoId: string) {
+  return apiRequest<ApiEnvelope<{ chapters: VideoChapter[] }>>(
+    `/v1/videos/${videoId}/chapters`
+  );
 }
 
 export async function createPlaybackToken(videoId: string, expiresIn = 3600) {
