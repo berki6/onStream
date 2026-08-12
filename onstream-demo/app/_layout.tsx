@@ -109,6 +109,14 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
           }}
         />
         <Stack.Screen
+          name="lab/webhooks"
+          options={{
+            headerShown: true,
+            title: "Webhooks",
+            animation: "slide_from_right",
+          }}
+        />
+        <Stack.Screen
           name="search"
           options={{
             headerShown: false,
@@ -144,11 +152,8 @@ export default function RootLayout() {
   useEffect(() => {
     SystemUI.setBackgroundColorAsync(colors.bg).catch(() => undefined);
     if (Platform.OS === "android") {
-      // Light icons on dark charcoal bar.
+      // Edge-to-edge: only button style is supported (not background color).
       void NavigationBar.setButtonStyleAsync("light").catch(() => undefined);
-      void NavigationBar.setBackgroundColorAsync(colors.bg).catch(
-        () => undefined
-      );
     }
   }, []);
 

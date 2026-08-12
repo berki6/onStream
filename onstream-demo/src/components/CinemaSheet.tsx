@@ -68,9 +68,19 @@ export function CinemaSheet({
   const dismissEnabledRef = useRef(dismissEnabled);
   dismissEnabledRef.current = dismissEnabled;
   const exitPendingRef = useRef(false);
+  /** Drag already animated out — skip the normal close withTiming (avoids flash). */
+  const skipCloseAnimRef = useRef(false);
 
   function finishExit() {
     if (!exitPendingRef.current) return;
+    setPresented(false);
+  }
+
+  /** After drag fling finishes off-screen: unmount without a second close anim. */
+  function completeDragDismiss() {
+    skipCloseAnimRef.current = true;
+    exitPendingRef.current = true;
+    onCloseRef.current();
     setPresented(false);
   }
 
@@ -78,10 +88,13 @@ export function CinemaSheet({
     if (presented || visible) return;
     if (!exitPendingRef.current) return;
     exitPendingRef.current = false;
-    progress.value = 0;
-    dragY.value = 0;
+    skipCloseAnimRef.current = false;
+    // Unpublish before resetting shared values — otherwise drag-dismiss
+    // (sheet at translateY=h) snaps back to 0 for one frame and flashes.
     bus.publish(null);
     host.detach(sheetId);
+    progress.value = 0;
+    dragY.value = 0;
     onExitedRef.current?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presented, visible]);
@@ -89,13 +102,21 @@ export function CinemaSheet({
   useEffect(() => {
     if (visible) {
       exitPendingRef.current = false;
+      skipCloseAnimRef.current = false;
       progress.value = 0;
       dragY.value = 0;
       setPresented(true);
       return;
     }
     if (!presented) return;
+    if (skipCloseAnimRef.current) {
+      // Already off-screen from drag; presented may already be false.
+      exitPendingRef.current = true;
+      setPresented(false);
+      return;
+    }
     exitPendingRef.current = true;
+    dragY.value = 0;
     progress.value = withTiming(
       0,
       { duration: CLOSE_MS, easing: Easing.in(Easing.cubic) },
@@ -133,10 +154,6 @@ export function CinemaSheet({
     onCloseRef.current();
   }
 
-  function dismissFromDrag() {
-    onCloseRef.current();
-  }
-
   const panGesture = useMemo(
     () =>
       Gesture.Pan()
@@ -147,14 +164,24 @@ export function CinemaSheet({
           dragY.value = Math.max(0, e.translationY);
         })
         .onEnd((e) => {
+          const h = Math.max(sheetHeight.value, fallbackHeight);
           const shouldDismiss =
             dragY.value > DISMISS_DRAG_PX || e.velocityY > DISMISS_VELOCITY;
           if (shouldDismiss) {
-            const h = Math.max(sheetHeight.value, fallbackHeight);
-            const visual = Math.min(Math.max(0, dragY.value), h);
-            dragY.value = 0;
-            progress.value = Math.max(0, 1 - visual / h);
-            scheduleOnRN(dismissFromDrag);
+            // Fling sheet + scrim off together (do NOT snap dragY→0 — that
+            // desynced the backdrop and flashed after close).
+            const dist = Math.max(24, h - dragY.value);
+            const dur = Math.min(
+              CLOSE_MS,
+              Math.max(160, (dist / Math.max(e.velocityY, 900)) * 1000)
+            );
+            dragY.value = withTiming(
+              h,
+              { duration: dur, easing: Easing.in(Easing.cubic) },
+              (finished) => {
+                if (finished) scheduleOnRN(completeDragDismiss);
+              }
+            );
           } else {
             dragY.value = withTiming(0, {
               duration: 180,
@@ -165,9 +192,10 @@ export function CinemaSheet({
     [dismissEnabled, fallbackHeight]
   );
 
+  // Scrim tracks progress and drag in one opacity so drag-dismiss fades with the sheet.
   const backdropStyle = useAnimatedStyle(() => {
     const h = Math.max(sheetHeight.value, fallbackHeight);
-    const dragFade = Math.min(dragY.value / (h * 0.55), 0.9);
+    const dragFade = Math.min(dragY.value / h, 1);
     return { opacity: progress.value * (1 - dragFade) };
   });
 

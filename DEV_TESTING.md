@@ -167,7 +167,7 @@ or `npm run start:tunnel`. Full guide (any Expo/RN Android project): [`docs/ANDR
 
 Scan the QR with **Expo Go** (same Wi‑Fi).
 
-| Client | API base to set in Lab / login |
+| Client | API base to set in Account / login |
 |--------|--------------------------------|
 | Physical phone | `http://<YOUR-LAN-IP>:8000` |
 | Android emulator | `http://10.0.2.2:8000` |
@@ -192,7 +192,7 @@ Covers: health, `/demo/`, register/login, VOD upload→READY→master.m3u8, live
 
 1. Open Expo → **Register** (email + password) or use Scalar `POST /v1/auth/register`.
 2. **Sign in** → session stored (SecureStore).
-3. Lab / Settings → **Health ping** should succeed against your API base.
+3. Account → **Check /health** should succeed against your API base.
 4. Sign out / sign back in to confirm refresh path.
 
 ---
@@ -331,7 +331,7 @@ With a webhook endpoint subscribed to `live.created,live.started,live.idle,live.
 2. Ensure the **worker** is running (delivers pending rows every few ticks).
 3. Expect deliveries in order: `live.created` → `live.started` → (`live.idle` if encoder stops cleanly) → `live.ended` on revoke.
 
-**Lab UI:** Expo **Lab** tab → Webhooks → Subscribe (e.g. `https://webhook.site/<uuid>`) → refresh **Delivery log**. Same data via `GET /v1/webhooks/deliveries`.
+**Lab UI:** Expo **Lab** → Webhooks → Subscribe (e.g. `https://webhook.site/<uuid>`) → refresh **Delivery log**. Same data via `GET /v1/webhooks/deliveries`.
 
 Hard `live.ended` is revoke-only; health soft-fail emits `live.idle`, not `live.ended`. Details: [`docs/API.md`](docs/API.md#live-outbound-webhooks).
 
@@ -358,7 +358,7 @@ Hard `live.ended` is revoke-only; health soft-fail emits `live.idle`, not `live.
 
 ### Before you start
 
-Stack should already be up (API + worker + MediaMTX). In Expo Lab, set API base to your LAN
+Stack should already be up (API + worker + MediaMTX). In Expo **Account**, set API base to your LAN
 (e.g. `http://192.168.1.6:8000`). Sign in as usual (`demo` / `DemoPass123!` if that’s your lab user).
 
 **Fast pass order:** Direct upload → play → continue/resume → share link → search → favorites → captions/`master.m3u8` → Forgot password → Live create → Go Live WHIP → play → Lab moderation (if you have a quarantine item).

@@ -43,7 +43,7 @@ npx expo install expo-video expo-secure-store expo-document-picker expo-clipboar
 ## Run (Expo Go)
 
 1. Start OnStream API on your PC (reachable on LAN).
-2. In **Lab** / login, set API base to `http://<YOUR-LAN-IP>:8000` (not `localhost` on a phone).
+2. In **Account** (or login), set API base to `http://<YOUR-LAN-IP>:8000` (not `localhost` on a phone).
 3. Start the demo:
 
 ```bash
@@ -100,7 +100,8 @@ npm start
 | Sign in / register | `/v1/auth/*`, API base override, `/health` |
 | VOD | list, multipart upload, status poll, playback token, HLS via `expo-video` |
 | Live | create (copy stream key / RTMP / WHIP / WHEP once), health, token play, revoke |
-| Lab | API URL, health ping, sign out |
+| Lab | Moderation, webhooks, browser upload/WHIP |
+| Account | API URL, health ping, sign out |
 
 ## Env
 
