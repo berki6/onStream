@@ -14,6 +14,7 @@ import { Screen } from "@/components/Screen";
 import { StatusPill } from "@/components/StatusPill";
 import { videoPipelineHint } from "@/lib/videoStatus";
 import { useVideoQuery } from "@/query/videos";
+import { scrollPhysics } from "@/theme/scroll";
 import { colors, radii, spacing } from "@/theme/tokens";
 
 const IN_FLIGHT = new Set(["PENDING", "PROCESSING", "QUEUED", "UPLOADING"]);
@@ -92,9 +93,7 @@ export default function VideoDetailScreen() {
       ) : (
         <ScrollView
           contentContainerStyle={styles.content}
-          bounces
-          alwaysBounceVertical
-          overScrollMode="always"
+          {...scrollPhysics}
         >
           {video && pipeline ? (
             <View style={styles.statusBlock}>

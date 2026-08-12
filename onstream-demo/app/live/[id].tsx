@@ -13,6 +13,7 @@ import { Screen } from "@/components/Screen";
 import { StatusPill } from "@/components/StatusPill";
 import { liveKeys } from "@/query/keys";
 import { useLiveHealthQuery, useLiveStreamQuery } from "@/query/live";
+import { scrollPhysics } from "@/theme/scroll";
 import { colors, spacing } from "@/theme/tokens";
 
 export default function LiveDetailScreen() {
@@ -81,7 +82,7 @@ export default function LiveDetailScreen() {
           />
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView contentContainerStyle={styles.content} {...scrollPhysics}>
           {stream ? (
             <View style={styles.meta}>
               <StatusPill status={stream.status} />

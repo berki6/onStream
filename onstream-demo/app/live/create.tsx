@@ -1,9 +1,10 @@
+import * as Linking from "expo-linking";
 import { Stack, useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import { ApiError } from "@/api/client";
+import { ApiError, getApiBase } from "@/api/client";
 import { createLiveStream, LiveStream } from "@/api/live";
 import { Button } from "@/components/Button";
 import { CopyRow } from "@/components/CopyRow";
@@ -12,6 +13,11 @@ import { FormScroll } from "@/components/FormScroll";
 import { Screen } from "@/components/Screen";
 import { liveKeys } from "@/query/keys";
 import { colors, spacing } from "@/theme/tokens";
+
+function whipPublisherUrl(whipUrl: string): string {
+  const base = getApiBase().replace(/\/$/, "");
+  return `${base}/demo/whip/?whip=${encodeURIComponent(whipUrl)}`;
+}
 
 export default function CreateLiveScreen() {
   const router = useRouter();
@@ -34,6 +40,8 @@ export default function CreateLiveScreen() {
       <FormScroll contentContainerStyle={styles.content}>
         <Text style={styles.lead}>
           Stream key, WHIP, and WHEP are shown once. Copy them before leaving.
+          Go Live opens the browser WHIP publisher (camera → MediaMTX) — Expo
+          Go has no native WebRTC publisher.
         </Text>
 
         {!created ? (
@@ -77,8 +85,24 @@ export default function CreateLiveScreen() {
             {created.playback_url ? (
               <CopyRow label="HLS playback" value={created.playback_url} />
             ) : null}
+
+            {created.whip_url ? (
+              <Button
+                label="Go Live (WHIP in browser)"
+                onPress={async () => {
+                  const url = whipPublisherUrl(created.whip_url!);
+                  try {
+                    await Linking.openURL(url);
+                  } catch {
+                    setError("Could not open WHIP publisher");
+                  }
+                }}
+              />
+            ) : null}
+
             <Button
               label="Open stream"
+              variant="ghost"
               onPress={() => router.replace(`/live/${created.stream_id}`)}
             />
             <Button
@@ -86,6 +110,7 @@ export default function CreateLiveScreen() {
               variant="ghost"
               onPress={() => router.back()}
             />
+            {error ? <Text style={styles.error}>{error}</Text> : null}
           </View>
         )}
       </FormScroll>

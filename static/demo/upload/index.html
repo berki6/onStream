@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OnStream · Direct upload</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --fg: #e8eef4;
+      --accent: #3d9cf0;
+      --muted: #8b9aab;
+      --danger: #e85d5d;
+      --ok: #3ecf8e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: radial-gradient(ellipse at top, #1a2836 0%, var(--bg) 55%);
+      color: var(--fg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+    h1 { font-weight: 600; margin: 0 0 0.5rem; }
+    p { color: var(--muted); margin: 0 0 1.25rem; max-width: 40rem; text-align: center; line-height: 1.45; }
+    .panel { width: min(560px, 100%); display: flex; flex-direction: column; gap: 0.75rem; }
+    label { font-size: 0.85rem; color: var(--muted); }
+    input, textarea {
+      width: 100%;
+      padding: 0.65rem 0.85rem;
+      border: 1px solid #2a3a4a;
+      border-radius: 6px;
+      background: #121a22;
+      color: var(--fg);
+    }
+    button {
+      padding: 0.65rem 1.1rem;
+      border: none;
+      border-radius: 6px;
+      background: var(--accent);
+      color: #041018;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; }
+    progress { width: 100%; height: 0.6rem; }
+    #status { min-height: 1.4rem; font-size: 0.9rem; color: var(--muted); white-space: pre-wrap; }
+    #status.ok { color: var(--ok); }
+    #status.err { color: var(--danger); }
+    code { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <h1>Direct upload</h1>
+  <p>
+    Mux-style flow: <code>POST /v1/uploads</code> → chunked
+    <code>PUT /v1/uploads/{id}</code> with <code>Content-Range</code> →
+    <code>POST …/complete</code>. Paste a Bearer token from login / Scalar.
+  </p>
+  <div class="panel">
+    <label for="api">API base</label>
+    <input id="api" type="url" />
+    <label for="token">Access token</label>
+    <textarea id="token" rows="3" placeholder="eyJ…"></textarea>
+    <label for="title">Title</label>
+    <input id="title" type="text" value="Browser direct upload" />
+    <label for="file">Video file</label>
+    <input id="file" type="file" accept="video/*" />
+    <button id="go" type="button">Upload</button>
+    <progress id="bar" max="100" value="0"></progress>
+    <div id="status">Idle</div>
+  </div>
+  <script>
+    const apiInput = document.getElementById("api");
+    const tokenInput = document.getElementById("token");
+    const titleInput = document.getElementById("title");
+    const fileInput = document.getElementById("file");
+    const bar = document.getElementById("bar");
+    const statusEl = document.getElementById("status");
+    const goBtn = document.getElementById("go");
+
+    apiInput.value = location.origin;
+
+    const CHUNK = 512 * 1024;
+
+    function setStatus(text, kind) {
+      statusEl.textContent = text;
+      statusEl.className = kind || "";
+    }
+
+    async function api(path, opts = {}) {
+      const base = apiInput.value.replace(/\/$/, "");
+      const headers = Object.assign(
+        { Accept: "application/json" },
+        opts.headers || {}
+      );
+      if (opts.auth !== false) {
+        headers.Authorization = "Bearer " + tokenInput.value.trim();
+      }
+      if (opts.json) {
+        headers["Content-Type"] = "application/json";
+      }
+      const res = await fetch(base + path, {
+        method: opts.method || "GET",
+        headers,
+        body: opts.body,
+      });
+      if (res.status === 204) return null;
+      const text = await res.text();
+      let json = null;
+      try { json = text ? JSON.parse(text) : null; } catch { json = text; }
+      if (!res.ok) {
+        const msg =
+          (json && json.error && json.error.message) ||
+          `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+      return json;
+    }
+
+    goBtn.addEventListener("click", async () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) {
+        setStatus("Pick a video file", "err");
+        return;
+      }
+      if (!tokenInput.value.trim()) {
+        setStatus("Access token required", "err");
+        return;
+      }
+      goBtn.disabled = true;
+      bar.value = 0;
+      try {
+        setStatus("Creating upload session…");
+        const created = await api("/v1/uploads", {
+          method: "POST",
+          json: true,
+          body: JSON.stringify({
+            title: titleInput.value.trim() || file.name,
+            content_type: file.type || "video/mp4",
+            is_public: false,
+          }),
+        });
+        const sessionId = created.data.session_id;
+        const uploadId = created.data.upload_id;
+        const total = file.size;
+        let offset = 0;
+        setStatus(`Uploading ${uploadId}…`);
+        while (offset < total) {
+          const end = Math.min(offset + CHUNK, total);
+          const chunk = file.slice(offset, end);
+          const range = `bytes ${offset}-${end - 1}/${total}`;
+          await api(`/v1/uploads/${sessionId}`, {
+            method: "PUT",
+            headers: { "Content-Range": range },
+            body: chunk,
+          });
+          offset = end;
+          bar.value = Math.round((offset / total) * 100);
+        }
+        setStatus("Completing…");
+        const done = await api(`/v1/uploads/${sessionId}/complete`, {
+          method: "POST",
+        });
+        setStatus(
+          `Queued · upload_id=${done.data.upload_id} · status=${done.data.status}`,
+          "ok"
+        );
+      } catch (e) {
+        setStatus(e instanceof Error ? e.message : String(e), "err");
+      } finally {
+        goBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

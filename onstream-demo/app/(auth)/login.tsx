@@ -93,6 +93,9 @@ export default function LoginScreen() {
             }}
           />
 
+          <Link href={"/(auth)/forgot" as import("expo-router").Href} style={styles.link}>
+            Forgot password?
+          </Link>
           <Link href="/(auth)/register" style={styles.link}>
             Create an account
           </Link>

@@ -52,7 +52,24 @@ export function Button({
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={variant === "ghost" ? colors.brand : colors.bg} />
+        <>
+          <ActivityIndicator
+            color={variant === "ghost" ? colors.brand : colors.bg}
+          />
+          {label ? (
+            <Text
+              style={[
+                styles.label,
+                styles.loadingLabel,
+                variant === "ghost" && styles.ghostLabel,
+                variant === "danger" && styles.dangerLabel,
+              ]}
+              numberOfLines={1}
+            >
+              {label}
+            </Text>
+          ) : null}
+        </>
       ) : (
         <Text
           style={[
@@ -75,6 +92,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 18,
+    flexDirection: "row",
+    gap: 8,
   },
   primary: {
     backgroundColor: colors.brand,
@@ -96,6 +115,9 @@ const styles = StyleSheet.create({
     fontFamily: "DMSans_700Bold",
     fontSize: 16,
     letterSpacing: 0.2,
+  },
+  loadingLabel: {
+    fontSize: 14,
   },
   ghostLabel: { color: colors.text },
   dangerLabel: { color: colors.danger },

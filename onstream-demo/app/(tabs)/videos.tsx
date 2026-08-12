@@ -1,24 +1,20 @@
 import { Ionicons } from "@expo/vector-icons";
-import * as DocumentPicker from "expo-document-picker";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   Pressable,
-  RefreshControl,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { ApiError } from "@/api/client";
-import { uploadVideoMultipart } from "@/api/videos";
-import { Button } from "@/components/Button";
+import { ElasticRefreshFlatList } from "@/components/ElasticRefreshFlatList";
 import { Screen } from "@/components/Screen";
 import { StatusPill } from "@/components/StatusPill";
+import { VideoUploadComposer } from "@/components/VideoUploadComposer";
 import { videoPipelineHint } from "@/lib/videoStatus";
 import { videoKeys } from "@/query/keys";
 import { prefetchVideo, useVideosQuery } from "@/query/videos";
@@ -37,7 +33,7 @@ export default function VideosScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const qc = useQueryClient();
-  const [uploading, setUploading] = useState(false);
+  const [composerOpen, setComposerOpen] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const focusedRef = useRef(true);
 
@@ -48,8 +44,6 @@ export default function VideosScreen() {
     error,
     refetch,
   } = useVideosQuery();
-
-  const [pullRefreshing, setPullRefreshing] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -94,36 +88,20 @@ export default function VideosScreen() {
             OnStream
           </Text>
         </View>
-        <Button
-          label={uploading ? "Uploading…" : "Upload"}
-          loading={uploading}
-          style={{ minWidth: 110 }}
-          onPress={async () => {
-            const picked = await DocumentPicker.getDocumentAsync({
-              type: "video/*",
-              copyToCacheDirectory: true,
-            });
-            if (picked.canceled || !picked.assets?.[0]) return;
-            const asset = picked.assets[0];
-            setUploading(true);
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Add video"
+          onPress={() => {
             setUploadError(null);
-            try {
-              await uploadVideoMultipart({
-                uri: asset.uri,
-                name: asset.name || "upload.mp4",
-                mimeType: asset.mimeType || "video/mp4",
-                title: (asset.name || "Mobile upload").replace(/\.[^.]+$/, ""),
-              });
-              await qc.invalidateQueries({ queryKey: videoKeys.list() });
-            } catch (e) {
-              setUploadError(
-                e instanceof ApiError ? e.message : "Upload failed"
-              );
-            } finally {
-              setUploading(false);
-            }
+            setComposerOpen(true);
           }}
-        />
+          style={({ pressed }) => [
+            styles.addBtn,
+            pressed && { opacity: 0.88, transform: [{ scale: 0.97 }] },
+          ]}
+        >
+          <Ionicons name="add" size={26} color={colors.bg} />
+        </Pressable>
       </View>
 
       {listError ? <Text style={styles.error}>{listError}</Text> : null}
@@ -131,40 +109,42 @@ export default function VideosScreen() {
       {isPending && items.length === 0 ? (
         <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} />
       ) : (
-        <FlatList
+        <ElasticRefreshFlatList
           data={items}
           keyExtractor={(item) => item.upload_id}
           contentContainerStyle={styles.list}
-          bounces
-          alwaysBounceVertical={false}
-          overScrollMode="auto"
-          refreshControl={
-            <RefreshControl
-              refreshing={pullRefreshing}
-              tintColor={colors.brand}
-              colors={[colors.brand]}
-              progressBackgroundColor={colors.bgElevated}
-              onRefresh={async () => {
-                setPullRefreshing(true);
-                try {
-                  await refetch();
-                } finally {
-                  setPullRefreshing(false);
-                }
-              }}
-            />
-          }
+          onRefresh={async () => {
+            await refetch();
+          }}
           ListEmptyComponent={
-            <View style={styles.empty}>
-              <Ionicons name="film-outline" size={40} color={colors.textDim} />
+            <Pressable
+              onPress={() => setComposerOpen(true)}
+              style={({ pressed }) => [
+                styles.empty,
+                pressed && { opacity: 0.9 },
+              ]}
+            >
+              <View style={styles.emptyIcon}>
+                <Ionicons
+                  name="cloud-upload-outline"
+                  size={32}
+                  color={colors.brand}
+                />
+              </View>
               <Text style={styles.emptyTitle}>No videos yet</Text>
               <Text style={styles.emptyBody}>
-                Upload a clip to exercise ABR, tokens, and HLS playback.
+                Add a clip to exercise ABR, tokens, captions, and HLS — Quick
+                multipart or Resumable direct upload.
               </Text>
-            </View>
+              <View style={styles.emptyCta}>
+                <Ionicons name="add-circle" size={18} color={colors.bg} />
+                <Text style={styles.emptyCtaText}>Add video</Text>
+              </View>
+            </Pressable>
           }
           renderItem={({ item }) => {
             const hint = videoPipelineHint(item);
+            const status = String(item.status || "").toUpperCase();
             return (
               <Pressable
                 onPressIn={() => {
@@ -180,23 +160,21 @@ export default function VideosScreen() {
                   <View style={styles.iconWrap}>
                     <Ionicons
                       name={
-                        String(item.status).toUpperCase() === "READY"
+                        status === "READY"
                           ? "play-circle"
-                          : String(item.status).toUpperCase() === "ERROR"
+                          : status === "ERROR"
                             ? "alert-circle"
-                            : String(item.status).toUpperCase() ===
-                                "QUARANTINED"
+                            : status === "QUARANTINED"
                               ? "shield-half-outline"
                               : "hourglass-outline"
                       }
                       size={22}
                       color={
-                        String(item.status).toUpperCase() === "READY"
+                        status === "READY"
                           ? colors.brand
-                          : String(item.status).toUpperCase() === "ERROR"
+                          : status === "ERROR"
                             ? colors.danger
-                            : String(item.status).toUpperCase() ===
-                                "QUARANTINED"
+                            : status === "QUARANTINED"
                               ? colors.warning
                               : colors.textMuted
                       }
@@ -210,17 +188,52 @@ export default function VideosScreen() {
                 <Text style={[styles.hint, { color: HINT_COLOR[hint.tone] }]}>
                   {hint.text}
                 </Text>
-                <Text style={styles.meta}>{item.upload_id}</Text>
+                <View style={styles.metaRow}>
+                  <Ionicons
+                    name="finger-print-outline"
+                    size={12}
+                    color={colors.textDim}
+                  />
+                  <Text style={styles.meta}>{item.upload_id}</Text>
+                </View>
                 {item.quality_score != null ? (
-                  <Text style={styles.meta}>
-                    Quality {item.quality_score.toFixed(1)}
-                  </Text>
+                  <View style={styles.metaRow}>
+                    <Ionicons
+                      name="analytics-outline"
+                      size={12}
+                      color={colors.textDim}
+                    />
+                    <Text style={styles.meta}>
+                      Quality {item.quality_score.toFixed(1)}
+                    </Text>
+                  </View>
+                ) : null}
+                {item.caption_vtt_path ? (
+                  <View style={styles.metaRow}>
+                    <Ionicons
+                      name="text-outline"
+                      size={12}
+                      color={colors.brandDim}
+                    />
+                    <Text style={[styles.meta, { color: colors.brandDim }]}>
+                      Captions ready
+                    </Text>
+                  </View>
                 ) : null}
               </Pressable>
             );
           }}
         />
       )}
+
+      <VideoUploadComposer
+        visible={composerOpen}
+        onClose={() => setComposerOpen(false)}
+        onFinished={async () => {
+          setUploadError(null);
+          await qc.invalidateQueries({ queryKey: videoKeys.list() });
+        }}
+      />
     </Screen>
   );
 }
@@ -232,6 +245,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+  },
+  addBtn: {
+    width: 48,
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.brand,
+    borderRadius: radii.lg,
   },
   kicker: {
     color: colors.textMuted,
@@ -280,12 +301,33 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
   meta: {
     color: colors.textDim,
     fontFamily: "DMSans_400Regular",
     fontSize: 12,
   },
-  empty: { paddingVertical: 48, gap: 8, alignItems: "flex-start" },
+  empty: {
+    paddingVertical: 40,
+    paddingHorizontal: 4,
+    gap: 10,
+    alignItems: "flex-start",
+  },
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: colors.brandSoft,
+    borderWidth: 1,
+    borderColor: colors.line,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
   emptyTitle: {
     color: colors.text,
     fontFamily: "Syne_700Bold",
@@ -296,6 +338,21 @@ const styles = StyleSheet.create({
     fontFamily: "DMSans_400Regular",
     fontSize: 15,
     lineHeight: 22,
+  },
+  emptyCta: {
+    marginTop: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: colors.brand,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: radii.md,
+  },
+  emptyCtaText: {
+    color: colors.bg,
+    fontFamily: "DMSans_700Bold",
+    fontSize: 15,
   },
   error: {
     color: colors.danger,

@@ -5,6 +5,8 @@ import {
   type KeyboardAwareScrollViewProps,
 } from "react-native-keyboard-controller";
 
+import { scrollPhysics } from "@/theme/scroll";
+
 type FormScrollProps = Omit<KeyboardAwareScrollViewProps, "children"> & {
   children: ReactNode;
   contentContainerStyle?: StyleProp<ViewStyle>;
@@ -29,9 +31,9 @@ export function FormScroll({
   contentContainerStyle,
   keyboardShouldPersistTaps = "handled",
   showsVerticalScrollIndicator = false,
-  bounces = true,
-  alwaysBounceVertical,
-  overScrollMode = "auto",
+  bounces = scrollPhysics.bounces,
+  alwaysBounceVertical = scrollPhysics.alwaysBounceVertical,
+  overScrollMode = scrollPhysics.overScrollMode,
   style,
   ...rest
 }: FormScrollProps) {
@@ -42,11 +44,7 @@ export function FormScroll({
       keyboardShouldPersistTaps={keyboardShouldPersistTaps}
       showsVerticalScrollIndicator={showsVerticalScrollIndicator}
       bounces={bounces}
-      // Default: bounce only when content overflows (avoids fighting forms /
-      // future RefreshControl). Callers can pass alwaysBounceVertical.
-      alwaysBounceVertical={
-        alwaysBounceVertical === undefined ? false : alwaysBounceVertical
-      }
+      alwaysBounceVertical={alwaysBounceVertical}
       overScrollMode={overScrollMode}
       contentContainerStyle={[
         centered ? styles.centered : undefined,

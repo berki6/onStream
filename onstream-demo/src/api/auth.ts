@@ -15,6 +15,12 @@ export type UserPayload = {
   created_at: string;
 };
 
+export type PasswordResetRequestPayload = {
+  requested: boolean;
+  reset_token?: string;
+  note?: string;
+};
+
 export async function registerUser(input: {
   username: string;
   email: string;
@@ -46,6 +52,28 @@ export async function loginUser(username: string, password: string) {
   }
   await storage.setUsername(username);
   return env.data;
+}
+
+export async function requestPasswordReset(email: string) {
+  return apiRequest<ApiEnvelope<PasswordResetRequestPayload>>(
+    "/v1/auth/password-reset",
+    {
+      method: "POST",
+      auth: false,
+      body: JSON.stringify({ email }),
+    }
+  );
+}
+
+export async function confirmPasswordReset(token: string, newPassword: string) {
+  return apiRequest<ApiEnvelope<{ reset: boolean }>>(
+    "/v1/auth/password-reset/confirm",
+    {
+      method: "POST",
+      auth: false,
+      body: JSON.stringify({ token, new_password: newPassword }),
+    }
+  );
 }
 
 export async function logoutUser() {

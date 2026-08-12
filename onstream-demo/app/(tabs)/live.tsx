@@ -1,12 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   Pressable,
-  RefreshControl,
   StyleSheet,
   Text,
   View,
@@ -15,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { type LiveStream } from "@/api/live";
 import { Button } from "@/components/Button";
+import { ElasticRefreshFlatList } from "@/components/ElasticRefreshFlatList";
 import { Screen } from "@/components/Screen";
 import { StatusPill } from "@/components/StatusPill";
 import { prefetchLive, useLiveListQuery } from "@/query/live";
@@ -40,8 +39,6 @@ export default function LiveTabScreen() {
     error,
     refetch,
   } = useLiveListQuery();
-
-  const [pullRefreshing, setPullRefreshing] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -104,29 +101,13 @@ export default function LiveTabScreen() {
       {isPending && items.length === 0 ? (
         <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} />
       ) : (
-        <FlatList
+        <ElasticRefreshFlatList
           data={rows}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
-          bounces
-          alwaysBounceVertical={false}
-          overScrollMode="auto"
-          refreshControl={
-            <RefreshControl
-              refreshing={pullRefreshing}
-              tintColor={colors.brand}
-              colors={[colors.brand]}
-              progressBackgroundColor={colors.bgElevated}
-              onRefresh={async () => {
-                setPullRefreshing(true);
-                try {
-                  await refetch();
-                } finally {
-                  setPullRefreshing(false);
-                }
-              }}
-            />
-          }
+          onRefresh={async () => {
+            await refetch();
+          }}
           ListEmptyComponent={
             <View style={styles.empty}>
               <Ionicons name="radio-outline" size={40} color={colors.textDim} />

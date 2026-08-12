@@ -68,7 +68,7 @@ With API + worker + MediaMTX running, live create → OBS **or** FFmpeg publish 
 
 More encoder/player recipes: [`docs/PLAYBACK_CLIENTS.md`](docs/PLAYBACK_CLIENTS.md). Expo install notes: [`onstream-demo/README.md`](onstream-demo/README.md).
 
-### Readiness (honest)
+### Readines
 
 | Path | Status | Notes |
 |------|--------|-------|
@@ -76,11 +76,13 @@ More encoder/player recipes: [`docs/PLAYBACK_CLIENTS.md`](docs/PLAYBACK_CLIENTS.
 | VOD (Expo / API) | **Ready** | Upload → worker → READY → token → HLS (verified by `scripts/e2e_smoke.py`) |
 | VOD on a **physical phone** | **Config** | `PUBLIC_API_BASE_URL` must be LAN IP (this machine: `http://192.168.43.246:8000`) |
 | Live create / token / revoke | **Ready** | Verified by smoke; manual publish via OBS or FFmpeg (below) |
-| `/demo/` | **Playback + captions** | Paste URL; subtitle track menu when master has captions; no upload/login by design |
+| `/demo/` | **Player + tools** | HLS player, `/demo/whip/`, `/demo/upload/`, `/demo/reset/` |
 | Captions in demo UI | **Ready** | Status + Open in `/demo/` for track menu; Expo player has no full track picker |
 | Live list ended history | **Ready** | `include_ended=true`; Expo shows Active + Recently ended |
-| Direct upload `/v1/uploads` in Expo | **Not in Expo** | Multipart `/v1/videos/` only |
-| WHIP publish from the app | **Not in Expo** | Copy WHIP URL → external encoder |
+| Direct upload `/v1/uploads` | **Ready** | Expo **+** → **Resumable** + `/demo/upload/` (chunked Content-Range) |
+| WHIP publish | **Ready (browser)** | `/demo/whip/` + Expo **Go Live** opens it; Expo Go has no native WebRTC encoder |
+| Password reset UX | **Ready** | Expo forgot/reset + `/demo/reset/`; `EMAIL_PROVIDER=log` (lab) / `smtp` (prod) |
+| Moderation review | **Ready** | Lab → Moderation queue (approve / reject) |
 
 **Critical DB fix (was blocking VOD):** Postgres `videostatus` enum was missing `PROCESSING`. Migration `f6a7b8c9d0e1` adds it — run `alembic upgrade head` before testing VOD.
 
@@ -343,14 +345,108 @@ Hard `live.ended` is revoke-only; health soft-fail emits `live.idle`, not `live.
 - [ ] Live create → OBS **or** `scripts/live_lab_publish.py` / FFmpeg → play → revoke
 - [ ] After revoke: playback 404; stop encoder if still running
 - [ ] Phone: LAN `PUBLIC_API_BASE_URL` + matching Expo API base
-- [ ] Optional: captions appear after AI jobs (Expo VOD detail shows READY vs captions-pending)
+- [ ] Optional: captions appear after AI jobs (Expo VOD detail shows READY vs captions-pending); on-disk `master.m3u8` gains `SUBTITLES`
 - [ ] Optional: Lab → Webhooks subscribe + delivery log shows `live.*`
+- [ ] Optional: Library → **+** → Resumable direct upload (or `/demo/upload/`) → READY
+- [ ] Optional: Live create → **Go Live (WHIP in browser)** → camera publish (LAN `PUBLIC_WEBRTC_BASE_URL`)
+- [ ] Optional: Lab → Moderation queue approve/reject
+- [ ] Optional: Forgot password → log/SMTP → Expo reset screen
 
 ---
 
-## Out of scope for the demo UI
+## Manual lab tests
 
-- Direct-upload browser flow (`/v1/uploads`) — use Scalar/curl if needed
-- In-app WHIP publish — use OBS, FFmpeg (RTMP), or a WHIP client with the copied URL
-- Password-reset email UX in Expo
-- Full moderation review queue (quarantine is visible on VOD; clear via API/Scalar)
+### Before you start
+
+Stack should already be up (API + worker + MediaMTX). In Expo Lab, set API base to your LAN
+(e.g. `http://192.168.1.6:8000`). Sign in as usual (`demo` / `DemoPass123!` if that’s your lab user).
+
+**Fast pass order:** Direct upload → play → captions/`master.m3u8` → Forgot password → Live create → Go Live WHIP → play → Lab moderation (if you have a quarantine item).
+
+---
+
+### 1) Direct upload (`/v1/uploads`)
+
+1. Expo → **Library**.
+2. Tap **+** → pick a video → title → choose **Resumable** (chunked `/v1/uploads`; **Quick** is classic multipart).
+3. Watch progress % → list refreshes → status goes PENDING → PROCESSING → **READY**.
+4. Open the video → play HLS.
+
+**Browser alt:** Lab → **Browser direct upload** (or `http://<LAN-IP>:8000/demo/upload/`) → paste a Bearer token from Scalar login → pick file → Upload.
+
+---
+
+### 2) Captions on disk
+
+1. Upload a short clip (Quick or Resumable) and wait until **READY**.
+2. Wait for captions job (Expo detail may show captions-pending, then captions path).
+3. On the PC, open: `data/hls/<upload_id>/master.m3u8`
+4. Confirm it contains `TYPE=SUBTITLES` and `URI="captions.vtt"`.
+5. Open playback in `/demo/` (or Expo “Open in demo”) → subtitle track menu should list captions.
+
+---
+
+### 3) Password reset (log driver)
+
+1. Confirm `.env` has `EMAIL_PROVIDER=log`.
+2. Expo login → **Forgot password?** → enter the account email → **Send reset**.
+3. Non-prod: app should jump to **Reset** with token filled.  
+   Or: read the API terminal for `email.sent` / the token / `onstream://reset?…`.
+4. Set a new password → back to login → sign in with the new password.
+5. **Browser alt:** `http://<LAN-IP>:8000/demo/reset/?token=…`
+
+---
+
+### 4) WHIP Go Live (camera → MediaMTX)
+
+1. Expo → Live → **New live** → Create stream (copy key/WHIP once if you want).
+2. Tap **Go Live (WHIP in browser)** — opens `/demo/whip/?whip=…`.
+3. Allow camera/mic → **Go Live** → status should say publishing.
+4. Back in Expo → **Open stream** → wait until live HLS plays.
+5. **Stop** on the WHIP page → revoke the stream when done.
+
+If WHIP fails on phone: browser must reach `http://<LAN-IP>:8889` (not localhost). Restart API after any `sync_lan_ip` change.
+
+---
+
+### 5) Moderation review UI
+
+1. Need a quarantined video (upload something that triggers moderation, or use an existing quarantined row from earlier tests).
+2. Expo → **Lab** → **Moderation review queue**.
+3. Toggle **Make public on approve** if you want.
+4. **Approve** → video leaves queue; playback tokens work again.  
+   Or **Reject** → stays blocked.
+5. Confirm on Library / video detail status.
+
+---
+
+## How these flows work (reference)
+
+### Captions on disk
+Worker injects `#EXT-X-MEDIA:TYPE=SUBTITLES` into `data/hls/{id}/master.m3u8` after VTT write (serve-time inject remains as a safety net).
+
+### Password reset (Laravel-style mail)
+- Local/lab: `EMAIL_PROVIDER=log` — full message (token + deep links) in API logs.
+- Production: `EMAIL_PROVIDER=smtp` + `SMTP_*` (enforced; log/none rejected).
+- Expo: Login → Forgot password → Reset (non-prod also returns `reset_token` in the API response).
+- Browser: `/demo/reset/?token=…`
+
+### Direct upload
+- Expo Library → **+** → **Resumable** (chunked `PUT` + complete) or **Quick** (classic multipart).
+- Browser: `/demo/upload/` with Bearer token.
+
+### WHIP publish
+- Expo Live create → **Go Live (WHIP in browser)** opens `/demo/whip/?whip=…`.
+- Phone must reach MediaMTX on LAN (`PUBLIC_WEBRTC_BASE_URL=http://<LAN-IP>:8889`). `scripts/sync_lan_ip.py` updates this.
+- OBS / FFmpeg / `scripts/live_lab_publish.py` still valid for RTMP.
+
+### Moderation
+- Lab → **Moderation review queue** → approve / reject (optional make-public on approve).
+
+---
+
+## Out of scope / remaining limits
+
+- Native in-Expo WebRTC encoder (Expo Go) — use `/demo/whip/` from the device browser
+- Production SMTP inbox branding beyond text/HTML body already sent
+- Multi-tenant admin moderation (queue is per authenticated owner)

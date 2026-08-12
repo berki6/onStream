@@ -1,4 +1,4 @@
-"""Log email sender (development)."""
+"""Log email sender (development — Laravel-style mail log driver)."""
 
 from __future__ import annotations
 
@@ -11,6 +11,13 @@ logger = get_logger(__name__)
 
 
 class LogEmailSender(EmailSender):
+    """Write the full message to the application log.
+
+    Intended for local/lab use: set ``EMAIL_PROVIDER=log`` and read the
+    password-reset token / deep links from API logs. Production must use
+    ``smtp`` (enforced in settings).
+    """
+
     def send(
         self,
         to: str,
@@ -19,14 +26,11 @@ class LogEmailSender(EmailSender):
         body_html: Optional[str] = None,
     ) -> None:
         body = body_text or ""
-        # Avoid dumping reset JWTs / secrets into durable logs.
-        if "password reset" in (subject or "").lower() or "eyJ" in body:
-            preview = f"[redacted length={len(body)}]"
-        else:
-            preview = body[:200]
         logger.info(
-            "Email to=%s subject=%s body=%s",
+            "email.sent provider=log to=%s subject=%s\n---\n%s\n---",
             to,
             subject,
-            preview,
+            body,
         )
+        if body_html:
+            logger.debug("email.html_preview length=%s", len(body_html))

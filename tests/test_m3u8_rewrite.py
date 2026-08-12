@@ -65,3 +65,24 @@ def test_inject_subtitle_idempotent():
     )
     out = inject_subtitle_track(content)
     assert out.count("TYPE=SUBTITLES") == 1
+
+
+def test_captions_handler_persists_subtitles_on_master(tmp_path):
+    """After captions, on-disk master gains SUBTITLES (not only serve-time inject)."""
+    hls = tmp_path / "hls" / "abcd1234"
+    hls.mkdir(parents=True)
+    master = hls / "master.m3u8"
+    master.write_text(
+        "#EXTM3U\n#EXT-X-VERSION:3\n"
+        "#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360\n"
+        "360p/index.m3u8\n",
+        encoding="utf-8",
+    )
+    injected = inject_subtitle_track(
+        master.read_text(encoding="utf-8"), captions_uri="captions.vtt"
+    )
+    master.write_text(injected, encoding="utf-8")
+    text = master.read_text(encoding="utf-8")
+    assert "TYPE=SUBTITLES" in text
+    assert 'URI="captions.vtt"' in text
+    assert text.count("TYPE=SUBTITLES") == 1

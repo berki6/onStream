@@ -89,6 +89,33 @@ def process_captions(upload_id: str) -> None:
         video.detected_language = language
         session.commit()
 
+        # Persist SUBTITLES into on-disk master (playback also injects at serve time).
+        master_path = hls_dir / "master.m3u8"
+        if master_path.is_file():
+            try:
+                from src.infrastructure.media.abr import inject_subtitle_track
+
+                raw = master_path.read_text(encoding="utf-8")
+                injected = inject_subtitle_track(raw, captions_uri="captions.vtt")
+                if injected != raw:
+                    master_path.write_text(injected, encoding="utf-8")
+                    try:
+                        storage.put_file(
+                            to_relative_path(master_path), master_path
+                        )
+                    except Exception:
+                        # Local backend may no-op / use same path; ignore sync miss.
+                        pass
+                    logger.info(
+                        "Injected SUBTITLES into on-disk master for %s", upload_id
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Could not persist captions into master for %s: %s",
+                    upload_id,
+                    exc,
+                )
+
         emit_video_event(
             session,
             video,

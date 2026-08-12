@@ -1,7 +1,7 @@
 """Sync LAN IP into local .env files for phone / Expo lab testing.
 
 Detects this machine's LAN address and rewrites only uncommitted lab env files:
-  - .env                         → PUBLIC_API_BASE_URL
+  - .env                         → PUBLIC_API_BASE_URL, PUBLIC_WEBRTC_BASE_URL
   - onstream-demo/.env           → EXPO_PUBLIC_API_BASE_URL
 
 Does **not** touch committed examples/docs (``.env.example``, ``DEV_TESTING.md``).
@@ -13,7 +13,8 @@ Usage (repo root):
   .\\.venv\\Scripts\\python.exe scripts/sync_lan_ip.py --ip 192.168.1.10
 
 Restart the API after changing .env. Restart Expo (or Lab → Save API URL)
-so the phone picks up EXPO_PUBLIC_API_BASE_URL.
+so the phone picks up EXPO_PUBLIC_API_BASE_URL. Restart MediaMTX if WHIP
+publish from a phone/browser on LAN must hit PUBLIC_WEBRTC_BASE_URL.
 """
 from __future__ import annotations
 
@@ -26,10 +27,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 # Match lab URLs we previously wrote (IPv4 LAN only — leave localhost alone).
-LAN_URL_RE = re.compile(r"http://192\.168\.\d+\.\d+:8000")
-# Also upgrade a localhost PUBLIC/EXPO base if someone left the template default.
+LAN_API_RE = re.compile(r"http://192\.168\.\d+\.\d+:8000")
+LAN_WEBRTC_RE = re.compile(r"http://192\.168\.\d+\.\d+:8889")
+# Also upgrade a localhost PUBLIC/EXPO/WEBRTC base if someone left the template default.
 LOCALHOST_API_RE = re.compile(
     r"((?:PUBLIC_API_BASE_URL|EXPO_PUBLIC_API_BASE_URL)=)http://localhost:8000"
+)
+LOCALHOST_WEBRTC_RE = re.compile(
+    r"(PUBLIC_WEBRTC_BASE_URL=)http://localhost:8889"
 )
 
 TARGETS = [
@@ -65,9 +70,12 @@ def detect_lan_ip() -> str:
 
 
 def rewrite(text: str, ip: str) -> str:
-    url = f"http://{ip}:8000"
-    out = LAN_URL_RE.sub(url, text)
-    out = LOCALHOST_API_RE.sub(rf"\g<1>{url}", out)
+    api = f"http://{ip}:8000"
+    webrtc = f"http://{ip}:8889"
+    out = LAN_API_RE.sub(api, text)
+    out = LAN_WEBRTC_RE.sub(webrtc, out)
+    out = LOCALHOST_API_RE.sub(rf"\g<1>{api}", out)
+    out = LOCALHOST_WEBRTC_RE.sub(rf"\g<1>{webrtc}", out)
     return out
 
 
@@ -92,7 +100,7 @@ def _print_api_lines(text: str) -> None:
     for line in text.splitlines():
         stripped = line.strip()
         if re.match(
-            r"^(?:PUBLIC_API_BASE_URL|EXPO_PUBLIC_API_BASE_URL)\s*=",
+            r"^(?:PUBLIC_API_BASE_URL|EXPO_PUBLIC_API_BASE_URL|PUBLIC_WEBRTC_BASE_URL)\s*=",
             stripped,
         ):
             try:
@@ -132,7 +140,9 @@ def main() -> int:
         print(f"Dry-run complete ({changed} file(s) would change).")
     else:
         print(f"Done ({changed} file(s) changed).")
-        print("Next: restart API (uvicorn) and Expo / Lab → Save API URL.")
+        print(
+            "Next: restart API (uvicorn), MediaMTX if needed, and Expo / Lab -> Save API URL."
+        )
     return 0
 
 

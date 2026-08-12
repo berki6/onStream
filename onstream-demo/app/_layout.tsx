@@ -98,6 +98,13 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
             animation: "slide_from_bottom",
           }}
         />
+        <Stack.Screen
+          name="moderation"
+          options={{
+            headerShown: true,
+            title: "Moderation",
+          }}
+        />
       </Stack.Protected>
 
       <Stack.Protected guard={!signedIn}>

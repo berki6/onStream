@@ -8,7 +8,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -36,6 +36,7 @@ import { colors, radii, spacing } from "@/theme/tokens";
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { username, signOut } = useAuth();
   const [apiBase, setApiBaseLocal] = useState(getApiBase());
   const [health, setHealth] = useState<string>("—");
@@ -145,6 +146,51 @@ export default function SettingsScreen() {
               size={16}
               color={colors.textDim}
             />
+          </Pressable>
+          <Pressable
+            onPress={() => router.push("/moderation" as Href)}
+            style={({ pressed }) => [
+              styles.linkRow,
+              pressed && { opacity: 0.85 },
+            ]}
+          >
+            <Ionicons
+              name="shield-checkmark-outline"
+              size={18}
+              color={colors.brand}
+            />
+            <Text style={styles.linkText}>Moderation review queue</Text>
+            <Ionicons
+              name="chevron-forward"
+              size={16}
+              color={colors.textDim}
+            />
+          </Pressable>
+          <Pressable
+            onPress={async () => {
+              await Linking.openURL(`${getApiBase()}/demo/upload/`);
+            }}
+            style={({ pressed }) => [
+              styles.linkRow,
+              pressed && { opacity: 0.85 },
+            ]}
+          >
+            <Ionicons name="cloud-upload-outline" size={18} color={colors.brand} />
+            <Text style={styles.linkText}>Browser direct upload (/demo)</Text>
+            <Ionicons name="open-outline" size={16} color={colors.textDim} />
+          </Pressable>
+          <Pressable
+            onPress={async () => {
+              await Linking.openURL(`${getApiBase()}/demo/whip/`);
+            }}
+            style={({ pressed }) => [
+              styles.linkRow,
+              pressed && { opacity: 0.85 },
+            ]}
+          >
+            <Ionicons name="videocam-outline" size={18} color={colors.brand} />
+            <Text style={styles.linkText}>Browser WHIP publisher (/demo)</Text>
+            <Ionicons name="open-outline" size={16} color={colors.textDim} />
           </Pressable>
         </View>
 

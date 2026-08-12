@@ -111,6 +111,8 @@ def test_password_reset_sends_when_user_exists(db_session, test_user, monkeypatc
     kwargs = sender.send.call_args.kwargs
     assert kwargs["to"] == test_user.email
     assert "password reset" in kwargs["subject"].lower()
+    assert "onstream://reset" in kwargs["body_text"]
+    assert "/demo/reset/" in kwargs["body_text"]
     assert "reset_token" in data  # non-prod includes token
 
 

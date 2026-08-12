@@ -82,17 +82,32 @@ def request_password_reset(db: Session, email: str) -> Dict[str, Any]:
     if user:
         token = create_password_reset_token(user.email)
         base = settings.PUBLIC_API_BASE_URL.rstrip("/")
-        reset_url = f"{base}/v1/auth/password-reset/confirm"
+        # Deep links for Expo (scheme onstream) and browser demo UX.
+        app_link = f"onstream://reset?token={token}"
+        web_link = f"{base}/demo/reset/?token={token}"
+        api_confirm = f"{base}/v1/auth/password-reset/confirm"
         body = (
-            f"A password reset was requested for your OnStream account.\n\n"
-            f"Use this token with POST {reset_url}:\n\n{token}\n\n"
-            f"If you did not request this, you can ignore this message.\n"
+            "A password reset was requested for your OnStream account.\n\n"
+            f"Open in the Expo demo app:\n{app_link}\n\n"
+            f"Or in a browser:\n{web_link}\n\n"
+            f"Or POST the token to {api_confirm} with JSON "
+            '{"token":"…","new_password":"…"}.\n\n'
+            f"Reset token:\n{token}\n\n"
+            "If you did not request this, you can ignore this message.\n"
+        )
+        html = (
+            "<p>A password reset was requested for your OnStream account.</p>"
+            f'<p><a href="{app_link}">Open in Expo app</a></p>'
+            f'<p><a href="{web_link}">Reset in browser</a></p>'
+            f"<p>Token (API / local log): <code>{token}</code></p>"
+            "<p>If you did not request this, ignore this message.</p>"
         )
         try:
             get_email_sender().send(
                 to=user.email,
                 subject="OnStream password reset",
                 body_text=body,
+                body_html=html,
             )
         except Exception as exc:
             # Do not leak delivery failures to the client; always log for ops.
