@@ -20,12 +20,23 @@ export function HlsPlayer({
   const [playing, setPlaying] = useState(false);
   const seekDone = useRef(false);
   const lastSent = useRef(0);
+  const lastPos = useRef(0);
+  const lastDur = useRef(0);
+  const resumeTarget = useRef(initialPositionSeconds);
+  const loadedUri = useRef<string | null>(null);
   const onProgressRef = useRef(onProgress);
   onProgressRef.current = onProgress;
 
   const player = useVideoPlayer(null, (p) => {
     p.loop = false;
   });
+
+  // Capture resume target once per uri — do not re-seek when progress query updates.
+  if (uri !== loadedUri.current) {
+    loadedUri.current = uri;
+    resumeTarget.current = initialPositionSeconds;
+    seekDone.current = false;
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -38,12 +49,14 @@ export function HlsPlayer({
       }
       await player.replaceAsync({ uri, contentType: "hls" as const });
       if (cancelled) return;
-      if (initialPositionSeconds > 2) {
+      const target = resumeTarget.current;
+      if (target > 2) {
         try {
-          player.currentTime = initialPositionSeconds;
+          player.currentTime = target;
         } catch {
-          /* seek may fail until buffered */
+          /* seek may fail until buffered — retry in progress loop */
         }
+      } else {
         seekDone.current = true;
       }
       player.play();
@@ -52,23 +65,39 @@ export function HlsPlayer({
     return () => {
       cancelled = true;
     };
-  }, [uri, player, initialPositionSeconds]);
+    // Intentionally omit initialPositionSeconds — frozen per uri via resumeTarget.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uri, player]);
 
   useEffect(() => {
-    if (!uri || !onProgressRef.current) return;
+    if (!uri) return;
     const id = setInterval(() => {
       const pos = Number(player.currentTime) || 0;
       const dur = Number(player.duration) || 0;
-      if (pos <= 0) return;
-      if (!seekDone.current && initialPositionSeconds > 2 && pos < 1) {
-        try {
-          player.currentTime = initialPositionSeconds;
-          seekDone.current = true;
-        } catch {
-          /* ignore */
-        }
-        return;
+      if (pos > 0) {
+        lastPos.current = pos;
+        lastDur.current = dur > 0 ? dur : pos;
       }
+
+      const target = resumeTarget.current;
+      if (!seekDone.current && target > 2) {
+        if (pos < target - 1.5) {
+          try {
+            player.currentTime = target;
+          } catch {
+            /* ignore */
+          }
+          return;
+        }
+        // Seek stuck near target (or past it) — allow progress saves.
+        seekDone.current = true;
+      }
+
+      if (!seekDone.current) return;
+      if (pos <= 0) return;
+      // Don't overwrite resume with a pre-seek near-zero sample.
+      if (target > 2 && pos < Math.min(5, target * 0.5)) return;
+
       const now = Date.now();
       if (now - lastSent.current < 4500) return;
       lastSent.current = now;
@@ -76,11 +105,19 @@ export function HlsPlayer({
     }, 2000);
     return () => {
       clearInterval(id);
-      const pos = Number(player.currentTime) || 0;
-      const dur = Number(player.duration) || 0;
-      if (pos > 0) onProgressRef.current?.(pos, dur > 0 ? dur : pos);
     };
-  }, [uri, player, initialPositionSeconds]);
+  }, [uri, player]);
+
+  // Flush progress only on true unmount (not when uri deps churn).
+  useEffect(() => {
+    return () => {
+      const pos = lastPos.current;
+      const dur = lastDur.current;
+      if (pos > 0 && seekDone.current) {
+        onProgressRef.current?.(pos, dur > 0 ? dur : pos);
+      }
+    };
+  }, []);
 
   if (!uri) {
     return (
@@ -115,7 +152,9 @@ export function HlsPlayer({
               setPlaying(false);
               const pos = Number(player.currentTime) || 0;
               const dur = Number(player.duration) || 0;
-              if (pos > 0) onProgressRef.current?.(pos, dur > 0 ? dur : pos);
+              if (pos > 0 && seekDone.current) {
+                onProgressRef.current?.(pos, dur > 0 ? dur : pos);
+              }
             } else {
               player.play();
               setPlaying(true);

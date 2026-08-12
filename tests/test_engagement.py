@@ -97,6 +97,24 @@ def test_share_expired(db_session, test_user, ready_video):
     assert ei.value.code == ErrorCode.SHARE_EXPIRED
 
 
+def test_share_view_limit(db_session, test_user, ready_video):
+    created = share_link_service.create(
+        db_session,
+        test_user.id,
+        ready_video.upload_id,
+        expires_in_seconds=3600,
+        max_views=1,
+    )
+    share_link_service.exchange(
+        db_session, created["public_id"], created["token"]
+    )
+    with pytest.raises(AppError) as ei:
+        share_link_service.exchange(
+            db_session, created["public_id"], created["token"]
+        )
+    assert ei.value.code == ErrorCode.SHARE_VIEW_LIMIT
+
+
 def test_favorites_toggle(db_session, test_user, ready_video):
     favorites_service.add(db_session, test_user.id, ready_video.upload_id)
     saved = favorites_service.list_saved(db_session, test_user.id)

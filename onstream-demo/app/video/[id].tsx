@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import { Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import * as Linking from "expo-linking";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -68,6 +68,8 @@ export default function VideoDetailScreen() {
   const [createdWatchUrl, setCreatedWatchUrl] = useState<string | null>(null);
   const [expirySeconds, setExpirySeconds] = useState(86400);
   const [favorited, setFavorited] = useState(false);
+  const [resumeAt, setResumeAt] = useState(0);
+  const resumeAppliedForId = useRef<string | null>(null);
 
   const {
     data: video,
@@ -91,17 +93,41 @@ export default function VideoDetailScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      let cancelled = false;
       setFocused(true);
       refetch();
       void progressQuery.refetch();
       void listSavedVideos(100).then((res) => {
+        if (cancelled) return;
         setFavorited(
           Boolean(res.data?.some((v) => v.upload_id === id))
         );
       });
-      return () => setFocused(false);
+      return () => {
+        cancelled = true;
+        setFocused(false);
+      };
     }, [refetch, progressQuery.refetch, id])
   );
+
+  // Freeze resume once per video id so progress upserts cannot re-seek.
+  useEffect(() => {
+    setPlaybackUrl(null);
+    setResumeAt(0);
+    resumeAppliedForId.current = null;
+  }, [id]);
+
+  useEffect(() => {
+    if (!id || !progressQuery.isSuccess) return;
+    if (resumeAppliedForId.current === id) return;
+    resumeAppliedForId.current = id;
+    const p = progressQuery.data;
+    if (!p || p.completed) {
+      setResumeAt(0);
+      return;
+    }
+    setResumeAt(p.position_seconds > 5 ? p.position_seconds : 0);
+  }, [id, progressQuery.isSuccess, progressQuery.data]);
 
   const captionsReady = Boolean(video?.caption_vtt_path);
   const status = String(video?.status || "").toUpperCase();
@@ -116,12 +142,6 @@ export default function VideoDetailScreen() {
         : "Failed to load video"
       : null;
 
-  const resumeAt = useMemo(() => {
-    const p = progressQuery.data;
-    if (!p || p.completed) return 0;
-    return p.position_seconds > 5 ? p.position_seconds : 0;
-  }, [progressQuery.data]);
-
   const ensurePlaybackUrl = useCallback(async () => {
     if (playbackUrl) return playbackUrl;
     if (!id) throw new Error("Missing video id");
@@ -132,16 +152,17 @@ export default function VideoDetailScreen() {
 
   const toggleFavorite = async () => {
     if (!id) return;
+    const prev = favorited;
+    setFavorited(!prev);
     try {
-      if (favorited) {
+      if (prev) {
         await unfavoriteVideo(id);
-        setFavorited(false);
       } else {
         await favoriteVideo(id);
-        setFavorited(true);
       }
       await qc.invalidateQueries({ queryKey: videoKeys.saved() });
     } catch (e) {
+      setFavorited(prev);
       setActionError(e instanceof ApiError ? e.message : "Favorite failed");
     }
   };
@@ -323,9 +344,8 @@ export default function VideoDetailScreen() {
               if (!id || pos < 1) return;
               void upsertWatchProgress(id, pos, dur).then(() => {
                 void qc.invalidateQueries({ queryKey: videoKeys.continue() });
-                void qc.invalidateQueries({
-                  queryKey: videoKeys.progress(id),
-                });
+                // Do not invalidate progress — that would change resumeAt and
+                // remount/re-seek the player mid-watch.
               });
             }}
           />

@@ -58,7 +58,10 @@ def upsert_progress(
     if not video or video.user_id != user_id:
         raise AppError("Video not found", code=ErrorCode.VIDEO_NOT_FOUND)
 
-    dur = duration_seconds if duration_seconds is not None else video.duration
+    # Prefer authoritative asset duration; client value is fallback only.
+    dur = video.duration if video.duration and float(video.duration) > 0 else None
+    if dur is None and duration_seconds is not None and duration_seconds > 0:
+        dur = duration_seconds
     if dur is not None and dur > 0:
         position_seconds = min(position_seconds, float(dur))
     completed = bool(dur and dur > 0 and position_seconds >= 0.9 * float(dur))

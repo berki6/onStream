@@ -70,6 +70,7 @@ export function CinemaSheet({
   const exitPendingRef = useRef(false);
 
   function finishExit() {
+    if (!exitPendingRef.current) return;
     setPresented(false);
   }
 

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.infrastructure.db import models
@@ -48,12 +49,20 @@ def upsert_progress(
             last_watched_at=now,
         )
         db.add(row)
-    else:
-        row.position_seconds = position_seconds
-        if duration_seconds is not None:
-            row.duration_seconds = duration_seconds
-        row.completed = completed
-        row.last_watched_at = now
+        try:
+            db.commit()
+            db.refresh(row)
+            return row
+        except IntegrityError:
+            db.rollback()
+            row = get_progress(db, user_id, video_id)
+            if row is None:
+                raise
+    row.position_seconds = position_seconds
+    if duration_seconds is not None:
+        row.duration_seconds = duration_seconds
+    row.completed = completed
+    row.last_watched_at = now
     db.commit()
     db.refresh(row)
     return row
@@ -141,6 +150,35 @@ def save_share(db: Session, link: models.ShareLink) -> models.ShareLink:
     return link
 
 
+def try_increment_share_view(
+    db: Session, share_id: int, *, now: Optional[datetime] = None
+) -> Optional[models.ShareLink]:
+    """
+    Atomically increment view_count when the link is still active and under
+    max_views. Returns the updated row, or None if the increment was rejected.
+    """
+    now = now or datetime.now(timezone.utc)
+    # Dialect-portable conditional update (Postgres + SQLite).
+    result = db.execute(
+        text(
+            """
+            UPDATE share_links
+            SET view_count = view_count + 1
+            WHERE id = :id
+              AND revoked_at IS NULL
+              AND expires_at > :now
+              AND (max_views IS NULL OR view_count < max_views)
+            """
+        ),
+        {"id": share_id, "now": now},
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        return None
+    db.commit()
+    return db.query(models.ShareLink).filter(models.ShareLink.id == share_id).first()
+
+
 # --- Favorites ---
 
 
@@ -163,9 +201,16 @@ def add_favorite(db: Session, user_id: int, video_id: int) -> models.VideoFavori
         return existing
     row = models.VideoFavorite(user_id=user_id, video_id=video_id)
     db.add(row)
-    db.commit()
-    db.refresh(row)
-    return row
+    try:
+        db.commit()
+        db.refresh(row)
+        return row
+    except IntegrityError:
+        db.rollback()
+        existing = get_favorite(db, user_id, video_id)
+        if existing:
+            return existing
+        raise
 
 
 def remove_favorite(db: Session, user_id: int, video_id: int) -> bool:

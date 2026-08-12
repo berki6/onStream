@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ShareLinkCreate(BaseModel):
-    video_id: str = Field(..., min_length=8, max_length=12, description="upload_id")
+    video_id: str = Field(..., min_length=8, max_length=8, description="upload_id")
     expires_in_seconds: int = Field(86400, ge=60, le=60 * 60 * 24 * 90)
     label: Optional[str] = Field(None, max_length=120)
     max_views: Optional[int] = Field(None, ge=1, le=1_000_000)

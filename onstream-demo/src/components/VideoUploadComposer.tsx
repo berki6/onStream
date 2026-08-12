@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import * as Haptics from "expo-haptics";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { ApiError } from "@/api/client";
@@ -57,6 +57,7 @@ export function VideoUploadComposer({
   const [method, setMethod] = useState<UploadMethod>("direct");
   const [pct, setPct] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stageLabel = useMemo(() => {
     if (phase === "uploading") {
@@ -70,6 +71,13 @@ export function VideoUploadComposer({
     return "Pick a video from your library";
   }, [phase, method, pct]);
 
+  function clearCloseTimer() {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }
+
   function reset() {
     setPhase("idle");
     setPicked(null);
@@ -81,8 +89,15 @@ export function VideoUploadComposer({
 
   function handleClose() {
     if (phase === "uploading") return;
+    clearCloseTimer();
     onClose();
   }
+
+  useEffect(() => {
+    if (visible) clearCloseTimer();
+  }, [visible]);
+
+  useEffect(() => () => clearCloseTimer(), []);
 
   async function pickFile() {
     setError(null);
@@ -143,7 +158,9 @@ export function VideoUploadComposer({
         /* noop */
       }
       await onFinished();
-      setTimeout(() => {
+      clearCloseTimer();
+      closeTimerRef.current = setTimeout(() => {
+        closeTimerRef.current = null;
         onClose();
       }, 900);
     } catch (e) {

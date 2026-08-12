@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -147,6 +148,9 @@ def exchange(db: Session, public_id: str, token: str) -> Dict[str, Any]:
     if not link:
         raise AppError("Share link not found", code=ErrorCode.SHARE_NOT_FOUND)
 
+    if not hmac.compare_digest(_hash_token(token), link.token_hash):
+        raise AppError("Invalid share token", code=ErrorCode.SHARE_FORBIDDEN)
+
     if link.revoked_at is not None:
         raise AppError("Share link has been revoked", code=ErrorCode.SHARE_REVOKED)
 
@@ -157,20 +161,27 @@ def exchange(db: Session, public_id: str, token: str) -> Dict[str, Any]:
     if exp <= now:
         raise AppError("Share link has expired", code=ErrorCode.SHARE_EXPIRED)
 
-    if link.max_views is not None and link.view_count >= link.max_views:
-        raise AppError("Share view limit reached", code=ErrorCode.SHARE_VIEW_LIMIT)
-
-    if _hash_token(token) != link.token_hash:
-        raise AppError("Invalid share token", code=ErrorCode.SHARE_FORBIDDEN)
-
     video = video_repository.get_by_id(db, link.video_id)
     if not video or video.status == VideoStatus.DELETED:
         raise AppError("Video not found", code=ErrorCode.SHARE_NOT_FOUND)
     if video.status != VideoStatus.READY:
         raise AppError("Video is not ready", code=ErrorCode.PLAYBACK_NOT_READY)
 
-    link.view_count = int(link.view_count or 0) + 1
-    engagement_repository.save_share(db, link)
+    # Atomic conditional increment — closes TOCTOU on max_views under concurrency.
+    bumped = engagement_repository.try_increment_share_view(db, link.id, now=now)
+    if bumped is None:
+        link = engagement_repository.get_share_by_public_id(db, public_id)
+        if not link or link.revoked_at is not None:
+            raise AppError("Share link has been revoked", code=ErrorCode.SHARE_REVOKED)
+        exp2 = link.expires_at
+        if exp2.tzinfo is None:
+            exp2 = exp2.replace(tzinfo=timezone.utc)
+        if exp2 <= now:
+            raise AppError("Share link has expired", code=ErrorCode.SHARE_EXPIRED)
+        if link.max_views is not None and link.view_count >= link.max_views:
+            raise AppError("Share view limit reached", code=ErrorCode.SHARE_VIEW_LIMIT)
+        raise AppError("Share link not found", code=ErrorCode.SHARE_NOT_FOUND)
+    link = bumped
 
     ttl = min(settings.STREAM_TOKEN_EXPIRE_SECONDS, 3600)
     remaining = max(60, int((exp - now).total_seconds()))

@@ -12,8 +12,15 @@ import { colors, spacing } from "@/theme/tokens";
  * Deep-link / shared watch surface: onstream://watch?s=&t=
  * or Expo route /watch?s=&t=
  */
+function firstParam(v: string | string[] | undefined): string | undefined {
+  if (Array.isArray(v)) return v[0];
+  return v;
+}
+
 export default function WatchShareScreen() {
-  const { s, t } = useLocalSearchParams<{ s?: string; t?: string }>();
+  const params = useLocalSearchParams<{ s?: string | string[]; t?: string | string[] }>();
+  const s = firstParam(params.s);
+  const t = firstParam(params.t);
   const [title, setTitle] = useState("Shared watch");
   const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
