@@ -11,6 +11,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApiError } from "@/api/client";
+import { toast } from "@/lib/toast";
 import {
   createWebhookEndpoint,
   deleteWebhookEndpoint,
@@ -35,7 +36,6 @@ export default function LabWebhooksScreen() {
   const [hooksLoading, setHooksLoading] = useState(true);
   const [hookBusy, setHookBusy] = useState(false);
   const [hookError, setHookError] = useState<string | null>(null);
-  const [hookNote, setHookNote] = useState<string | null>(null);
   const [secretOnce, setSecretOnce] = useState<string | null>(null);
 
   const loadHooks = useCallback(async () => {
@@ -104,19 +104,18 @@ export default function LabWebhooksScreen() {
           onPress={async () => {
             setHookBusy(true);
             setHookError(null);
-            setHookNote(null);
             setSecretOnce(null);
             try {
               const res = await createWebhookEndpoint({ url: hookUrl.trim() });
               if (res.data?.secret) {
                 setSecretOnce(res.data.secret);
               }
-              setHookNote(
+              toast.success(
                 `Registered #${res.data.id} — create/revoke a live stream to enqueue live.* deliveries.`
               );
               await loadHooks();
             } catch (e) {
-              setHookError(
+              toast.error(
                 e instanceof ApiError ? e.message : "Subscribe failed"
               );
             } finally {
@@ -129,7 +128,6 @@ export default function LabWebhooksScreen() {
             Signing secret (shown once): {secretOnce}
           </Text>
         ) : null}
-        {hookNote ? <Text style={styles.note}>{hookNote}</Text> : null}
         {hookError ? <Text style={styles.error}>{hookError}</Text> : null}
 
         <Text style={styles.subhead}>Endpoints</Text>
@@ -154,9 +152,10 @@ export default function LabWebhooksScreen() {
                   onPress={async () => {
                     try {
                       await deleteWebhookEndpoint(ep.id);
+                      toast.success("Endpoint removed.");
                       await loadHooks();
                     } catch (e) {
-                      setHookError(
+                      toast.error(
                         e instanceof ApiError ? e.message : "Delete failed"
                       );
                     }
@@ -311,11 +310,6 @@ const styles = StyleSheet.create({
   emptyHint: {
     color: colors.textDim,
     fontFamily: "DMSans_400Regular",
-    fontSize: 13,
-  },
-  note: {
-    color: colors.textMuted,
-    fontFamily: "DMSans_500Medium",
     fontSize: 13,
   },
   secretNote: {

@@ -14,7 +14,7 @@ import {
   Alert,
 } from "react-native";
 
-import { ApiError, getApiBase } from "@/api/client";
+import { getApiBase, queryErrorText, userFacingError } from "@/api/client";
 import { favoriteVideo, listSavedVideos, unfavoriteVideo } from "@/api/favorites";
 import {
   createShareLink,
@@ -24,6 +24,7 @@ import {
 } from "@/api/shareLinks";
 import {
   addVideoToPlaylist,
+  removeVideoFromPlaylist,
   type Playlist,
 } from "@/api/playlists";
 import {
@@ -48,6 +49,7 @@ import { Screen } from "@/components/Screen";
 import { StatusPill } from "@/components/StatusPill";
 import { StoryboardStrip } from "@/components/StoryboardStrip";
 import { videoPipelineHint } from "@/lib/videoStatus";
+import { toast } from "@/lib/toast";
 import { playlistKeys, videoKeys } from "@/query/keys";
 import { usePlaylistsQuery } from "@/query/playlists";
 import { useVideoQuery } from "@/query/videos";
@@ -95,8 +97,6 @@ export default function VideoDetailScreen() {
   const qc = useQueryClient();
   const playerRef = useRef<HlsPlayerHandle>(null);
   const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
   const [tokenLoading, setTokenLoading] = useState(false);
   const [demoLoading, setDemoLoading] = useState(false);
   const [focused, setFocused] = useState(true);
@@ -119,6 +119,7 @@ export default function VideoDetailScreen() {
   const [clipStart, setClipStart] = useState("0");
   const [clipEnd, setClipEnd] = useState("");
   const [playlistOpen, setPlaylistOpen] = useState(false);
+  const [playlistBusyId, setPlaylistBusyId] = useState<number | null>(null);
   const [createdEmbed, setCreatedEmbed] = useState<string | null>(null);
   const playlistId = playlistParam ? Number(playlistParam) : NaN;
 
@@ -143,7 +144,46 @@ export default function VideoDetailScreen() {
   });
   const playlistsQuery = usePlaylistsQuery({
     enabled: playlistOpen || Number.isFinite(playlistId),
+    containsVideo: playlistOpen && id ? id : undefined,
   });
+
+  const togglePlaylistMembership = useCallback(
+    async (p: Playlist) => {
+      if (!id || playlistBusyId != null) return;
+      const inList = Boolean(p.contains_video);
+      setPlaylistBusyId(p.id);
+      const key = playlistKeys.listForVideo(id);
+      qc.setQueryData<Playlist[]>(key, (prev) =>
+        (prev ?? []).map((row) =>
+          row.id === p.id ? { ...row, contains_video: !inList } : row
+        )
+      );
+      try {
+        if (inList) {
+          await removeVideoFromPlaylist(p.id, id);
+          toast.success(`Removed from ${p.name}`);
+        } else {
+          await addVideoToPlaylist(p.id, id, 0);
+          toast.success(`Added to ${p.name}`);
+        }
+        await qc.invalidateQueries({ queryKey: playlistKeys.videos(p.id) });
+        await qc.invalidateQueries({ queryKey: playlistKeys.list() });
+        await qc.invalidateQueries({ queryKey: key });
+      } catch (e) {
+        qc.setQueryData<Playlist[]>(key, (prev) =>
+          (prev ?? []).map((row) =>
+            row.id === p.id ? { ...row, contains_video: inList } : row
+          )
+        );
+        toast.error(
+          userFacingError(e, inList ? "Could not remove" : "Could not add")
+        );
+      } finally {
+        setPlaylistBusyId(null);
+      }
+    },
+    [id, playlistBusyId, qc]
+  );
 
   const captionsReady = Boolean(video?.caption_vtt_path);
   const status = String(video?.status || "").toUpperCase();
@@ -151,12 +191,7 @@ export default function VideoDetailScreen() {
   const isBlocked = status === "ERROR" || status === "QUARANTINED";
   const pipeline = video ? videoPipelineHint(video) : null;
   const cold = isPending && !video;
-  const loadError =
-    isError && !video
-      ? error instanceof Error
-        ? error.message
-        : "Failed to load video"
-      : null;
+  const loadError = queryErrorText(Boolean(isError && !video), error);
 
   const chaptersQuery = useQuery({
     queryKey: videoKeys.chapters(id || ""),
@@ -231,16 +266,13 @@ export default function VideoDetailScreen() {
 
     let cancelled = false;
     setTokenLoading(true);
-    setActionError(null);
     void createPlaybackToken(id)
       .then((res) => {
         if (!cancelled) setPlaybackUrl(res.data.playback_url);
       })
       .catch((e) => {
         if (!cancelled) {
-          setActionError(
-            e instanceof ApiError ? e.message : "Token request failed"
-          );
+          toast.error(userFacingError(e, "Token request failed"));
         }
       })
       .finally(() => {
@@ -280,14 +312,13 @@ export default function VideoDetailScreen() {
       await qc.invalidateQueries({ queryKey: videoKeys.saved() });
     } catch (e) {
       setFavorited(prev);
-      setActionError(e instanceof ApiError ? e.message : "Favorite failed");
+      toast.error(userFacingError(e, "Favorite failed"));
     }
   };
 
   const createShare = async () => {
     if (!id) return;
     setShareBusy(true);
-    setActionError(null);
     try {
       const res = await createShareLink({
         videoId: id,
@@ -311,7 +342,7 @@ export default function VideoDetailScreen() {
       const copyTarget = app || browser;
       if (copyTarget) {
         await Clipboard.setStringAsync(copyTarget);
-        setNote(
+        toast.success(
           app
             ? "App deep link copied — browser URL also listed below."
             : "Watch link copied — token shown once."
@@ -319,7 +350,7 @@ export default function VideoDetailScreen() {
       }
       await sharesQuery.refetch();
     } catch (e) {
-      setActionError(e instanceof ApiError ? e.message : "Share failed");
+      toast.error(userFacingError(e, "Share failed"));
     } finally {
       setShareBusy(false);
     }
@@ -330,8 +361,9 @@ export default function VideoDetailScreen() {
     try {
       await revokeShareLink(link.public_id);
       await sharesQuery.refetch();
+      toast.success("Share link revoked.");
     } catch (e) {
-      setActionError(e instanceof ApiError ? e.message : "Revoke failed");
+      toast.error(userFacingError(e, "Revoke failed"));
     } finally {
       setShareBusy(false);
     }
@@ -351,11 +383,10 @@ export default function VideoDetailScreen() {
     if (!id) return;
     const title = editTitle.trim();
     if (title.length < 2) {
-      setActionError("Title must be at least 2 characters.");
+      toast.error("Title must be at least 2 characters.");
       return;
     }
     setEditBusy(true);
-    setActionError(null);
     try {
       await updateVideo(id, {
         title,
@@ -365,9 +396,9 @@ export default function VideoDetailScreen() {
       await qc.invalidateQueries({ queryKey: videoKeys.detail(id) });
       await qc.invalidateQueries({ queryKey: videoKeys.list() });
       setEditOpen(false);
-      setNote("Title saved.");
+      toast.success("Video saved.");
     } catch (e) {
-      setActionError(e instanceof ApiError ? e.message : "Update failed");
+      toast.error(userFacingError(e, "Update failed"));
     } finally {
       setEditBusy(false);
     }
@@ -386,7 +417,6 @@ export default function VideoDetailScreen() {
           onPress: () => {
             void (async () => {
               setEditBusy(true);
-              setActionError(null);
               try {
                 await deleteVideo(id);
                 setEditOpen(false);
@@ -394,12 +424,11 @@ export default function VideoDetailScreen() {
                 await qc.invalidateQueries({ queryKey: videoKeys.continue() });
                 await qc.invalidateQueries({ queryKey: videoKeys.saved() });
                 await qc.invalidateQueries({ queryKey: videoKeys.history() });
+                toast.success("Video deleted.");
                 if (router.canGoBack()) router.back();
                 else router.replace("/(tabs)/videos");
               } catch (e) {
-                setActionError(
-                  e instanceof ApiError ? e.message : "Delete failed"
-                );
+                toast.error(userFacingError(e, "Delete failed"));
               } finally {
                 setEditBusy(false);
               }
@@ -412,7 +441,6 @@ export default function VideoDetailScreen() {
 
   const jumpToChapter = async (start: number) => {
     if (!id || isBlocked) return;
-    setActionError(null);
     try {
       if (!playbackUrl) {
         setTokenLoading(true);
@@ -426,9 +454,7 @@ export default function VideoDetailScreen() {
       }
     } catch (e) {
       setTokenLoading(false);
-      setActionError(
-        e instanceof ApiError ? e.message : "Could not start playback"
-      );
+      toast.error(userFacingError(e, "Could not start playback"));
     }
   };
 
@@ -717,9 +743,6 @@ export default function VideoDetailScreen() {
             </View>
           ) : null}
 
-          {note ? <Text style={styles.note}>{note}</Text> : null}
-          {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
-
           <Button
             label={
               playbackUrl
@@ -733,15 +756,11 @@ export default function VideoDetailScreen() {
             onPress={async () => {
               if (!id) return;
               setTokenLoading(true);
-              setActionError(null);
-              setNote(null);
               try {
                 const res = await createPlaybackToken(id);
                 setPlaybackUrl(res.data.playback_url);
               } catch (e) {
-                setActionError(
-                  e instanceof ApiError ? e.message : "Token request failed"
-                );
+                toast.error(userFacingError(e, "Token request failed"));
               } finally {
                 setTokenLoading(false);
               }
@@ -828,30 +847,25 @@ export default function VideoDetailScreen() {
               hitSlop={8}
               onPress={async () => {
                 setDemoLoading(true);
-                setActionError(null);
-                setNote(null);
                 try {
                   const url = await ensurePlaybackUrl();
                   const demo = `${getApiBase()}/demo/?url=${encodeURIComponent(url)}`;
                   const can = await Linking.canOpenURL(demo);
                   if (!can) {
-                    setNote(`Open this on the PC browser: ${demo}`);
+                    toast.info(
+                      `Open this on the PC browser: ${demo}`,
+                      6000
+                    );
                     return;
                   }
                   await Linking.openURL(demo);
-                  setNote(
+                  toast.success(
                     captionsReady
-                      ? "Opened /demo/ with this playback URL — use the Captions menu."
-                      : "Opened /demo/ — captions appear after the AI captions job finishes."
+                      ? "Opened /demo/ — use the Captions menu."
+                      : "Opened /demo/ — captions appear after the AI job."
                   );
                 } catch (e) {
-                  setActionError(
-                    e instanceof ApiError
-                      ? e.message
-                      : e instanceof Error
-                        ? e.message
-                        : "Could not open /demo/"
-                  );
+                  toast.error(userFacingError(e, "Could not open /demo/"));
                 } finally {
                   setDemoLoading(false);
                 }
@@ -1181,12 +1195,10 @@ export default function VideoDetailScreen() {
                 setClipOpen(false);
                 setShareOpen(true);
                 if (browser) await Clipboard.setStringAsync(browser);
-                setNote("Clip share link created.");
+                toast.success("Clip share link created.");
               })
               .catch((e) => {
-                setActionError(
-                  e instanceof ApiError ? e.message : "Clip share failed"
-                );
+                toast.error(userFacingError(e, "Clip share failed"));
               })
               .finally(() => setShareBusy(false));
           }}
@@ -1200,7 +1212,7 @@ export default function VideoDetailScreen() {
         <View style={styles.sheetHead}>
           <View style={styles.sheetTitleRow}>
             <Ionicons name="list" size={22} color={colors.brand} />
-            <Text style={styles.sheetTitle}>Add to playlist</Text>
+            <Text style={styles.sheetTitle}>Playlists</Text>
           </View>
           <Pressable hitSlop={12} onPress={() => setPlaylistOpen(false)}>
             <Ionicons name="close" size={24} color={colors.textMuted} />
@@ -1211,34 +1223,41 @@ export default function VideoDetailScreen() {
             No playlists yet. Create one from Library → Playlists.
           </Text>
         ) : (
-          (playlistsQuery.data as Playlist[]).map((p) => (
-            <Pressable
-              key={p.id}
-              onPress={() => {
-                if (!id) return;
-                void addVideoToPlaylist(p.id, id, 0)
-                  .then(() => {
-                    void qc.invalidateQueries({
-                      queryKey: playlistKeys.videos(p.id),
-                    });
-                    void qc.invalidateQueries({
-                      queryKey: playlistKeys.list(),
-                    });
-                    setPlaylistOpen(false);
-                    setNote(`Added to ${p.name}.`);
-                  })
-                  .catch((e) => {
-                    setActionError(
-                      e instanceof ApiError ? e.message : "Add failed"
-                    );
-                  });
-              }}
-              style={styles.shareRow}
-            >
-              <Text style={styles.shareId}>{p.name}</Text>
-              <Ionicons name="add" size={20} color={colors.brand} />
-            </Pressable>
-          ))
+          <>
+            <Text style={styles.sheetBody}>
+              Tap to add or remove this video.
+            </Text>
+            {(playlistsQuery.data as Playlist[]).map((p) => {
+              const inList = Boolean(p.contains_video);
+              const busy = playlistBusyId === p.id;
+              return (
+                <Pressable
+                  key={p.id}
+                  onPress={() => void togglePlaylistMembership(p)}
+                  disabled={playlistBusyId != null}
+                  accessibilityRole="button"
+                  accessibilityState={{ checked: inList, busy }}
+                  accessibilityLabel={
+                    inList
+                      ? `Remove from ${p.name}`
+                      : `Add to ${p.name}`
+                  }
+                  style={styles.shareRow}
+                >
+                  <Text style={styles.shareId}>{p.name}</Text>
+                  {busy ? (
+                    <ActivityIndicator color={colors.brand} size="small" />
+                  ) : (
+                    <Ionicons
+                      name={inList ? "checkmark-circle" : "add-circle-outline"}
+                      size={22}
+                      color={inList ? colors.brand : colors.textMuted}
+                    />
+                  )}
+                </Pressable>
+              );
+            })}
+          </>
         )}
       </CinemaSheet>
     </Screen>
@@ -1312,11 +1331,6 @@ const styles = StyleSheet.create({
     fontFamily: "DMSans_400Regular",
     fontSize: 12,
     lineHeight: 17,
-  },
-  note: {
-    color: colors.textMuted,
-    fontFamily: "DMSans_500Medium",
-    fontSize: 13,
   },
   actionToolbar: {
     flexDirection: "row",

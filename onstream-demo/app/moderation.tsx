@@ -22,6 +22,7 @@ import { Button } from "@/components/Button";
 import { FormScroll } from "@/components/FormScroll";
 import { Screen } from "@/components/Screen";
 import { StatusPill } from "@/components/StatusPill";
+import { toast } from "@/lib/toast";
 import { videoKeys } from "@/query/keys";
 import { colors, radii, spacing } from "@/theme/tokens";
 
@@ -67,8 +68,9 @@ export default function ModerationScreen() {
       );
       await load();
       await qc.invalidateQueries({ queryKey: videoKeys.list() });
+      toast.success(action === "approve" ? "Approved." : "Rejected.");
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Review failed");
+      toast.error(e instanceof ApiError ? e.message : "Review failed");
     } finally {
       setBusyId(null);
     }

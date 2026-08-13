@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { ApiError } from "@/api/client";
+import { userFacingError } from "@/api/client";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
 import { FormScroll } from "@/components/FormScroll";
@@ -69,7 +69,7 @@ export default function RegisterScreen() {
                   password,
                 });
               } catch (e) {
-                setError(e instanceof ApiError ? e.message : "Register failed");
+                setError(userFacingError(e, "Register failed"));
               } finally {
                 setLoading(false);
               }

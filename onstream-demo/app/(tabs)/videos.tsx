@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter, type Href } from "expo-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { onlineManager, useQuery, useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { listSavedVideos } from "@/api/favorites";
 import { listContinueWatching } from "@/api/watch";
+import { queryErrorText } from "@/api/client";
 import { ElasticRefreshFlatList } from "@/components/ElasticRefreshFlatList";
 import { LibraryShelves } from "@/components/LibraryShelves";
 import { Screen } from "@/components/Screen";
@@ -62,10 +63,12 @@ export default function VideosScreen() {
   useFocusEffect(
     useCallback(() => {
       focusedRef.current = true;
-      refetch();
-      void continueQuery.refetch();
-      void savedQuery.refetch();
-      void playlistsQuery.refetch();
+      if (onlineManager.isOnline()) {
+        refetch();
+        void continueQuery.refetch();
+        void savedQuery.refetch();
+        void playlistsQuery.refetch();
+      }
       return () => {
         focusedRef.current = false;
       };
@@ -78,7 +81,7 @@ export default function VideosScreen() {
     );
     if (!busy) return;
     const id = setInterval(() => {
-      if (focusedRef.current) refetch();
+      if (focusedRef.current && onlineManager.isOnline()) refetch();
     }, 2500);
     return () => clearInterval(id);
   }, [items, refetch]);
@@ -90,12 +93,7 @@ export default function VideosScreen() {
   }, [savedQuery.data]);
 
   const listError =
-    uploadError ||
-    (isError
-      ? error instanceof Error
-        ? error.message
-        : "Failed to load videos"
-      : null);
+    uploadError || queryErrorText(isError, error, items.length > 0);
 
   return (
     <Screen>

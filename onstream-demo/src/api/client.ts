@@ -1,3 +1,4 @@
+import { reportApiResult } from "../lib/connectivity";
 import { storage } from "../lib/storage";
 
 export type ApiEnvelope<T> = {
@@ -35,9 +36,84 @@ export class ApiError extends Error {
     code: string | null = null
   ) {
     super(message);
+    this.name = "ApiError";
     this.status = status;
     this.body = body;
     this.code = code;
+  }
+}
+
+export class NetworkError extends ApiError {
+  constructor(message = "Can't reach OnStream. Check your connection.") {
+    super(message, 0, null, "NETWORK");
+    this.name = "NetworkError";
+  }
+}
+
+export function isNetworkError(e: unknown): boolean {
+  if (e instanceof NetworkError) return true;
+  if (e instanceof ApiError && (e.status === 0 || e.code === "NETWORK")) {
+    return true;
+  }
+  if (typeof e === "object" && e && (e as { name?: string }).name === "AbortError") {
+    return true;
+  }
+  if (e instanceof Error) {
+    const m = e.message.toLowerCase();
+    return (
+      m.includes("network request failed") ||
+      m.includes("failed to fetch") ||
+      m.includes("network error") ||
+      m.includes("internet connection")
+    );
+  }
+  return false;
+}
+
+/** Inline copy for buttons/forms. List screens hide network errors (banner covers them). */
+export function userFacingError(e: unknown, fallback: string): string {
+  if (isNetworkError(e)) {
+    return e instanceof Error && e.message
+      ? e.message
+      : "Can't reach OnStream. Check your connection.";
+  }
+  if (e instanceof ApiError) return e.message;
+  if (e instanceof Error && e.message) return e.message;
+  return fallback;
+}
+
+export function queryErrorText(
+  isError: boolean,
+  error: unknown,
+  hasData = false
+): string | null {
+  if (!isError || hasData || isNetworkError(error)) return null;
+  return userFacingError(error, "Something went wrong");
+}
+
+const FETCH_TIMEOUT_MS = 12_000;
+
+function toNetworkError(e: unknown): NetworkError {
+  if (e instanceof NetworkError) return e;
+  if (typeof e === "object" && e && (e as { name?: string }).name === "AbortError") {
+    return new NetworkError("Request timed out. Try again.");
+  }
+  return new NetworkError("Can't reach OnStream. Check your connection.");
+}
+
+export async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs = FETCH_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (e) {
+    throw toNetworkError(e);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -78,7 +154,7 @@ export async function tryRefreshAccessToken(): Promise<string | null> {
 async function refreshAccessToken(): Promise<string | null> {
   const refresh = await storage.getRefreshToken();
   if (!refresh) return null;
-  const res = await fetch(`${getApiBase()}/v1/auth/token/refresh`, {
+  const res = await fetchWithTimeout(`${getApiBase()}/v1/auth/token/refresh`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({ refresh_token: refresh }),
@@ -136,13 +212,26 @@ export async function apiRequest<T>(
     if (token) reqHeaders.Authorization = `Bearer ${token}`;
   }
 
-  let res = await fetch(url, { method, headers: reqHeaders, body });
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(url, { method, headers: reqHeaders, body });
+  } catch (e) {
+    reportApiResult(false);
+    throw toNetworkError(e);
+  }
 
   if (res.status === 401 && auth) {
-    const next = await refreshAccessToken();
-    if (next) {
-      reqHeaders.Authorization = `Bearer ${next}`;
-      res = await fetch(url, { method, headers: reqHeaders, body });
+    try {
+      const next = await refreshAccessToken();
+      if (next) {
+        reqHeaders.Authorization = `Bearer ${next}`;
+        res = await fetchWithTimeout(url, { method, headers: reqHeaders, body });
+      }
+    } catch (e) {
+      if (isNetworkError(e)) {
+        reportApiResult(false);
+        throw toNetworkError(e);
+      }
     }
   }
 
@@ -158,18 +247,21 @@ export async function apiRequest<T>(
     throw parseApiError(json, res.status);
   }
 
+  reportApiResult(true);
   return json as T;
 }
 
 export async function checkHealth(): Promise<{ status?: string } | null> {
   const url = `${getApiBase()}/health`;
   try {
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: { Accept: "application/json" },
     });
     if (!res.ok) return null;
+    reportApiResult(true);
     return (await res.json()) as { status?: string };
   } catch {
+    reportApiResult(false);
     return null;
   }
 }
@@ -179,15 +271,21 @@ export async function pingHealthLabel(): Promise<string> {
   const base = getApiBase();
   const url = `${base}/health`;
   try {
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: { Accept: "application/json" },
     });
     if (!res.ok) return `Unreachable · HTTP ${res.status} · ${url}`;
     const body = (await res.json()) as { data?: { status?: string }; status?: string };
     const status = body?.data?.status ?? body?.status ?? "ok";
+    reportApiResult(true);
     return `API reachable · ${status} · ${url}`;
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "network error";
+    reportApiResult(false);
+    const msg = isNetworkError(e)
+      ? "no connection"
+      : e instanceof Error
+        ? e.message
+        : "network error";
     return `Unreachable · ${msg} · ${url}`;
   }
 }

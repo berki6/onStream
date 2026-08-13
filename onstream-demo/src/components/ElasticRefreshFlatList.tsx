@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { onlineManager } from "@tanstack/react-query";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -34,6 +35,8 @@ const ACTIVATE_DY = 18;
  * Gain &lt; 1 so a casual tug stays under threshold; ~160px finger ≈ release.
  */
 const PULL_GAIN = 0.62;
+/** Never leave the spinner up if a refetch hangs (offline / dead socket). */
+const REFRESH_BUDGET_MS = 10_000;
 
 function rubber(dy: number) {
   "worklet";
@@ -79,7 +82,15 @@ export function ElasticRefreshFlatList<ItemT>({
     setInternalRefreshing(true);
     refreshingSV.value = true;
     try {
-      await onRefresh();
+      if (!onlineManager.isOnline()) return;
+      await Promise.race([
+        Promise.resolve(onRefresh()),
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, REFRESH_BUDGET_MS);
+        }),
+      ]);
+    } catch {
+      // Query / banner own the error. Always drop the spinner.
     } finally {
       setInternalRefreshing(false);
       refreshingSV.value = false;

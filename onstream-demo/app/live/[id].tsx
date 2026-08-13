@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { ApiError } from "@/api/client";
+import { queryErrorText, userFacingError } from "@/api/client";
 import { createLiveToken, deleteLiveStream } from "@/api/live";
 import { Button } from "@/components/Button";
 import { CopyRow } from "@/components/CopyRow";
@@ -11,6 +11,7 @@ import { DetailSkeleton } from "@/components/DetailSkeleton";
 import { HlsPlayer } from "@/components/HlsPlayer";
 import { Screen } from "@/components/Screen";
 import { StatusPill } from "@/components/StatusPill";
+import { toast } from "@/lib/toast";
 import { liveKeys } from "@/query/keys";
 import { useLiveHealthQuery, useLiveStreamQuery } from "@/query/live";
 import { scrollPhysics } from "@/theme/scroll";
@@ -21,8 +22,6 @@ export default function LiveDetailScreen() {
   const router = useRouter();
   const qc = useQueryClient();
   const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
   const [revoking, setRevoking] = useState(false);
   const [focused, setFocused] = useState(true);
 
@@ -50,12 +49,7 @@ export default function LiveDetailScreen() {
 
   const ended = String(stream?.status || "").toLowerCase() === "ended";
   const cold = isPending && !stream;
-  const loadError =
-    isError && !stream
-      ? error instanceof Error
-        ? error.message
-        : "Failed to load stream"
-      : null;
+  const loadError = queryErrorText(Boolean(isError && !stream), error);
 
   return (
     <Screen>
@@ -115,9 +109,6 @@ export default function LiveDetailScreen() {
             </View>
           ) : null}
 
-          {note ? <Text style={styles.note}>{note}</Text> : null}
-          {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
-
           <Button
             label="Issue live playback token"
             disabled={ended}
@@ -126,12 +117,8 @@ export default function LiveDetailScreen() {
               try {
                 const res = await createLiveToken(id);
                 setPlaybackUrl(res.data.playback_url);
-                setNote(null);
-                setActionError(null);
               } catch (e) {
-                setActionError(
-                  e instanceof ApiError ? e.message : "Token failed"
-                );
+                toast.error(userFacingError(e, "Token failed"));
               }
             }}
           />
@@ -151,7 +138,6 @@ export default function LiveDetailScreen() {
               onPress={async () => {
                 if (!id) return;
                 setRevoking(true);
-                setActionError(null);
                 try {
                   const res = await deleteLiveStream(id);
                   qc.setQueryData(liveKeys.detail(id), res.data);
@@ -160,13 +146,9 @@ export default function LiveDetailScreen() {
                     queryKey: liveKeys.health(id),
                   });
                   setPlaybackUrl(null);
-                  setNote(
-                    "Revoked. Playback through OnStream is ended; refresh health if needed."
-                  );
+                  toast.success("Stream revoked. Playback through OnStream is ended.");
                 } catch (e) {
-                  setActionError(
-                    e instanceof ApiError ? e.message : "Delete failed"
-                  );
+                  toast.error(userFacingError(e, "Delete failed"));
                 } finally {
                   setRevoking(false);
                 }
@@ -215,11 +197,6 @@ const styles = StyleSheet.create({
     fontFamily: "DMSans_400Regular",
     fontSize: 14,
     lineHeight: 20,
-  },
-  note: {
-    color: colors.textMuted,
-    fontFamily: "DMSans_500Medium",
-    fontSize: 13,
   },
   error: { color: colors.danger, fontFamily: "DMSans_500Medium" },
 });
