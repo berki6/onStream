@@ -16,6 +16,8 @@ export type LiveStream = {
   abr_hls_path?: string | null;
   archived_upload_id?: string | null;
   archive_playback_url?: string | null;
+  dvr?: boolean;
+  dvr_duration_seconds?: number | null;
   started_at?: string | null;
   ended_at?: string | null;
   created_at?: string | null;
@@ -28,6 +30,9 @@ export type LiveHealth = {
   playlist_age_seconds?: number | null;
   is_stale?: boolean;
   abr_running?: boolean;
+  archive_running?: boolean;
+  dvr?: boolean;
+  dvr_duration_seconds?: number | null;
   hls_path?: string | null;
 };
 

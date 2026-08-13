@@ -129,6 +129,25 @@ def _archive_playback_url(upload_id: Optional[str]) -> Optional[str]:
     )
 
 
+def _dvr_playlist(stream: models.LiveStream) -> Optional[Path]:
+    if not live_record.is_enabled():
+        return None
+    path = live_record.archive_playlist(stream.stream_id, create=False)
+    if live_record.playlist_has_segments(path):
+        return path
+    return None
+
+
+def _dvr_fields(stream: models.LiveStream) -> dict:
+    playlist = _dvr_playlist(stream)
+    if playlist is None:
+        return {"dvr": False, "dvr_duration_seconds": None}
+    return {
+        "dvr": True,
+        "dvr_duration_seconds": live_record.playlist_media_duration(playlist),
+    }
+
+
 def _webrtc_base() -> str:
     return settings.PUBLIC_WEBRTC_BASE_URL.rstrip("/")
 
@@ -166,6 +185,7 @@ def _to_response(
             getattr(stream, "archived_upload_id", None)
         ),
     }
+    data.update(_dvr_fields(stream))
     if stream_key is not None:
         data["stream_key"] = stream_key
         data.update(_whip_whep_urls(stream_key))
@@ -372,7 +392,7 @@ def authorize_publish(
         if settings.LIVE_ABR_ENABLED:
             abr_path = f"{stream.stream_id}/abr"
             live_abr.start_abr(stream.stream_id, key)
-        else:
+        elif not live_record.is_enabled():
             live_normalize.start_normalize(stream.stream_id, key)
         live_record.start_record(stream.stream_id, key)
 
@@ -496,10 +516,19 @@ def _live_root() -> Path:
 
 
 def resolve_master(stream: models.LiveStream) -> Path:
-    """Resolve master/index playlist under LIVE_HLS_DIR."""
+    """Resolve master/index playlist under LIVE_HLS_DIR.
+
+    The EVENT archive is preferred so HLS viewers can DVR-scrub. Sliding
+    window / MediaMTX remux remain fallbacks until the archive has segments.
+    """
     root = _live_root()
 
     candidates = []
+    dvr = _dvr_playlist(stream)
+    if dvr is not None:
+        arch = dvr.parent
+        candidates.extend([arch / "master.m3u8", arch / "index.m3u8"])
+
     if settings.LIVE_ABR_ENABLED and stream.abr_hls_path:
         abr_dir = root / stream.abr_hls_path
         candidates.extend([abr_dir / "master.m3u8", abr_dir / "index.m3u8"])
@@ -535,6 +564,8 @@ def resolve_asset(stream: models.LiveStream, asset_path: str) -> Tuple[Path, str
     root = _live_root()
 
     search_dirs = []
+    if live_record.is_enabled():
+        search_dirs.append(live_record.archive_dir(stream.stream_id, create=False))
     if settings.LIVE_ABR_ENABLED and stream.abr_hls_path:
         search_dirs.append(root / stream.abr_hls_path)
     search_dirs.append(root / stream.stream_id)

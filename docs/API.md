@@ -201,7 +201,7 @@ Playback routes serve HLS masters and assets for VOD and live. Authorization acc
 
 ## Live — `/v1/live`
 
-Create returns sensitive publish material once (`stream_key`, `whip_url`, `whep_url`). MediaMTX calls `/mediamtx-auth` on publish and read. Operational recipes: [`PLAYBACK_CLIENTS.md`](PLAYBACK_CLIENTS.md). GET/DELETE include `archived_upload_id` and `archive_playback_url` after a successful live → VOD promote.
+Create returns sensitive publish material once (`stream_key`, `whip_url`, `whep_url`). MediaMTX calls `/mediamtx-auth` on publish and read. Operational recipes: [`PLAYBACK_CLIENTS.md`](PLAYBACK_CLIENTS.md). GET/DELETE include `archived_upload_id` and `archive_playback_url` after a successful live → VOD promote. While live, `dvr` and `dvr_duration_seconds` reflect the EVENT archive (same playlist the live HLS URL serves).
 
 | Method | Path |
 |--------|------|

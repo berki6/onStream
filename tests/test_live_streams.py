@@ -278,6 +278,24 @@ def test_abr_skips_normalize(test_user, db_session: Session, monkeypatch):
             mock_norm.assert_not_called()
 
 
+def test_archive_skips_sliding_normalize(test_user, db_session: Session, monkeypatch):
+    monkeypatch.setattr(settings, "LIVE_ABR_ENABLED", False)
+    monkeypatch.setattr(settings, "LIVE_ARCHIVE_ENABLED", True)
+    token = _auth_token()
+    created = _create_stream(token)
+    key = created["stream_key"]
+    stream_id = created["stream_id"]
+
+    with patch.object(live_normalize, "start_normalize") as mock_norm:
+        with patch("src.application.live_service.live_record.start_record") as mock_rec:
+            client.post(
+                "/v1/live/mediamtx-auth",
+                json={"action": "publish", "path": f"live/{key}"},
+            )
+            mock_norm.assert_not_called()
+            mock_rec.assert_called_once_with(stream_id, key)
+
+
 def test_unpublish_marks_idle_and_stops_abr(test_user, db_session: Session, monkeypatch):
     monkeypatch.setattr(settings, "LIVE_ABR_ENABLED", True)
     token = _auth_token()

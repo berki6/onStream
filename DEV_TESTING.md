@@ -85,6 +85,7 @@ More encoder/player recipes: [`docs/PLAYBACK_CLIENTS.md`](docs/PLAYBACK_CLIENTS.
 | Watch & collect | **Ready** | Unlisted visibility, playlists, instant clips, storyboard filmstrip, embed iframe, RSS feeds |
 | Live list ended history | **Ready** | `include_ended=true`; Expo shows Active + Recently ended |
 | Live → VOD replay | **Ready** | Revoke archives HLS; Expo **Watch replay** |
+| Live HLS DVR scrub | **Ready** | EVENT archive is the live playlist; Expo **Jump to live** |
 | Direct upload `/v1/uploads` | **Ready** | Expo **+** → **Resumable** + `/demo/upload/` (chunked Content-Range) |
 | WHIP publish | **Ready (browser)** | `/demo/whip/` + Expo **Go Live** opens it; Expo Go has no native WebRTC encoder |
 | WHEP watch | **Ready (PC Chrome)** | Tokenized `/demo/whep/?stream=&token=`; Expo **Watch live (low latency)** opens it; Expo Go has no WebRTC player |
@@ -536,9 +537,11 @@ The demo page POSTs SDP to `/v1/playback/live/{stream_id}/whep` (token in query)
 Requires `alembic upgrade head` (`j0a1b2c3d4e5`) and `LIVE_ARCHIVE_ENABLED=true`.
 
 1. Go live (WHIP or RTMP) for at least a few seconds so archive segments exist.
-2. Expo → **Revoke stream**.
-3. Same screen: **Watch replay** opens the Library VOD (`/video/{upload_id}`). HLS should play the recording; live playlist 404s.
-4. Library list should show a new READY video with the live title.
+2. Expo → issue a live playback token. HLS starts at the live edge; scrub the native timeline backward, then **Jump to live**.
+3. `/demo/?url=` with the tokenized live master — hls.js timeline should seek within the EVENT playlist.
+4. Expo → **Revoke stream**.
+5. Same screen: **Watch replay** opens the Library VOD (`/video/{upload_id}`). HLS should play the recording; live playlist 404s.
+6. Library list should show a new READY video with the live title.
 
 Revoke without a dedicated archive playlist still ends the stream (`archived_upload_id` null). The sliding live window is never promoted.
 

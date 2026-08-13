@@ -44,6 +44,10 @@ def _write_archive(stream_id: str) -> None:
     dest.mkdir(parents=True, exist_ok=True)
     (dest / "index.m3u8").write_text(PLAYLIST, encoding="utf-8")
     (dest / "seg0.ts").write_bytes(b"\x00" * 32)
+    (dest / "master.m3u8").write_text(
+        "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=2500000\nindex.m3u8\n",
+        encoding="utf-8",
+    )
 
 
 def test_revoke_promotes_archive_to_vod(test_user, db_session: Session):
@@ -128,4 +132,68 @@ def test_revoke_does_not_promote_sliding_live_window(test_user, db_session: Sess
     )
     assert deleted.status_code == 200
     assert deleted.json()["data"]["archived_upload_id"] is None
+
+
+def test_live_hls_serves_dvr_archive_while_live(test_user, db_session: Session):
+    token = _auth_token()
+    created = _create_stream(token, title="DVR live")
+    stream_id = created["stream_id"]
+    key = created["stream_key"]
+    client.post(
+        "/v1/live/mediamtx-auth",
+        json={"action": "publish", "path": f"live/{key}"},
+    )
+    sliding = Path(settings.LIVE_HLS_DIR) / stream_id
+    sliding.mkdir(parents=True, exist_ok=True)
+    (sliding / "index.m3u8").write_text(
+        "#EXTM3U\n# sliding window leftover\n", encoding="utf-8"
+    )
+    _write_archive(stream_id)
+
+    got = client.get(
+        f"/v1/live/{stream_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert got.status_code == 200
+    body = got.json()["data"]
+    assert body["dvr"] is True
+    assert body["dvr_duration_seconds"] == 2.0
+
+    health = client.get(
+        f"/v1/live/{stream_id}/health",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert health.status_code == 200
+    assert health.json()["data"]["dvr"] is True
+
+    tok = client.post(
+        f"/v1/live/{stream_id}/tokens",
+        headers={"Authorization": f"Bearer {token}"},
+        json={},
+    )
+    playback_token = tok.json()["data"]["token"]
+    master = client.get(
+        f"/v1/playback/live/{stream_id}/master.m3u8",
+        params={"token": playback_token},
+    )
+    assert master.status_code == 200
+    text = master.text
+    assert "index.m3u8" in text
+    assert "#EXT-X-START:" in text
+    assert "sliding window leftover" not in text
+
+    index = client.get(
+        f"/v1/playback/live/{stream_id}/index.m3u8",
+        params={"token": playback_token},
+    )
+    assert index.status_code == 200
+    assert "#EXTINF:2" in index.text
+    assert "seg0.ts" in index.text
+
+    seg = client.get(
+        f"/v1/playback/live/{stream_id}/seg0.ts",
+        params={"token": playback_token},
+    )
+    assert seg.status_code == 200
+    assert len(seg.content) == 32
 

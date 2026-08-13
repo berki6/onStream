@@ -159,7 +159,8 @@ async def live_playback_asset(
     except AppError as e:
         raise_app_error(e)
 
-    headers = cache_headers(live=True, asset_name=safe)
+    archive_seg = path.parent.name == "archive" and safe.endswith(".ts")
+    headers = cache_headers(live=not archive_seg, asset_name=safe)
 
     if safe.endswith(".m3u8"):
         raw = path.read_text(encoding="utf-8", errors="ignore")

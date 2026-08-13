@@ -75,6 +75,7 @@
   <h1>OnStream</h1>
   <p>
     Paste an HLS master playlist URL (public or with <code>?token=</code>) and play.
+    Live EVENT playlists are DVR: the timeline scrubs; the playhead starts near the live edge.
     VOD masters with captions expose a subtitle track here.
     Tools: <a href="/demo/whip/">WHIP publish</a> ·
     <a href="/demo/upload/">direct upload</a> ·
@@ -260,6 +261,9 @@
           enableWorker: true,
           // Prefer native cues when possible so the <video> CC button works too.
           renderTextTracksNatively: true,
+          // EVENT / DVR live: keep the full back buffer so the timeline can scrub.
+          backBufferLength: Infinity,
+          liveSyncDurationCount: 3,
         });
         wireHlsCaptions(hls);
         hls.loadSource(src);

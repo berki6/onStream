@@ -1,7 +1,7 @@
 import * as Linking from "expo-linking";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { queryErrorText, userFacingError, getApiBase } from "@/api/client";
@@ -9,7 +9,7 @@ import { createLiveToken, deleteLiveStream } from "@/api/live";
 import { Button } from "@/components/Button";
 import { CopyRow } from "@/components/CopyRow";
 import { DetailSkeleton } from "@/components/DetailSkeleton";
-import { HlsPlayer } from "@/components/HlsPlayer";
+import { HlsPlayer, type HlsPlayerHandle } from "@/components/HlsPlayer";
 import { Screen } from "@/components/Screen";
 import { StatusPill } from "@/components/StatusPill";
 import { toast } from "@/lib/toast";
@@ -31,6 +31,7 @@ export default function LiveDetailScreen() {
   const [playbackToken, setPlaybackToken] = useState<string | null>(null);
   const [revoking, setRevoking] = useState(false);
   const [focused, setFocused] = useState(true);
+  const playerRef = useRef<HlsPlayerHandle>(null);
 
   const {
     data: stream,
@@ -96,13 +97,28 @@ export default function LiveDetailScreen() {
               Stream revoked. Live playlist requests return 404. If a replay
               was saved, Watch replay opens it in Library like any VOD.
             </Text>
-          ) : null}
+          ) : (
+            <Text style={styles.endedNote}>
+              HLS is DVR: join at the live edge, then scrub the timeline.
+              Jump to live returns to the edge. WHEP stays low-latency
+              without a timeline.
+            </Text>
+          )}
 
           <HlsPlayer
+            ref={playerRef}
             uri={ended ? null : playbackUrl}
             title={stream?.title}
             liveEdge
           />
+
+          {playbackUrl && !ended ? (
+            <Button
+              label="Jump to live"
+              variant="ghost"
+              onPress={() => playerRef.current?.jumpToLive()}
+            />
+          ) : null}
 
           {health ? (
             <View style={styles.healthBox}>
@@ -116,6 +132,12 @@ export default function LiveDetailScreen() {
                   : ""}
                 {health.is_stale ? " · STALE" : ""}
               </Text>
+              {health.dvr ? (
+                <Text style={styles.healthLine}>
+                  DVR {Math.floor(health.dvr_duration_seconds || 0)}s available
+                  {health.archive_running ? " · recording" : ""}
+                </Text>
+              ) : null}
             </View>
           ) : null}
 

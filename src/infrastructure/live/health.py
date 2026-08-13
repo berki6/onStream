@@ -14,6 +14,7 @@ from src.infrastructure.db import models
 from src.infrastructure.db.repositories import live_stream_repository
 from src.infrastructure.media import live_abr
 from src.infrastructure.media import live_normalize
+from src.infrastructure.media import live_record
 
 logger = get_logger(__name__)
 
@@ -57,6 +58,10 @@ def _live_root() -> Path:
 def _candidate_playlists(stream: models.LiveStream) -> List[Path]:
     root = _live_root()
     candidates: List[Path] = []
+    if live_record.is_enabled():
+        arch = live_record.archive_dir(stream.stream_id, create=False)
+        # Prefer index.m3u8 — master is static and would look stale.
+        candidates.extend([arch / "index.m3u8", arch / "master.m3u8"])
     if settings.LIVE_ABR_ENABLED and stream.abr_hls_path:
         abr_dir = root / stream.abr_hls_path
         candidates.extend([abr_dir / "master.m3u8", abr_dir / "index.m3u8"])
@@ -86,6 +91,8 @@ def get_health_snapshot(db: Session, stream: models.LiveStream) -> Dict[str, Any
     age = playlist_age_seconds(playlist)
     stale_limit = settings.LIVE_STALE_SECONDS
     is_stale = age is None or age > stale_limit
+    dvr_playlist = live_record.archive_playlist(stream.stream_id, create=False)
+    dvr = live_record.is_enabled() and live_record.playlist_has_segments(dvr_playlist)
     return {
         "stream_id": stream.stream_id,
         "status": stream.status,
@@ -96,6 +103,11 @@ def get_health_snapshot(db: Session, stream: models.LiveStream) -> Dict[str, Any
         "is_stale": bool(stream.status == "live" and is_stale),
         "abr_running": live_abr.abr_running(stream.stream_id),
         "normalize_running": live_normalize.normalize_running(stream.stream_id),
+        "archive_running": live_record.record_running(stream.stream_id),
+        "dvr": dvr,
+        "dvr_duration_seconds": (
+            live_record.playlist_media_duration(dvr_playlist) if dvr else None
+        ),
         "hls_path": stream.hls_path,
         "abr_hls_path": stream.abr_hls_path,
         "started_at": stream.started_at,
@@ -109,6 +121,7 @@ def _mark_stale_idle(db: Session, stream: models.LiveStream, reason: str) -> Non
 
     live_abr.stop_abr(stream.stream_id)
     live_normalize.stop_normalize(stream.stream_id)
+    live_record.stop_record(stream.stream_id, finalize=False)
     # Soft-fail to idle so the stream remains visible/re-publishable.
     # Hard "ended" is reserved for explicit revoke/delete.
     previous_status = stream.status
@@ -159,6 +172,8 @@ def _within_hls_grace(stream: models.LiveStream) -> bool:
     grace = max(int(settings.LIVE_STALE_SECONDS), 15)
     if live_normalize.is_enabled() and not settings.LIVE_ABR_ENABLED:
         # WHIP normalize: probe tracks, then FFmpeg's first HLS segment.
+        grace = max(grace, 35)
+    if live_record.is_enabled():
         grace = max(grace, 35)
     return age < grace
 

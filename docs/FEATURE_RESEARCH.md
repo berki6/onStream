@@ -117,7 +117,7 @@ Legend: **Have** / **Partial** / **Gap**. Priority = fit for *next* work given c
 | API keys Expo UI | TODO #10 | Partial (API) | Medium | Lab/Account surface |
 | All my share links screen | TODO #8 | Gap | Medium | Management UX |
 | Live chat | Owncast, CyTube | Gap | Medium | Distinct live product slice |
-| Live → VOD / DVR archive | PingOS, PeerTube, OME | **Partial** (revoke → READY VOD; no mid-stream DVR scrub) | High | Shipped as full-session HLS archive + promote |
+| Live → VOD / DVR archive | PingOS, PeerTube, OME | **Shipped** (EVENT DVR while live + revoke → READY VOD) | High | Mid-stream scrub on the archive playlist |
 | LL-HLS delivery | Mux, OME, LiveForge | Gap | Medium–High | Latency product story |
 | Scrub / storyboard previews | OPlayer, CF Stream, Mux | Partial (storyboard infra exists in media stack?) | Medium | Browser `/demo/` + Expo later |
 | Instant / clip highlights | Mux clips, CF transforms | Gap | Medium | Builds on chapters + share |
@@ -142,7 +142,7 @@ If picking **one** research-backed slice after the merge:
 
 1. **Playlists UI + polish** (API exists) — MediaCMS/OPlayer pattern; closes TODO #9.  
 2. **Channels / orgs** — PeerTube/MediaCMS pattern; unlocks multi-user (TODO #1).  
-3. **Live → VOD archive** — shipped on revoke (`LIVE_ARCHIVE_ENABLED`); mid-stream DVR still open.  
+3. **Live → VOD archive** — shipped (DVR while live + revoke promote).  
 4. **In-app WHIP (dev client)** — industry WHIP RFC wave; TODO #3.  
 5. **Player scrub previews + `/demo/` upgrade** — OPlayer/CF/Mux pattern; visible quality jump.
 

@@ -22,6 +22,7 @@ type Props = {
 
 export type HlsPlayerHandle = {
   seekTo: (seconds: number) => void;
+  jumpToLive: () => void;
 };
 
 export const HlsPlayer = forwardRef<HlsPlayerHandle, Props>(function HlsPlayer(
@@ -66,6 +67,19 @@ export const HlsPlayer = forwardRef<HlsPlayerHandle, Props>(function HlsPlayer(
           player.currentTime = t;
         } catch {
           /* retry via progress loop */
+        }
+        player.play();
+        setPlaying(true);
+      },
+      jumpToLive() {
+        const dur = Number(player.duration) || 0;
+        const t = dur > 3 ? Math.max(0, dur - 1.5) : dur;
+        resumeTarget.current = 0;
+        seekDone.current = true;
+        try {
+          player.currentTime = t;
+        } catch {
+          /* ignore */
         }
         player.play();
         setPlaying(true);
