@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
@@ -222,6 +222,47 @@ def create_app() -> FastAPI:
     application.include_router(health.router, prefix="", tags=["health"])
 
     if settings.DEMO_PLAYER_ENABLED:
+        from src.application.demo_whip_proxy import abs_session_url, whip_proxy_allowed
+
+        @application.post("/demo/whip/session")
+        async def demo_whip_publish(
+            request: Request, target: str = Query(..., min_length=8)
+        ):
+            if not whip_proxy_allowed(target):
+                return JSONResponse(
+                    {"error": "WHIP target is not this lab's MediaMTX"},
+                    status_code=400,
+                )
+            import httpx
+
+            sdp = await request.body()
+            try:
+                async with httpx.AsyncClient(
+                    timeout=20.0, follow_redirects=False
+                ) as client:
+                    res = await client.post(
+                        target,
+                        content=sdp,
+                        headers={"Content-Type": "application/sdp"},
+                    )
+            except httpx.HTTPError as e:
+                return JSONResponse({"error": str(e)}, status_code=502)
+            session = abs_session_url(target, res.headers.get("Location"))
+            return JSONResponse(
+                {"sdp": res.text, "session_url": session},
+                status_code=res.status_code if res.status_code < 500 else 502,
+            )
+
+        @application.delete("/demo/whip/session")
+        async def demo_whip_stop(target: str = Query(..., min_length=8)):
+            if not whip_proxy_allowed(target):
+                return JSONResponse({"error": "Invalid WHIP session"}, status_code=400)
+            import httpx
+
+            async with httpx.AsyncClient(timeout=10.0, follow_redirects=False) as client:
+                await client.delete(target)
+            return Response(status_code=204)
+
         demo_dir = PROJECT_ROOT / "static" / "demo"
         if demo_dir.is_dir():
             application.mount(

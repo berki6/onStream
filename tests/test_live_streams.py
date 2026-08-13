@@ -327,3 +327,15 @@ def test_check_live_streams_marks_stale(test_user, db_session: Session, monkeypa
         headers={"Authorization": f"Bearer {token}"},
     )
     assert got.json()["data"]["status"] == "idle"
+
+
+def test_whip_proxy_allows_lab_mediamtx_hosts(monkeypatch):
+    from src.application.demo_whip_proxy import whip_proxy_allowed
+
+    monkeypatch.setattr(
+        settings, "PUBLIC_WEBRTC_BASE_URL", "http://192.168.1.9:8889"
+    )
+    assert whip_proxy_allowed("http://192.168.1.9:8889/live/abc12xyz/whip")
+    assert whip_proxy_allowed("http://127.0.0.1:8889/live/abc12xyz/whip")
+    assert not whip_proxy_allowed("https://evil.example/live/abc12xyz/whip")
+    assert not whip_proxy_allowed("http://127.0.0.1:8889/live/abc12xyz/whep")
