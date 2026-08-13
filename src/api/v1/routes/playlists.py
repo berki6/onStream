@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, Request, status
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
 from src.api.v1.deps import get_current_user
@@ -41,6 +43,10 @@ def list_playlists(
     request: Request,
     skip: int = 0,
     limit: int = 100,
+    contains_video: Optional[str] = Query(
+        None,
+        description="Public upload_id — each row includes contains_video true/false",
+    ),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -48,11 +54,22 @@ def list_playlists(
         playlists, total_count = playlist_service.list_playlists(
             db, current_user.id, skip=skip, limit=limit
         )
+        member_ids = None
+        if contains_video:
+            member_ids = playlist_service.playlist_ids_containing_upload(
+                db, current_user.id, contains_video
+            )
     except AppError as e:
         raise_app_error(e)
+    items = []
+    for p in playlists:
+        row = Playlist.model_validate(p)
+        if member_ids is not None:
+            row = row.model_copy(update={"contains_video": p.id in member_ids})
+        items.append(row)
     return api_page(
         request,
-        playlists,
+        items,
         total_count=total_count,
         skip=skip,
         limit=limit,

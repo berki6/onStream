@@ -12,6 +12,7 @@ import {
 import type { Playlist } from "@/api/playlists";
 import type { ContinueItem } from "@/api/watch";
 import type { Video } from "@/api/videos";
+import { PlaylistArt } from "@/components/PlaylistArt";
 import { colors, radii, spacing } from "@/theme/tokens";
 
 function formatRemain(pos: number, dur?: number | null) {
@@ -163,8 +164,8 @@ export function LibraryShelves({
                   pressed && { opacity: 0.88 },
                 ]}
               >
-                <View style={styles.poster}>
-                  <Ionicons name="list" size={26} color={colors.brand} />
+                <View style={styles.playlistPoster}>
+                  <PlaylistArt size="md" isPublic={item.is_public} />
                 </View>
                 <Text style={styles.tileTitle} numberOfLines={2}>
                   {item.name}
@@ -226,6 +227,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
+  },
+  playlistPoster: {
+    height: 96,
+    borderRadius: radii.md,
+    alignItems: "center",
+    justifyContent: "center",
   },
   savedPoster: {
     backgroundColor: "rgba(255,77,106,0.08)",

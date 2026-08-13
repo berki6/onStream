@@ -168,7 +168,7 @@ Browser landing: `/demo/watch/?s={public_id}&t={token}`. Add `embed=1` for ifram
 | Method | Path |
 |--------|------|
 | POST | `/` create (`name`, optional `is_public`) |
-| GET | `/` list (auth) |
+| GET | `/` list (auth). `?contains_video={upload_id}` adds `contains_video` per row |
 | GET | `/public/{playlist_id}` public playlist + public videos (no auth) |
 | GET | `/{playlist_id}` |
 | PATCH | `/{playlist_id}` `name` / `is_public` |

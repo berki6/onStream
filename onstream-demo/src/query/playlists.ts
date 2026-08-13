@@ -3,11 +3,18 @@ import { useQuery } from "@tanstack/react-query";
 import { getPlaylist, listPlaylistVideos, listPlaylists } from "@/api/playlists";
 import { playlistKeys } from "./keys";
 
-export function usePlaylistsQuery(opts?: { enabled?: boolean }) {
+export function usePlaylistsQuery(opts?: {
+  enabled?: boolean;
+  containsVideo?: string;
+}) {
+  const containsVideo = opts?.containsVideo;
   return useQuery({
-    queryKey: playlistKeys.list(),
+    queryKey: containsVideo
+      ? playlistKeys.listForVideo(containsVideo)
+      : playlistKeys.list(),
     enabled: opts?.enabled ?? true,
-    queryFn: async () => (await listPlaylists()).data || [],
+    queryFn: async () =>
+      (await listPlaylists(0, 50, containsVideo)).data || [],
   });
 }
 

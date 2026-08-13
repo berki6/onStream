@@ -892,3 +892,99 @@ class TestPlaylistRouterExtended:
             db_session.delete(playlist)
         db_session.delete(user)
         db_session.commit()
+
+    def test_list_playlists_contains_video_flag(self, mocker, db_session):
+        mock_probe = mocker.patch("src.infrastructure.media.ffmpeg.probe_duration")
+        mock_probe.return_value = 12.0
+        from src.core.security.passwords import get_password_hash
+
+        hashed_password = get_password_hash("testpass")
+        user = models.User(
+            username="plcontains",
+            email="plcontains@example.com",
+            hashed_password=hashed_password,
+        )
+        db_session.add(user)
+        db_session.commit()
+        db_session.refresh(user)
+
+        response = client.post(
+            "/v1/auth/login", data={"username": "plcontains", "password": "testpass"}
+        )
+        token = response.json()["data"]["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        a = client.post(
+            "/v1/playlists/", json={"name": "Already In"}, headers=headers
+        )
+        b = client.post(
+            "/v1/playlists/", json={"name": "Not Yet"}, headers=headers
+        )
+        assert a.status_code == 201, a.text
+        assert b.status_code == 201, b.text
+        pid_a = a.json()["data"]["id"]
+        pid_b = b.json()["data"]["id"]
+
+        uploaded = client.post(
+            "/v1/videos/",
+            data={"title": "Membership clip"},
+            files={"file": ("member.mp4", b"content", "video/mp4")},
+            headers=headers,
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        upload_id = uploaded.json()["data"]["upload_id"]
+
+        listed = client.get(
+            f"/v1/playlists/?contains_video={upload_id}", headers=headers
+        )
+        assert listed.status_code == 200, listed.text
+        by_id = {row["id"]: row for row in listed.json()["data"]}
+        assert by_id[pid_a]["contains_video"] is False
+        assert by_id[pid_b]["contains_video"] is False
+
+        added = client.post(
+            f"/v1/playlists/{pid_a}/videos/{upload_id}",
+            json={"position": 0},
+            headers=headers,
+        )
+        assert added.status_code == 201, added.text
+
+        listed = client.get(
+            f"/v1/playlists/?contains_video={upload_id}", headers=headers
+        )
+        by_id = {row["id"]: row for row in listed.json()["data"]}
+        assert by_id[pid_a]["contains_video"] is True
+        assert by_id[pid_b]["contains_video"] is False
+
+        removed = client.delete(
+            f"/v1/playlists/{pid_a}/videos/{upload_id}", headers=headers
+        )
+        assert removed.status_code == 204, removed.text
+
+        listed = client.get(
+            f"/v1/playlists/?contains_video={upload_id}", headers=headers
+        )
+        by_id = {row["id"]: row for row in listed.json()["data"]}
+        assert by_id[pid_a]["contains_video"] is False
+        assert by_id[pid_b]["contains_video"] is False
+
+        plain = client.get("/v1/playlists/", headers=headers)
+        assert plain.status_code == 200
+        for row in plain.json()["data"]:
+            assert row.get("contains_video") is None
+
+        db_session.query(models.PlaylistVideo).filter(
+            models.PlaylistVideo.playlist_id.in_([pid_a, pid_b])
+        ).delete(synchronize_session=False)
+        db_session.query(models.Playlist).filter(
+            models.Playlist.user_id == user.id
+        ).delete(synchronize_session=False)
+        video = (
+            db_session.query(models.Video)
+            .filter(models.Video.upload_id == upload_id)
+            .first()
+        )
+        if video:
+            db_session.delete(video)
+        db_session.delete(user)
+        db_session.commit()

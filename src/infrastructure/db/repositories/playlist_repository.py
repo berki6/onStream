@@ -85,6 +85,24 @@ def remove_video(db: Session, playlist_id: int, video_id: int):
     return playlist_video
 
 
+def playlist_ids_containing_video(
+    db: Session, user_id: int, video_id: int
+) -> set:
+    rows = (
+        db.query(models.PlaylistVideo.playlist_id)
+        .join(
+            models.Playlist,
+            models.Playlist.id == models.PlaylistVideo.playlist_id,
+        )
+        .filter(
+            models.Playlist.user_id == user_id,
+            models.PlaylistVideo.video_id == video_id,
+        )
+        .all()
+    )
+    return {row[0] for row in rows}
+
+
 def get_videos(db: Session, playlist_id: int):
     return (
         db.query(models.PlaylistVideo)

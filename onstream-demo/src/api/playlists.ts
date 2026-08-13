@@ -6,6 +6,7 @@ export type Playlist = {
   user_id: number;
   is_public: boolean;
   created_at?: string | null;
+  contains_video?: boolean | null;
 };
 
 export type PlaylistVideo = {
@@ -17,10 +18,17 @@ export type PlaylistVideo = {
   thumbnail_path?: string | null;
 };
 
-export async function listPlaylists(skip = 0, limit = 50) {
-  return apiRequest<ApiEnvelope<Playlist[]>>(
-    `/v1/playlists/?skip=${skip}&limit=${limit}`
-  );
+export async function listPlaylists(
+  skip = 0,
+  limit = 50,
+  containsVideo?: string
+) {
+  const q = new URLSearchParams({
+    skip: String(skip),
+    limit: String(limit),
+  });
+  if (containsVideo) q.set("contains_video", containsVideo);
+  return apiRequest<ApiEnvelope<Playlist[]>>(`/v1/playlists/?${q.toString()}`);
 }
 
 export async function getPlaylist(id: number) {

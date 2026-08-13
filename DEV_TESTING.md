@@ -407,7 +407,7 @@ Requires `alembic upgrade head` through `i9c0d1e2f3a4`. Use a **READY** VOD.
 **Playlists**
 
 1. Library → list icon (or **Playlists** shelf) → **+** → name a playlist.
-2. Video detail → list icon → add this video.
+2. Video detail → list icon → playlists with a check are already in; tap to add or remove.
 3. Open the playlist → reorder with chevrons, remove with **✕**.
 4. Play the first row (`?playlist=` + `?play=1`) → let it finish → next video should auto-open.
 

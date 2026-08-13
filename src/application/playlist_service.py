@@ -50,6 +50,17 @@ def list_playlists(
     return playlist_repository.list_by_user(db, user_id, skip=skip, limit=limit)
 
 
+def playlist_ids_containing_upload(
+    db: Session, user_id: int, upload_id: str
+) -> set:
+    """Playlist ids owned by ``user_id`` that already include this public video id."""
+    validate_public_video_id(upload_id)
+    video = video_repository.get_by_upload_id(db, upload_id)
+    if not video or video.user_id != user_id:
+        return set()
+    return playlist_repository.playlist_ids_containing_video(db, user_id, video.id)
+
+
 def get_playlist(db: Session, playlist_id: int, user_id: int):
     playlist = playlist_repository.get_by_id(db, playlist_id)
     if not playlist:

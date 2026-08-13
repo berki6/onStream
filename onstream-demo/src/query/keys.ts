@@ -13,6 +13,8 @@ export const videoKeys = {
 export const playlistKeys = {
   all: ["playlists"] as const,
   list: () => [...playlistKeys.all, "list"] as const,
+  listForVideo: (uploadId: string) =>
+    [...playlistKeys.all, "list", "contains", uploadId] as const,
   detail: (id: number) => [...playlistKeys.all, "detail", id] as const,
   videos: (id: number) => [...playlistKeys.all, "videos", id] as const,
 };

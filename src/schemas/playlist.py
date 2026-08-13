@@ -42,6 +42,7 @@ class Playlist(PlaylistBase):
     user_id: int
     is_public: bool = False
     created_at: datetime
+    contains_video: Optional[bool] = None
 
     model_config = ConfigDict(from_attributes=True)
 
