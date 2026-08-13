@@ -28,6 +28,12 @@ rtmp: yes
 rtmpAddress: :1935
 
 ###############################################
+# RTSP (FFmpeg normalize / ABR pull)
+
+rtsp: yes
+rtspAddress: :8554
+
+###############################################
 # WebRTC (WHIP publish / WHEP playback)
 
 webrtc: yes
@@ -41,8 +47,8 @@ hls: yes
 hlsAddress: :8888
 hlsAlwaysRemux: yes
 hlsVariant: mpegts
-hlsSegmentCount: 7
-hlsSegmentDuration: 2s
+hlsSegmentCount: 3
+hlsSegmentDuration: 1s
 hlsDirectory: C:/Users/berek/OneDrive/Documents/DevFiles/Project-Python/onStream/data/live
 hlsMuxerCloseAfter: 30s
 

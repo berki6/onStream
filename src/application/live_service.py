@@ -21,9 +21,15 @@ from src.core.security.tokens import create_stream_token, decode_token
 from src.infrastructure.db import models
 from src.infrastructure.db.repositories import live_stream_repository
 from src.infrastructure.media import live_abr
+from src.infrastructure.media import live_normalize
 from src.infrastructure.webhooks.delivery import emit_live_event
 
 logger = get_logger(__name__)
+
+
+def _stop_live_encoders(stream_id: str) -> None:
+    live_abr.stop_abr(stream_id)
+    live_normalize.stop_normalize(stream_id)
 
 
 def _safe_emit_live(
@@ -229,7 +235,7 @@ def delete_stream(db: Session, stream_id: str, user_id: int) -> dict:
     except Exception as exc:
         logger.warning("CDN purge on live delete failed for %s: %s", stream_id, exc)
 
-    live_abr.stop_abr(stream_id)
+    _stop_live_encoders(stream_id)
     stream = live_stream_repository.revoke(db, stream)
     _safe_emit_live(db, stream, "live.ended", extra={"reason": "revoked"})
     logger.info("Deleted live stream")
@@ -327,6 +333,8 @@ def authorize_publish(
         if settings.LIVE_ABR_ENABLED:
             abr_path = f"{stream.stream_id}/abr"
             live_abr.start_abr(stream.stream_id, key)
+        else:
+            live_normalize.start_normalize(stream.stream_id, key)
 
         previous_status = stream.status
         stream = live_stream_repository.set_live(
@@ -354,7 +362,7 @@ def authorize_publish(
 
     if action in ("unpublish", "unpublish_all"):
         previous_status = stream.status
-        live_abr.stop_abr(stream.stream_id)
+        _stop_live_encoders(stream.stream_id)
         stream = live_stream_repository.set_idle(db, stream)
         if previous_status == "live":
             _safe_emit_live(
@@ -456,6 +464,14 @@ def resolve_master(stream: models.LiveStream) -> Path:
         abr_dir = root / stream.abr_hls_path
         candidates.extend([abr_dir / "master.m3u8", abr_dir / "index.m3u8"])
 
+    # Normalized WHIP HLS (H.264+AAC) wins over MediaMTX remux of VP8/Opus.
+    candidates.extend(
+        [
+            root / stream.stream_id / "master.m3u8",
+            root / stream.stream_id / "index.m3u8",
+        ]
+    )
+
     if stream.hls_path:
         hls_dir = root / stream.hls_path
         candidates.extend(
@@ -464,14 +480,6 @@ def resolve_master(stream: models.LiveStream) -> Path:
                 hls_dir / "index.m3u8",
             ]
         )
-
-    # Fallbacks used in tests / early publish
-    candidates.extend(
-        [
-            root / stream.stream_id / "master.m3u8",
-            root / stream.stream_id / "index.m3u8",
-        ]
-    )
 
     for path in candidates:
         if path.is_file():
@@ -489,9 +497,9 @@ def resolve_asset(stream: models.LiveStream, asset_path: str) -> Tuple[Path, str
     search_dirs = []
     if settings.LIVE_ABR_ENABLED and stream.abr_hls_path:
         search_dirs.append(root / stream.abr_hls_path)
+    search_dirs.append(root / stream.stream_id)
     if stream.hls_path:
         search_dirs.append(root / stream.hls_path)
-    search_dirs.append(root / stream.stream_id)
 
     for base in search_dirs:
         candidate = base / safe

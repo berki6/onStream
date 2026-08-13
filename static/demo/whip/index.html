@@ -233,6 +233,23 @@
           iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
         });
         media.getTracks().forEach((t) => pc.addTrack(t, media));
+        if (window.RTCRtpSender && RTCRtpSender.getCapabilities) {
+          const caps = RTCRtpSender.getCapabilities("video");
+          if (caps && caps.codecs && caps.codecs.length) {
+            const pref = caps.codecs.filter((c) => /H264/i.test(c.mimeType))
+              .concat(caps.codecs.filter((c) => !/H264/i.test(c.mimeType)));
+            pc.getTransceivers().forEach((t) => {
+              if (
+                t.sender &&
+                t.sender.track &&
+                t.sender.track.kind === "video" &&
+                typeof t.setCodecPreferences === "function"
+              ) {
+                try { t.setCodecPreferences(pref); } catch (err) { /* ignore */ }
+              }
+            });
+          }
+        }
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         await waitIce(pc);

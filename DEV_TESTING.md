@@ -30,6 +30,7 @@ Your `.env` already expects:
 | Port | Role |
 |------|------|
 | `1935` | RTMP (OBS / FFmpeg) |
+| `8554` | RTSP (FFmpeg normalize / ABR pull) |
 | `8888` | HLS (internal) |
 | `8889` | WebRTC WHIP/WHEP |
 | `9997` | MediaMTX HTTP API (kick) |
@@ -467,13 +468,17 @@ Requires `alembic upgrade head` through `i9c0d1e2f3a4`. Use a **READY** VOD.
 
 ### 4) WHIP Go Live (camera → MediaMTX)
 
+Camera must run in **PC Chrome** at `http://127.0.0.1:8000/demo/whip/` (Expo Go has no native WebRTC; browsers hide `getUserMedia` on insecure LAN HTTP). Expo **Go Live** still opens the page; copy the **PC camera link (localhost)** if the phone browser cannot capture.
+
 1. Expo → Live → **New live** → Create stream (copy key/WHIP once if you want).
-2. Tap **Go Live (WHIP in browser)** — opens `/demo/whip/?whip=…`.
-3. Allow camera/mic → **Go Live** → status should say publishing.
-4. Back in Expo → **Open stream** → wait until live HLS plays.
+2. On the PC, open `/demo/whip/?whip=…` (or the localhost copy row) → Allow camera/mic → **Go Live**.
+3. MediaMTX may log `MPEG-TS … MPEG-4 Audio only` for VP8/Opus — expected. OnStream normalizes to H.264+AAC HLS under `data/live/{stream_id}/`.
+4. Back in Expo → **Open stream** → wait a few seconds for the first normalized playlist.
 5. **Stop** on the WHIP page → revoke the stream when done.
 
-If WHIP fails on phone: browser must reach `http://<LAN-IP>:8889` (not localhost). Restart API after any `sync_lan_ip` change.
+Restart MediaMTX after pulling RTSP config (`rtsp: yes` on `:8554`). `LIVE_NORMALIZE_ENABLED` defaults on; FFmpeg must be on `PATH`.
+
+If WHIP POST fails: browser must reach MediaMTX (`PUBLIC_WEBRTC_BASE_URL`). Restart API after any `sync_lan_ip` change.
 
 ---
 
@@ -485,6 +490,29 @@ If WHIP fails on phone: browser must reach `http://<LAN-IP>:8889` (not localhost
 4. **Approve** → video leaves queue; playback tokens work again.  
    Or **Reject** → stays blocked.
 5. Confirm on Library / video detail status.
+
+---
+
+### 6) Live ingest normalize sidecar
+
+Live ingest has a **normalize sidecar**: many codecs in, one H.264 + AAC HLS contract out. Playback prefers `{LIVE_HLS_DIR}/{stream_id}/index.m3u8`, so a crashed MediaMTX MPEG-TS muxer cannot win. WHEP stays on the raw ingest path.
+
+**What happens on publish**
+
+- **RTMP H.264 + AAC** — MediaMTX remux only. No extra encode.
+- **WHIP VP8/Opus** (or H.264 + Opus) — FFmpeg pulls RTSP from MediaMTX and writes `data/live/{stream_id}/index.m3u8`.
+- **Optional ABR** (`LIVE_ABR_ENABLED`) — same RTSP source; skips the single-rendition sidecar.
+
+Auth still returns immediately. Track probing runs in a background thread so `/v1/live/mediamtx-auth` is not blocked. Live segments use `LIVE_HLS_SEGMENT_SECONDS` (default **1s**, separate from VOD `HLS_SEGMENT_SECONDS=4`). Expect about **3–6s** delay on Expo HLS. Sub-second needs WHEP in a browser (Expo Go has no WebRTC player).
+
+**Retest WHIP**
+
+1. Restart MediaMTX so `rtsp: yes` on `:8554` is loaded (`configs/mediamtx.windows.yml`). Uvicorn `--reload` should already have the Python changes.
+2. Open **PC Chrome** at `http://127.0.0.1:8000/demo/whip/` (LAN HTTP still hides the camera).
+3. Go live, then in Expo open the stream and wait a few seconds for the first normalized playlist.
+4. A MediaMTX log line about MPEG-TS / MPEG-4 Audio is expected for VP8. Expo should play from the normalized HLS, not that muxer.
+
+`LIVE_NORMALIZE_ENABLED` defaults on. FFmpeg must be on `PATH`. Hands-on camera steps: [§4](#4-whip-go-live-camera--mediamtx).
 
 ---
 
@@ -503,10 +531,13 @@ Worker injects `#EXT-X-MEDIA:TYPE=SUBTITLES` into `data/hls/{id}/master.m3u8` af
 - Expo Library → **+** → **Resumable** (chunked `PUT` + complete) or **Quick** (classic multipart).
 - Browser: `/demo/upload/` with Bearer token.
 
-### WHIP publish
+### Live ingest / WHIP
+- Sidecar design and retest: [§6](#6-live-ingest-normalize-sidecar). Camera walkthrough: [§4](#4-whip-go-live-camera--mediamtx).
 - Expo Live create → **Go Live (WHIP in browser)** opens `/demo/whip/?whip=…`.
-- Phone must reach MediaMTX on LAN (`PUBLIC_WEBRTC_BASE_URL=http://<LAN-IP>:8889`). `scripts/sync_lan_ip.py` updates this.
-- OBS / FFmpeg / `scripts/live_lab_publish.py` still valid for RTMP.
+- Use **PC Chrome** at `http://127.0.0.1:8000/demo/whip/` for camera (LAN HTTP has no `getUserMedia`).
+- VP8/Opus ingest is normalized to H.264+AAC HLS (`LIVE_NORMALIZE_ENABLED`, RTSP `:8554`). WHEP stays on raw WebRTC.
+- Phone WHIP POST still needs LAN `PUBLIC_WEBRTC_BASE_URL`. `scripts/sync_lan_ip.py` updates this.
+- OBS / FFmpeg / `scripts/live_lab_publish.py` still valid for RTMP (passthrough remux, no extra encode).
 
 ### Moderation
 - Lab → **Moderation review queue** → approve / reject (optional make-public on approve).

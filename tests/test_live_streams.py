@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from src.core.config import settings
 from src.infrastructure.db.session import get_db
 from src.infrastructure.media import live_abr
+from src.infrastructure.media import live_normalize
 from src.main import app
 from tests.conftest import override_get_db
 
@@ -23,15 +24,21 @@ client = TestClient(app)
 def _live_defaults(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "LIVE_ENABLED", True)
     monkeypatch.setattr(settings, "LIVE_ABR_ENABLED", False)
+    monkeypatch.setattr(settings, "LIVE_NORMALIZE_ENABLED", False)
     monkeypatch.setattr(settings, "LIVE_HLS_DIR", tmp_path / "live")
     monkeypatch.setattr(settings, "PUBLIC_RTMP_BASE_URL", "rtmp://localhost:1935/live")
     monkeypatch.setattr(settings, "PUBLIC_API_BASE_URL", "http://localhost:8000")
     monkeypatch.setattr(settings, "PUBLIC_WEBRTC_BASE_URL", "http://localhost:8889")
     monkeypatch.setattr(settings, "MEDIAMTX_AUTH_SECRET", "")
-    # Clear ABR registry between tests
     live_abr._processes.clear()
+    live_normalize._processes.clear()
+    live_normalize._stops.clear()
+    live_normalize._probing.clear()
     yield
     live_abr._processes.clear()
+    live_normalize._processes.clear()
+    live_normalize._stops.clear()
+    live_normalize._probing.clear()
 
 
 def _auth_token():
@@ -228,9 +235,45 @@ def test_abr_enabled_calls_start(test_user, db_session: Session, monkeypatch):
             )
             mock_popen.assert_called_once()
             assert live_abr.abr_running(stream_id)
+            cmd = mock_popen.call_args[0][0]
+            assert "-rtsp_transport" in cmd
+            assert any(str(x).startswith("rtsp://") for x in cmd)
 
     # Cleanup
     live_abr.stop_abr(stream_id)
+
+
+def test_normalize_started_when_abr_off(test_user, db_session: Session, monkeypatch):
+    monkeypatch.setattr(settings, "LIVE_ABR_ENABLED", False)
+    monkeypatch.setattr(settings, "LIVE_NORMALIZE_ENABLED", True)
+    token = _auth_token()
+    created = _create_stream(token)
+    key = created["stream_key"]
+    stream_id = created["stream_id"]
+
+    with patch.object(live_normalize, "start_normalize") as mock_norm:
+        client.post(
+            "/v1/live/mediamtx-auth",
+            json={"action": "publish", "path": f"live/{key}"},
+        )
+        mock_norm.assert_called_once_with(stream_id, key)
+
+
+def test_abr_skips_normalize(test_user, db_session: Session, monkeypatch):
+    monkeypatch.setattr(settings, "LIVE_ABR_ENABLED", True)
+    monkeypatch.setattr(settings, "LIVE_NORMALIZE_ENABLED", True)
+    token = _auth_token()
+    created = _create_stream(token)
+    key = created["stream_key"]
+
+    with patch.object(live_normalize, "start_normalize") as mock_norm:
+        with patch.object(live_abr, "start_abr") as mock_abr:
+            client.post(
+                "/v1/live/mediamtx-auth",
+                json={"action": "publish", "path": f"live/{key}"},
+            )
+            mock_abr.assert_called_once()
+            mock_norm.assert_not_called()
 
 
 def test_unpublish_marks_idle_and_stops_abr(test_user, db_session: Session, monkeypatch):
@@ -289,6 +332,7 @@ def test_health_endpoint_owner_only(test_user, db_session: Session, tmp_path):
     assert body["stream_id"] == stream_id
     assert body["playlist_present"] is True
     assert body["playlist_age_seconds"] is not None
+    assert body["normalize_running"] is False
 
     denied = client.get(f"/v1/live/{stream_id}/health")
     assert denied.status_code in (401, 403)

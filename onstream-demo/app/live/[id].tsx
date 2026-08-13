@@ -92,7 +92,11 @@ export default function LiveDetailScreen() {
             </Text>
           ) : null}
 
-          <HlsPlayer uri={ended ? null : playbackUrl} title={stream?.title} />
+          <HlsPlayer
+            uri={ended ? null : playbackUrl}
+            title={stream?.title}
+            liveEdge
+          />
 
           {health ? (
             <View style={styles.healthBox}>

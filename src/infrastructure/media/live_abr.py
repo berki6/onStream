@@ -26,7 +26,7 @@ def start_abr(
     output_dir: Optional[Path] = None,
 ) -> Optional[subprocess.Popen]:
     """
-    Start an FFmpeg ABR ladder from MediaMTX RTMP.
+    Start an FFmpeg ABR ladder from MediaMTX RTSP (WHIP-safe).
 
     No-op when LIVE_ABR_ENABLED is false, ffmpeg is missing, or spawn fails.
     """
@@ -44,9 +44,8 @@ def start_abr(
     out = output_dir or (settings.LIVE_HLS_DIR / stream_id / "abr")
     out.mkdir(parents=True, exist_ok=True)
 
-    rtmp_base = settings.MEDIAMTX_RTMP_URL.rstrip("/")
-    # Prefer docker-internal host when URL points at localhost
-    source = f"{rtmp_base}/{stream_key}"
+    rtsp_base = (settings.MEDIAMTX_RTSP_URL or "rtsp://127.0.0.1:8554").rstrip("/")
+    source = f"{rtsp_base}/live/{stream_key}"
 
     ladder = settings.live_abr_ladder_list
     if not ladder:
@@ -81,6 +80,8 @@ def start_abr(
         "-hide_banner",
         "-loglevel",
         "error",
+        "-rtsp_transport",
+        "tcp",
         "-i",
         source,
         "-filter_complex",
@@ -95,9 +96,9 @@ def start_abr(
         "-f",
         "hls",
         "-hls_time",
-        str(settings.HLS_SEGMENT_SECONDS),
+        str(max(1, int(getattr(settings, "LIVE_HLS_SEGMENT_SECONDS", 1) or 1))),
         "-hls_list_size",
-        "6",
+        "3",
         "-hls_flags",
         "delete_segments+independent_segments",
         "-master_pl_name",

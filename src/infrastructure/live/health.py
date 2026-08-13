@@ -13,6 +13,7 @@ from src.core.logger import get_logger
 from src.infrastructure.db import models
 from src.infrastructure.db.repositories import live_stream_repository
 from src.infrastructure.media import live_abr
+from src.infrastructure.media import live_normalize
 
 logger = get_logger(__name__)
 
@@ -59,15 +60,15 @@ def _candidate_playlists(stream: models.LiveStream) -> List[Path]:
     if settings.LIVE_ABR_ENABLED and stream.abr_hls_path:
         abr_dir = root / stream.abr_hls_path
         candidates.extend([abr_dir / "master.m3u8", abr_dir / "index.m3u8"])
-    if stream.hls_path:
-        hls_dir = root / stream.hls_path
-        candidates.extend([hls_dir / "master.m3u8", hls_dir / "index.m3u8"])
     candidates.extend(
         [
             root / stream.stream_id / "master.m3u8",
             root / stream.stream_id / "index.m3u8",
         ]
     )
+    if stream.hls_path:
+        hls_dir = root / stream.hls_path
+        candidates.extend([hls_dir / "master.m3u8", hls_dir / "index.m3u8"])
     return candidates
 
 
@@ -94,6 +95,7 @@ def get_health_snapshot(db: Session, stream: models.LiveStream) -> Dict[str, Any
         "stale_seconds_threshold": stale_limit,
         "is_stale": bool(stream.status == "live" and is_stale),
         "abr_running": live_abr.abr_running(stream.stream_id),
+        "normalize_running": live_normalize.normalize_running(stream.stream_id),
         "hls_path": stream.hls_path,
         "abr_hls_path": stream.abr_hls_path,
         "started_at": stream.started_at,
@@ -106,6 +108,7 @@ def _mark_stale_idle(db: Session, stream: models.LiveStream, reason: str) -> Non
     from src.infrastructure.webhooks.delivery import emit_live_event
 
     live_abr.stop_abr(stream.stream_id)
+    live_normalize.stop_normalize(stream.stream_id)
     # Soft-fail to idle so the stream remains visible/re-publishable.
     # Hard "ended" is reserved for explicit revoke/delete.
     previous_status = stream.status
@@ -154,6 +157,9 @@ def _within_hls_grace(stream: models.LiveStream) -> bool:
     except Exception:
         return False
     grace = max(int(settings.LIVE_STALE_SECONDS), 15)
+    if live_normalize.is_enabled() and not settings.LIVE_ABR_ENABLED:
+        # WHIP normalize: probe tracks, then FFmpeg's first HLS segment.
+        grace = max(grace, 35)
     return age < grace
 
 

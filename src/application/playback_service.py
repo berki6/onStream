@@ -276,6 +276,24 @@ def rewrite_playlist(content: str, token: Optional[str]) -> bytes:
         return ("\n".join(out_lines) + "\n").encode("utf-8")
 
 
+def inject_live_edge_start(content: str, offset: float = -2.0) -> str:
+    """Point players at the live edge (negative TIME-OFFSET = from end of playlist)."""
+    if not content or "#EXT-X-START:" in content:
+        return content
+    lines = content.splitlines()
+    out = []
+    inserted = False
+    for line in lines:
+        out.append(line)
+        if not inserted and line.startswith("#EXTM3U"):
+            out.append(f"#EXT-X-START:TIME-OFFSET={offset:.3f}")
+            inserted = True
+    dumped = "\n".join(out)
+    if not dumped.endswith("\n"):
+        dumped += "\n"
+    return dumped
+
+
 def prepare_master_playlist(
     video: models.Video, content: str, stream_token: Optional[str] = None
 ) -> str:

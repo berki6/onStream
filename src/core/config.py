@@ -115,6 +115,20 @@ class Settings(BaseSettings):
     LIVE_HLS_DIR: Path = PROJECT_ROOT / os.environ.get("LIVE_HLS_DIR", "data/live")
     LIVE_ABR_ENABLED: bool = _env_bool("LIVE_ABR_ENABLED", "false")
     LIVE_ABR_LADDER: str = os.environ.get("LIVE_ABR_LADDER", "360:800,720:2500,1080:5000")
+    LIVE_NORMALIZE_ENABLED: bool = _env_bool("LIVE_NORMALIZE_ENABLED", "true")
+    LIVE_NORMALIZE_POLL_ATTEMPTS: int = int(
+        os.environ.get("LIVE_NORMALIZE_POLL_ATTEMPTS", "20")
+    )
+    LIVE_NORMALIZE_POLL_INTERVAL: float = float(
+        os.environ.get("LIVE_NORMALIZE_POLL_INTERVAL", "0.4")
+    )
+    # Live HLS only (VOD keeps HLS_SEGMENT_SECONDS=4). 1s is the Expo-safe floor.
+    LIVE_HLS_SEGMENT_SECONDS: int = int(
+        os.environ.get("LIVE_HLS_SEGMENT_SECONDS", "1")
+    )
+    MEDIAMTX_RTSP_URL: str = os.environ.get(
+        "MEDIAMTX_RTSP_URL", "rtsp://127.0.0.1:8554"
+    )
     MEDIAMTX_AUTH_SECRET: str = os.environ.get("MEDIAMTX_AUTH_SECRET", "")
     PUBLIC_RTMP_BASE_URL: str = os.environ.get(
         "PUBLIC_RTMP_BASE_URL", "rtmp://localhost:1935/live"

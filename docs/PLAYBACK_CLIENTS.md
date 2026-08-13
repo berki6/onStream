@@ -8,7 +8,7 @@ Use the first section for live system design. The remainder provides operator re
 
 ## Live system design
 
-A live session begins when an authenticated user creates a stream. OnStream stores only a hashed key and returns the plaintext key (and WHIP/WHEP URLs) once. OBS or a WHIP client publishes to MediaMTX on path `live/{stream_key}`. MediaMTX asks OnStream’s auth webhook before allowing publish; on success the row becomes `live` and HLS appears on the shared live volume. Viewers never need the stream key: they play `/v1/playback/live/{stream_id}/...` with a stream token or public flag. Revoke deletes the credential, kicks the publisher, stops optional ABR, and can purge CDN URLs.
+A live session begins when an authenticated user creates a stream. OnStream stores only a hashed key and returns the plaintext key (and WHIP/WHEP URLs) once. OBS or a WHIP client publishes to MediaMTX on path `live/{stream_key}`. MediaMTX asks OnStream’s auth webhook before allowing publish; on success the row becomes `live`. Playback HLS is always H.264 + AAC: RTMP that is already muxable is remuxed by MediaMTX; WHIP (typically VP8 + Opus) is normalized once by FFmpeg from MediaMTX RTSP into `{LIVE_HLS_DIR}/{stream_id}/`. WHEP stays on the raw ingest path. Viewers never need the stream key: they play `/v1/playback/live/{stream_id}/...` with a stream token or public flag. Revoke deletes the credential, kicks the publisher, stops normalize/ABR sidecars, and can purge CDN URLs.
 
 Integrators can subscribe to outbound HMAC webhooks for the same lifecycle: `live.created` → `live.started` → (`live.idle` on disconnect/stale) → `live.ended` on revoke. See [`API.md`](API.md#live-outbound-webhooks).
 
@@ -27,9 +27,12 @@ sequenceDiagram
   MTX->>Auth: publish auth
   Auth->>Auth: hash_stream_key lookup set_live
   Auth-->>MTX: allow
-  MTX->>Disk: remux HLS under live/key
+  MTX->>Disk: remux HLS under live/key (H.264/AAC RTMP)
+  opt WHIP / non-muxable tracks
+    Auth->>App: start_normalize RTSP → stream_id/index.m3u8
+  end
   opt LIVE_ABR_ENABLED
-    Auth->>App: start_abr to stream_id/abr
+    Auth->>App: start_abr from RTSP to stream_id/abr
   end
   Player->>App: GET /v1/playback/live/stream_id/master.m3u8?token=
   App->>Disk: authorize resolve rewrite
@@ -44,6 +47,7 @@ sequenceDiagram
 | Playback | `api/v1/routes/live_playback.py` |
 | Health snapshot | `infrastructure/live/health.py` |
 | Kick | `infrastructure/live/mediamtx_client.py` |
+| Live normalize (WHIP → H.264/AAC HLS) | `infrastructure/media/live_normalize.py` |
 | Optional live ABR | `infrastructure/media/live_abr.py` |
 | MediaMTX config | `configs/mediamtx.yml` |
 
@@ -57,9 +61,11 @@ Publish auth, kick, and path health are MediaMTX-specific today. A future `LiveC
 
 ### Efficiency notes (live)
 
-1. **Default:** `LIVE_ABR_ENABLED=false` — MediaMTX remuxes one HLS ladder (inexpensive; appropriate for LAN OBS→VLC).
-2. **Optional:** `LIVE_ABR_ENABLED=true` — FFmpeg realtime multi-bitrate under `{LIVE_HLS_DIR}/{stream_id}/abr` (CPU intensive).
-3. Do not enable live ABR solely because VOD uses ABR; the cost models differ.
+1. **Default:** `LIVE_ABR_ENABLED=false`, `LIVE_NORMALIZE_ENABLED=true` — RTMP H.264+AAC is MediaMTX remux only (no extra CPU). Browser WHIP (VP8/Opus, or H.264+Opus) is FFmpeg RTSP → `{LIVE_HLS_DIR}/{stream_id}/index.m3u8`.
+2. **Optional:** `LIVE_ABR_ENABLED=true` — FFmpeg multi-bitrate from the same RTSP URL under `{LIVE_HLS_DIR}/{stream_id}/abr` (CPU intensive; skips the single-rendition normalize sidecar).
+3. Playback prefers `{stream_id}/index.m3u8` over MediaMTX `live/{key}/`, so a crashed MPEG-TS muxer (VP8/Opus) cannot win. WHEP is unchanged on the ingest path.
+4. **Latency ladder (Mux / industry):** Expo Go plays **classic HLS** — `LIVE_HLS_SEGMENT_SECONDS=1` targets ~3–6s glass-to-glass (not VOD’s 4s segments). Next rung is **LL-HLS** (~2–4s, not wired yet). Sub-second is **WHEP / WebRTC**, which Expo Go cannot play natively.
+5. Do not enable live ABR solely because VOD uses ABR; the cost models differ.
 
 ### TURN / Caddy
 
@@ -140,6 +146,8 @@ MediaMTX WebRTC listens on `PUBLIC_WEBRTC_BASE_URL` (default `http://localhost:8
 
 Path remains `live/{plaintext_stream_key}` (same auth as RTMP). Use a WHIP-capable encoder (OBS WHIP plugin, browser WHIP client, etc.).
 
+Browser WHIP is usually VP8 + Opus, which MediaMTX’s MPEG-TS HLS muxer cannot remux. OnStream pulls the same path over RTSP and writes H.264 + AAC HLS under `{LIVE_HLS_DIR}/{stream_id}/`. Expo and `/demo/` play that playlist. WHEP is still the raw WebRTC ingest (not the normalized HLS). Lab camera: open `http://127.0.0.1:8000/demo/whip/` on the PC (LAN HTTP hides `getUserMedia`).
+
 ### 4. Watch in VLC
 
 Private streams — issue a token:
@@ -196,6 +204,7 @@ Env hints when using TURN: `MEDIAMTX_TURN_URL`, matching coturn user/pass, and t
 |------|---------|
 | 8000 | OnStream API + playback proxy |
 | 1935 | MediaMTX RTMP (OBS) |
+| 8554 | MediaMTX RTSP (FFmpeg normalize / ABR pull) |
 | 8888 | MediaMTX HLS (internal / debug; prefer OnStream `/v1/playback/live/...`) |
 | 8889 | MediaMTX WebRTC (WHIP/WHEP) |
 | 8189/udp | MediaMTX WebRTC ICE/UDP |
@@ -208,6 +217,9 @@ Env hints when using TURN: `MEDIAMTX_TURN_URL`, matching coturn user/pass, and t
 LIVE_ENABLED=true
 LIVE_ABR_ENABLED=false
 LIVE_ABR_LADDER=360:800,720:2500,1080:5000
+LIVE_NORMALIZE_ENABLED=true
+LIVE_HLS_SEGMENT_SECONDS=1
+MEDIAMTX_RTSP_URL=rtsp://127.0.0.1:8554
 PUBLIC_RTMP_BASE_URL=rtmp://localhost:1935/live
 PUBLIC_WEBRTC_BASE_URL=http://localhost:8889
 PUBLIC_HTTPS_BASE_URL=
@@ -230,7 +242,7 @@ When `PLAYBACK_CDN_HEADERS_ENABLED=true`, playback responses set `Cache-Control`
 
 Live playlists intentionally **do not** use `no-store`: browsers revalidate every request (`max-age=0`) while a shared edge may keep the object ~1s. Revoke still relies on OnStream auth 404 + optional CDN purge. Implementation: `src/application/playback_headers.py`.
 
-Owner health: `GET /v1/live/{stream_id}/health` (stale playlist age, ABR status).
+Owner health: `GET /v1/live/{stream_id}/health` (stale playlist age, `abr_running`, `normalize_running`).
 
 ## Mobile demo (Expo Go)
 

@@ -49,6 +49,15 @@ def test_inject_clip_start_after_extm3u():
     assert out.splitlines()[1].startswith("#EXT-X-START")
 
 
+def test_inject_live_edge_start_negative_offset():
+    from src.application.playback_service import inject_live_edge_start
+
+    content = "#EXTM3U\n#EXT-X-VERSION:3\n#EXTINF:2.0,\nseg0.ts\n"
+    out = inject_live_edge_start(content)
+    assert "#EXT-X-START:TIME-OFFSET=-2.000" in out
+    assert inject_live_edge_start(out) == out
+
+
 def test_inject_subtitle_track_adds_media_and_stream_inf():
     content = (
         "#EXTM3U\n"

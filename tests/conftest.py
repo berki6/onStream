@@ -10,6 +10,8 @@ from src.infrastructure.db.session import get_db
 
 # Disable auth rate limiting in tests
 settings.AUTH_RATE_LIMIT_PER_MINUTE = 0
+# Do not spawn WHIP normalize probe threads against a real MediaMTX
+settings.LIVE_NORMALIZE_ENABLED = False
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///./tests/test.db"
 engine = create_engine(
