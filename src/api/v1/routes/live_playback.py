@@ -5,13 +5,14 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from src.api.v1.deps import get_optional_user
 from src.api.v1.responses import raise_app_error
-from src.application import live_service, playback_service
+from src.application import live_service, live_whep, playback_service
 from src.application.errors import AppError
+from src.application.error_codes import ErrorCode
 from src.application.playback_headers import cache_headers
 from src.infrastructure.db.session import get_db
 
@@ -67,6 +68,73 @@ async def live_master_playlist(
         media_type="application/vnd.apple.mpegurl",
         headers=cache_headers(live=True, asset_name="master.m3u8"),
     )
+
+
+@router.post("/{stream_id}/whep")
+async def live_whep_offer(
+    stream_id: str,
+    request: Request,
+    token: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_optional_user),
+):
+    try:
+        stream = live_service.get_playable_stream(db, stream_id)
+        stream_token = live_service.authorize_playback(
+            stream,
+            token,
+            _bearer(request),
+            current_user,
+            origin_or_referer=_origin(request),
+        )
+        hls_path = live_whep.require_live_whep(stream)
+        sid = stream.stream_id
+        raw = await request.body()
+        if len(raw) > live_whep.MAX_SDP_BYTES:
+            raise AppError("SDP offer too large", code=ErrorCode.PLAYBACK_BAD_REQUEST)
+        db.close()
+        answer, location = await live_whep.offer(
+            sid, hls_path, raw.decode("utf-8", errors="replace"), stream_token or token
+        )
+    except AppError as e:
+        raise_app_error(e)
+    _inc_playback("whep")
+    return Response(
+        content=answer,
+        status_code=201,
+        media_type="application/sdp",
+        headers={
+            "Location": location,
+            "Access-Control-Expose-Headers": "Location",
+        },
+    )
+
+
+@router.delete("/{stream_id}/whep/sessions/{session_id}")
+async def live_whep_stop(
+    stream_id: str,
+    session_id: str,
+    request: Request,
+    token: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_optional_user),
+):
+    try:
+        stream = live_service.get_playable_stream(db, stream_id)
+        live_service.authorize_playback(
+            stream,
+            token,
+            _bearer(request),
+            current_user,
+            origin_or_referer=_origin(request),
+        )
+        sid = stream.stream_id
+        db.close()
+        await live_whep.stop(sid, session_id)
+    except AppError as e:
+        raise_app_error(e)
+    _inc_playback("whep_stop")
+    return Response(status_code=204)
 
 
 @router.get("/{stream_id}/{asset_path:path}")

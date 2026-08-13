@@ -108,6 +108,16 @@ def _playback_url(stream_id: str, token: Optional[str] = None) -> str:
     return base
 
 
+def _whep_playback_url(stream_id: str, token: Optional[str] = None) -> str:
+    base = (
+        f"{settings.PUBLIC_API_BASE_URL.rstrip('/')}"
+        f"/v1/playback/live/{stream_id}/whep"
+    )
+    if token:
+        return f"{base}?token={token}"
+    return base
+
+
 def _webrtc_base() -> str:
     return settings.PUBLIC_WEBRTC_BASE_URL.rstrip("/")
 
@@ -262,6 +272,7 @@ def issue_live_token(
         "token": token,
         "expires_in": ttl,
         "playback_url": _playback_url(stream_id, token=token),
+        "whep_playback_url": _whep_playback_url(stream_id, token=token),
     }
 
 

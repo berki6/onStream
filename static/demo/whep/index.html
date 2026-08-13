@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OnStream · WHEP watch</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --fg: #e8eef4;
+      --accent: #3d9cf0;
+      --muted: #8b9aab;
+      --danger: #e85d5d;
+      --ok: #3ecf8e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: radial-gradient(ellipse at top, #1a2836 0%, var(--bg) 55%);
+      color: var(--fg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+    h1 { font-weight: 600; letter-spacing: -0.02em; margin: 0 0 0.5rem; }
+    p { color: var(--muted); margin: 0 0 1.25rem; max-width: 40rem; text-align: center; line-height: 1.45; }
+    .panel {
+      width: min(720px, 100%);
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    label { font-size: 0.85rem; color: var(--muted); }
+    input {
+      width: 100%;
+      padding: 0.65rem 0.85rem;
+      border: 1px solid #2a3a4a;
+      border-radius: 6px;
+      background: #121a22;
+      color: var(--fg);
+    }
+    .row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    button {
+      padding: 0.65rem 1.1rem;
+      border: none;
+      border-radius: 6px;
+      background: var(--accent);
+      color: #041018;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button.ghost {
+      background: transparent;
+      color: var(--fg);
+      border: 1px solid #2a3a4a;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    video {
+      width: 100%;
+      background: #000;
+      border-radius: 8px;
+      aspect-ratio: 16 / 9;
+    }
+    #status { min-height: 1.4rem; font-size: 0.9rem; color: var(--muted); }
+    #status.ok { color: var(--ok); }
+    #status.err { color: var(--danger); }
+    #hint {
+      padding: 0.85rem 1rem;
+      border-radius: 8px;
+      border: 1px solid #5a3a20;
+      background: #24180e;
+      color: #f0c24b;
+      font-size: 0.9rem;
+      line-height: 1.45;
+      text-align: left;
+    }
+    #hint a { color: var(--accent); }
+    code { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <h1>Watch live · WHEP</h1>
+  <p>
+    Authorized WebRTC playback (sub-second). Uses <code>stream_id</code> + playback
+    token — not the encoder WHEP URL. <code>RTCPeerConnection</code> needs a
+    <strong>secure origin</strong> (<code>http://127.0.0.1</code> or HTTPS).
+    Expo HLS stays the in-app player.
+  </p>
+  <div class="panel">
+    <div id="hint" hidden></div>
+    <label for="stream">Stream ID</label>
+    <input id="stream" type="text" maxlength="12" autocomplete="off" />
+    <label for="token">Playback token</label>
+    <input id="token" type="text" autocomplete="off" />
+    <video id="view" playsinline autoplay></video>
+    <div class="row">
+      <button id="go" type="button">Watch</button>
+      <button id="stop" class="ghost" type="button" disabled>Stop</button>
+    </div>
+    <div id="status">Idle</div>
+  </div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const streamInput = document.getElementById("stream");
+    const tokenInput = document.getElementById("token");
+    const view = document.getElementById("view");
+    const statusEl = document.getElementById("status");
+    const hintEl = document.getElementById("hint");
+    const goBtn = document.getElementById("go");
+    const stopBtn = document.getElementById("stop");
+
+    if (params.get("stream")) streamInput.value = params.get("stream");
+    if (params.get("token")) tokenInput.value = params.get("token");
+
+    let pc = null;
+    let sessionUrl = null;
+
+    function setStatus(text, kind) {
+      statusEl.textContent = text;
+      statusEl.className = kind || "";
+    }
+
+    function toLoopback(urlStr) {
+      try {
+        const u = new URL(urlStr, location.href);
+        if (u.hostname !== "localhost" && u.hostname !== "127.0.0.1") {
+          u.hostname = "127.0.0.1";
+        }
+        return u.href;
+      } catch {
+        return urlStr;
+      }
+    }
+
+    function showInsecureHint() {
+      const here = location.href;
+      const loop = toLoopback(here);
+      if (loop === here) return;
+      hintEl.hidden = false;
+      hintEl.innerHTML =
+        "This origin is not a secure context, so WebRTC is blocked. Open on this PC: " +
+        '<a href="' + loop + '">' + loop + "</a>";
+    }
+
+    function webrtcAvailable() {
+      return typeof RTCPeerConnection === "function";
+    }
+
+    async function stop() {
+      const sess = sessionUrl;
+      sessionUrl = null;
+      if (sess) {
+        try {
+          await fetch(sess, { method: "DELETE" });
+        } catch {
+          /* ignore */
+        }
+      }
+      if (pc) {
+        try { pc.close(); } catch { /* ignore */ }
+        pc = null;
+      }
+      view.srcObject = null;
+      goBtn.disabled = false;
+      stopBtn.disabled = true;
+      setStatus("Stopped");
+    }
+
+    if (!webrtcAvailable()) {
+      showInsecureHint();
+      setStatus("Open the localhost link above on this PC to watch WHEP.", "err");
+    }
+
+    goBtn.addEventListener("click", async () => {
+      const streamId = streamInput.value.trim();
+      const token = tokenInput.value.trim();
+      if (!streamId) {
+        setStatus("Stream ID required", "err");
+        return;
+      }
+      if (!webrtcAvailable()) {
+        showInsecureHint();
+        setStatus("WebRTC unavailable on this origin", "err");
+        return;
+      }
+      goBtn.disabled = true;
+      setStatus("Connecting…");
+      try {
+        pc = new RTCPeerConnection({
+          iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+        });
+        pc.addTransceiver("video", { direction: "recvonly" });
+        pc.addTransceiver("audio", { direction: "recvonly" });
+        pc.ontrack = (ev) => {
+          view.srcObject = ev.streams[0] || new MediaStream([ev.track]);
+        };
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        const q = token ? "?token=" + encodeURIComponent(token) : "";
+        const res = await fetch(
+          "/v1/playback/live/" + encodeURIComponent(streamId) + "/whep" + q,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/sdp" },
+            body: offer.sdp,
+          }
+        );
+        const raw = await res.text();
+        if (res.status !== 201) {
+          let msg = "WHEP failed HTTP " + res.status;
+          try {
+            const parsed = JSON.parse(raw);
+            msg = (parsed.error && parsed.error.message) || parsed.detail || msg;
+          } catch {
+            if (raw) msg = raw.slice(0, 200);
+          }
+          throw new Error(msg);
+        }
+        sessionUrl = res.headers.get("Location");
+        await pc.setRemoteDescription({ type: "answer", sdp: raw });
+        stopBtn.disabled = false;
+        setStatus("Live — WHEP (raw ingest, not HLS)", "ok");
+      } catch (e) {
+        await stop();
+        setStatus(e instanceof Error ? e.message : String(e), "err");
+        goBtn.disabled = false;
+      }
+    });
+
+    stopBtn.addEventListener("click", () => stop());
+    window.addEventListener("beforeunload", () => {
+      if (sessionUrl) {
+        try {
+          fetch(sessionUrl, { method: "DELETE", keepalive: true });
+        } catch {
+          /* ignore */
+        }
+      }
+    });
+  </script>
+</body>
+</html>

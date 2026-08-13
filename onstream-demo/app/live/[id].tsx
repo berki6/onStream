@@ -1,9 +1,10 @@
+import * as Linking from "expo-linking";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { queryErrorText, userFacingError } from "@/api/client";
+import { queryErrorText, userFacingError, getApiBase } from "@/api/client";
 import { createLiveToken, deleteLiveStream } from "@/api/live";
 import { Button } from "@/components/Button";
 import { CopyRow } from "@/components/CopyRow";
@@ -17,11 +18,17 @@ import { useLiveHealthQuery, useLiveStreamQuery } from "@/query/live";
 import { scrollPhysics } from "@/theme/scroll";
 import { colors, spacing } from "@/theme/tokens";
 
+function whepWatchUrl(streamId: string, token: string, host = "") {
+  const base = (host || getApiBase()).replace(/\/$/, "");
+  return `${base}/demo/whep/?stream=${encodeURIComponent(streamId)}&token=${encodeURIComponent(token)}`;
+}
+
 export default function LiveDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const qc = useQueryClient();
   const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
+  const [playbackToken, setPlaybackToken] = useState<string | null>(null);
   const [revoking, setRevoking] = useState(false);
   const [focused, setFocused] = useState(true);
 
@@ -121,6 +128,7 @@ export default function LiveDetailScreen() {
               try {
                 const res = await createLiveToken(id);
                 setPlaybackUrl(res.data.playback_url);
+                setPlaybackToken(res.data.token);
               } catch (e) {
                 toast.error(userFacingError(e, "Token failed"));
               }
@@ -150,6 +158,7 @@ export default function LiveDetailScreen() {
                     queryKey: liveKeys.health(id),
                   });
                   setPlaybackUrl(null);
+                  setPlaybackToken(null);
                   toast.success("Stream revoked. Playback through OnStream is ended.");
                 } catch (e) {
                   toast.error(userFacingError(e, "Delete failed"));
@@ -168,6 +177,26 @@ export default function LiveDetailScreen() {
 
           {playbackUrl && !ended ? (
             <CopyRow label="Playback URL" value={playbackUrl} />
+          ) : null}
+          {playbackToken && id && !ended ? (
+            <>
+              <CopyRow
+                label="PC WHEP watch (localhost)"
+                value={whepWatchUrl(id, playbackToken, "http://127.0.0.1:8000")}
+              />
+              <Button
+                label="Watch live (low latency)"
+                variant="ghost"
+                onPress={async () => {
+                  const url = whepWatchUrl(id, playbackToken);
+                  try {
+                    await Linking.openURL(url);
+                  } catch {
+                    toast.error("Could not open WHEP player");
+                  }
+                }}
+              />
+            </>
           ) : null}
           {stream?.playback_url ? (
             <CopyRow label="Public playback" value={stream.playback_url} />

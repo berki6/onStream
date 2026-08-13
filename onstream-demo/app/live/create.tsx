@@ -5,7 +5,7 @@ import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { ApiError, getApiBase } from "@/api/client";
-import { createLiveStream, LiveStream } from "@/api/live";
+import { createLiveStream, createLiveToken, LiveStream } from "@/api/live";
 import { Button } from "@/components/Button";
 import { CopyRow } from "@/components/CopyRow";
 import { Field } from "@/components/Field";
@@ -27,6 +27,11 @@ function whipPublisherUrl(whipUrl: string, host = ""): string {
     }
   }
   return `${base}/demo/whip/?whip=${encodeURIComponent(whip)}`;
+}
+
+function whepWatchUrl(streamId: string, token: string, host = "") {
+  const base = (host || getApiBase()).replace(/\/$/, "");
+  return `${base}/demo/whep/?stream=${encodeURIComponent(streamId)}&token=${encodeURIComponent(token)}`;
 }
 
 export default function CreateLiveScreen() {
@@ -90,7 +95,7 @@ export default function CreateLiveScreen() {
               <CopyRow label="WHIP URL" value={created.whip_url} />
             ) : null}
             {created.whep_url ? (
-              <CopyRow label="WHEP URL" value={created.whep_url} />
+              <CopyRow label="WHEP URL (encoder, once)" value={created.whep_url} />
             ) : null}
             {created.playback_url ? (
               <CopyRow label="HLS playback" value={created.playback_url} />
@@ -118,6 +123,20 @@ export default function CreateLiveScreen() {
                 />
               </>
             ) : null}
+
+            <Button
+              label="Watch live (low latency)"
+              variant="ghost"
+              onPress={async () => {
+                try {
+                  const tok = await createLiveToken(created.stream_id);
+                  const url = whepWatchUrl(created.stream_id, tok.data.token);
+                  await Linking.openURL(url);
+                } catch {
+                  setError("Could not open WHEP player (stream must be live)");
+                }
+              }}
+            />
 
             <Button
               label="Open stream"

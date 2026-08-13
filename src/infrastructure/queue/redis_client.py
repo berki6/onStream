@@ -173,6 +173,16 @@ class RedisClient:
         client = self.get_client()
         return self._execute_with_retry(client.expire, key, seconds)
 
+    def get(self, key: str) -> Optional[str]:
+        """Get a string key. Returns None when missing."""
+        client = self.get_client()
+        return self._execute_with_retry(client.get, key)
+
+    def setex(self, key: str, seconds: int, value: str) -> bool:
+        """Set a string key with a TTL. Fail closed for callers on Redis errors."""
+        client = self.get_client()
+        return bool(self._execute_with_retry(client.setex, key, seconds, value))
+
     def lrange(self, key: str, start: int, end: int):
         """Get a range of elements from a list."""
         client = self.get_client()
