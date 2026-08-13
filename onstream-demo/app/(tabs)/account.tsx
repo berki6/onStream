@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Linking from "expo-linking";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter, type Href } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -17,12 +17,14 @@ import { Button } from "@/components/Button";
 import { CopyRow } from "@/components/CopyRow";
 import { Field } from "@/components/Field";
 import { FormScroll } from "@/components/FormScroll";
+import { LabToolRow } from "@/components/LabToolRow";
 import { Screen } from "@/components/Screen";
 import { useAuth } from "@/context/AuthContext";
 import { colors, radii, spacing } from "@/theme/tokens";
 
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { username, signOut } = useAuth();
   const [apiBase, setApiBaseLocal] = useState(getApiBase());
   const [health, setHealth] = useState<string>("—");
@@ -81,6 +83,13 @@ export default function AccountScreen() {
             value={`${getApiBase()}/v1/feeds/${encodeURIComponent(username)}/videos.rss`}
           />
         ) : null}
+
+        <LabToolRow
+          icon="key-outline"
+          title="API keys"
+          subtitle="Create and revoke machine keys for this account"
+          onPress={() => router.push("/lab/api-keys" as Href)}
+        />
 
         <View style={styles.block}>
           <View style={styles.sectionRow}>

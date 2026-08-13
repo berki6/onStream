@@ -77,7 +77,8 @@ Playback behavior: quarantined assets are playable by the **owner only**. When `
 |--------|------|------|
 | GET | `/v1/moderation/queue` | Quarantined items for current user |
 | POST | `/v1/moderation/{video_id}/review` | `approve` \| `reject` (+ optional `make_public`) |
-| GET | `/v1/search/?q=&mode=keyword\|semantic` | Keyword or embedding search |
+| GET | `/v1/search/capabilities` | `semantic_available`, `provider`, `indexed_videos` |
+| GET | `/v1/search/?q=&mode=keyword\|semantic` | Keyword or embedding search (incompatible dims skipped) |
 | GET | `/v1/videos/{video_id}/chapters` | Chapter JSON |
 
 ## Providers

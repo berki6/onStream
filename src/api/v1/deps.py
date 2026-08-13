@@ -10,6 +10,10 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy.orm import Session
 
+from src.application.api_key_scopes import (
+    LAST_USED_MIN_INTERVAL_SECONDS,
+    assert_api_key_allowed,
+)
 from src.application.error_codes import ErrorCode
 from src.application.errors import AppError
 from src.core.security.api_keys import hash_api_key
@@ -45,8 +49,15 @@ async def get_current_user(
         user = db.query(models.User).filter(models.User.id == record.user_id).first()
         if not user or not user.is_active:
             raise credentials_error
-        record.last_used_at = datetime.now(timezone.utc)
-        db.commit()
+        assert_api_key_allowed(record.scopes, request.method, request.url.path)
+        now = datetime.now(timezone.utc)
+        last = record.last_used_at
+        if last is not None and last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        if last is None or (now - last).total_seconds() >= LAST_USED_MIN_INTERVAL_SECONDS:
+            record.last_used_at = now
+            db.commit()
+            db.refresh(user)
         return user
 
     if credentials is None:
@@ -73,5 +84,7 @@ async def get_optional_user(
 ):
     try:
         return await get_current_user(request, credentials, db)
-    except AppError:
-        return None
+    except AppError as e:
+        if e.code == ErrorCode.AUTH_UNAUTHORIZED:
+            return None
+        raise

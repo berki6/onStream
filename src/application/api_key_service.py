@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 
 from sqlalchemy.orm import Session
 
+from src.application.api_key_scopes import parse_scopes, serialize_scopes
 from src.application.error_codes import ErrorCode
 from src.application.errors import AppError
 from src.core.security.api_keys import generate_api_key
@@ -14,13 +15,17 @@ from src.schemas.api_key import ApiKeyCreate
 
 
 def create_key(db: Session, user_id: int, body: ApiKeyCreate) -> Dict[str, Any]:
+    name = (body.name or "").strip()
+    if not name:
+        raise AppError("API key name is required", code=ErrorCode.API_KEY_BAD_REQUEST)
+    scopes = serialize_scopes(parse_scopes(body.scopes))
     raw, prefix, key_hash = generate_api_key()
     record = models.ApiKey(
         user_id=user_id,
-        name=body.name,
+        name=name,
         key_prefix=prefix,
         key_hash=key_hash,
-        scopes=body.scopes or "upload,read,webhooks",
+        scopes=scopes,
         is_active=True,
     )
     db.add(record)
@@ -32,18 +37,26 @@ def create_key(db: Session, user_id: int, body: ApiKeyCreate) -> Dict[str, Any]:
         "key_prefix": prefix,
         "api_key": raw,
         "scopes": record.scopes,
+        "is_active": True,
+        "created_at": record.created_at,
+        "last_used_at": record.last_used_at,
     }
 
 
 def list_keys(db: Session, user_id: int) -> List[Dict[str, Any]]:
-    keys = db.query(models.ApiKey).filter(models.ApiKey.user_id == user_id).all()
+    keys = (
+        db.query(models.ApiKey)
+        .filter(models.ApiKey.user_id == user_id)
+        .order_by(models.ApiKey.created_at.desc())
+        .all()
+    )
     return [
         {
             "id": k.id,
             "name": k.name,
             "key_prefix": k.key_prefix,
             "scopes": k.scopes,
-            "is_active": k.is_active,
+            "is_active": bool(k.is_active),
             "created_at": k.created_at,
             "last_used_at": k.last_used_at,
         }
@@ -51,7 +64,7 @@ def list_keys(db: Session, user_id: int) -> List[Dict[str, Any]]:
     ]
 
 
-def revoke_key(db: Session, user_id: int, key_id: int) -> None:
+def revoke_key(db: Session, user_id: int, key_id: int) -> Dict[str, Any]:
     record = (
         db.query(models.ApiKey)
         .filter(models.ApiKey.id == key_id, models.ApiKey.user_id == user_id)
@@ -61,3 +74,13 @@ def revoke_key(db: Session, user_id: int, key_id: int) -> None:
         raise AppError("API key not found", code=ErrorCode.API_KEY_NOT_FOUND)
     record.is_active = False
     db.commit()
+    db.refresh(record)
+    return {
+        "id": record.id,
+        "name": record.name,
+        "key_prefix": record.key_prefix,
+        "scopes": record.scopes,
+        "is_active": False,
+        "created_at": record.created_at,
+        "last_used_at": record.last_used_at,
+    }

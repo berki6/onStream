@@ -92,6 +92,8 @@ More encoder/player recipes: [`docs/PLAYBACK_CLIENTS.md`](docs/PLAYBACK_CLIENTS.
 | Password reset UX | **Ready** | Expo forgot/reset + `/demo/reset/`; `EMAIL_PROVIDER=log` (lab) / `smtp` (prod) |
 | Moderation review | **Ready** | Lab → Moderation queue (approve / reject) |
 | Share-link inbox | **Ready** | Lab / Library link icon → audit + revoke; token still once at create |
+| API keys | **Ready** | Account / Lab → create (secret once) + revoke; scopes enforced on `X-API-Key` |
+| Semantic search | **Ready** | Library search → Keyword / Semantic; needs embeddings job for hits |
 
 **Critical DB fix (was blocking VOD):** Postgres `videostatus` enum was missing `PROCESSING`. Migration `f6a7b8c9d0e1` adds it.
 
@@ -398,7 +400,7 @@ Stack should already be up (API + worker + MediaMTX). In Expo **Account**, set A
 4. Library → clock icon → **Watch history** (Clear all wipes history + continue). Empty state only on that screen, not as a Library shelf.
 5. **Share link** → pick expiry + max views → Create & copy → prefer `app_url` (`onstream://watch?s=…&t=…`) in Expo, or browser `watch_url` (`/demo/watch/?s=…&t=…`) → video plays without login.
 6. Revoke the link in the share sheet → reload watch URL → expired/revoked error. Library **link** icon (or Lab → **Share links**) lists every link: Active / Revoked / All, open video, revoke, copy public id (watch URLs cannot be rebuilt).
-7. Library → search icon → type a title keyword → ranked results → open video.
+7. Library → search icon → type a title keyword → ranked results → open video. Toggle **Semantic** (needs indexed embeddings; lab mock is labeled).
 8. Video detail → pencil → edit title/description → Save; or Delete (confirm) → back to Library.
 9. After captions/chapters jobs: detail **Chapters** list → tap a chapter → player seeks there.
 10. Continue at [§1c](#1c-watch--collect-playlists-unlisted-clips-storyboard-embed-rss) for visibility, playlists, clips, storyboard, embed, RSS.
@@ -586,6 +588,7 @@ Worker injects `#EXT-X-MEDIA:TYPE=SUBTITLES` into `data/hls/{id}/master.m3u8` af
 
 ## Out of scope / remaining limits
 
-- Native in-app WHIP / WHEP — **Expo Go limit** (needs `expo-dev-client` + WebRTC); publish via `/demo/whip/`, watch via `/demo/whep/` on a secure origin
+- Native in-app WHIP / WHEP — **build last** (Expo Go cannot encode; needs `expo-dev-client` + WebRTC). Until then: `/demo/whip/` and `/demo/whep/`
+- Channels / orgs (new tenancy model) — **build last**
 - Production SMTP inbox branding beyond text/HTML body already sent
 - Multi-tenant admin moderation (queue is per authenticated owner)

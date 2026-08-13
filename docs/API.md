@@ -43,6 +43,9 @@ All `/v1` errors (except MediaMTX auth webhook, which returns bare status) use:
 | `AUTH_INVALID_CREDENTIALS` | 401 | Bad login |
 | `AUTH_INVALID_TOKEN` | 401/400 | Refresh or password-reset token |
 | `AUTH_UNAUTHORIZED` | 401 | Missing/invalid access credentials |
+| `API_KEY_NOT_FOUND` | 404 | API key missing |
+| `API_KEY_FORBIDDEN` | 403 | Key lacks the required scope, or keys cannot call this route |
+| `API_KEY_BAD_REQUEST` | 400 | Unknown or empty scopes |
 | `VIDEO_NOT_FOUND` | 404 | Video missing |
 | `VIDEO_FORBIDDEN` | 403 | Not owner / no access |
 | `VIDEO_BAD_REQUEST` | 400 | Invalid validation |
@@ -71,8 +74,8 @@ All `/v1` errors (except MediaMTX auth webhook, which returns bare status) use:
 | `PLAYLIST_CONFLICT` | 409/400 | Name taken / state conflict |
 | `PLAYLIST_BAD_REQUEST` | 400 | Playlist params |
 | `WEBHOOK_NOT_FOUND` | 404 | Webhook missing |
-| `API_KEY_NOT_FOUND` | 404 | API key missing |
 | `SEARCH_BAD_REQUEST` | 400 | Search params |
+| `SEARCH_UNAVAILABLE` | 409 | Semantic search disabled or embeddings provider failed |
 | `MODERATION_CONFLICT` | 409 | Not quarantined |
 | `MODERATION_BAD_REQUEST` | 400 | Moderation input |
 | `MODERATION_FORBIDDEN` | 403 | Moderation access |
@@ -238,11 +241,11 @@ Payload shape: `{ "type", "created_at", "data": { stream_id, user_id, title, sta
 | Prefix | Purpose |
 |--------|---------|
 | `/webhooks` | endpoint CRUD + deliveries |
-| `/api-keys` | API key management |
+| `/api-keys` | API key management (JWT only). Scopes: `read`, `upload`, `write`, `webhooks`. Default `upload,read,webhooks` is least-privilege, not god-mode. Secret shown once. |
 | `/playlists` | user playlists + public GET |
 | `/feeds` | public RSS (user library / playlist) |
 | `/moderation` | quarantine queue + review |
-| `/search` | keyword (Postgres FTS + rank; ILIKE fallback) / semantic |
+| `/search` | keyword (Postgres FTS) / semantic (dim-safe, cap 2000 chunks). `GET /capabilities` reports provider + index size. |
 
 ## Non-`/v1` operational endpoints
 

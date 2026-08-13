@@ -56,7 +56,7 @@ erDiagram
 | `video_views` | `VideoView` | Analytics stub |
 | `video_embeddings` | `VideoEmbedding` | Semantic search vectors |
 | `webhook_endpoints` / `webhook_deliveries` | `Webhook*` | Outbound HMAC events |
-| `api_keys` | `ApiKey` | Machine auth (`X-API-Key`) |
+| `api_keys` | `ApiKey` | Machine auth (`X-API-Key`); hashed secret; scopes `read,upload,write,webhooks` |
 | `idempotency_records` | `IdempotencyRecord` | Deduped upload/API ops |
 
 ## Video lifecycle

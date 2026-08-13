@@ -109,12 +109,12 @@ Legend: **Have** / **Partial** / **Gap**. Priority = fit for *next* work given c
 
 | Idea | Source(s) | Status | Suggested priority | Notes |
 |------|-----------|--------|--------------------|-------|
-| Channels / orgs / multi-user ownership | PeerTube, MediaCMS, TODO #1 | Gap | **High (TODO #1)** | Aligns with open product leftover |
+| Channels / orgs / multi-user ownership | PeerTube, MediaCMS, TODO #1 | Gap | **Last** | PeerTube/MediaCMS pattern; unlocks multi-user. New tenancy model — **build last** |
 | Comments / likes / reactions | MediaCMS, Owncast, TODO #2 | Gap | High (TODO #2) | Engagement next to favorites |
-| In-app WHIP publish (dev client) | OvenLiveKit, WHIP articles, TODO #3 | Partial (URL + MediaMTX) | High (TODO #3) | Expo Go blocked; needs custom client |
-| Semantic search UI toggle | TODO #4 | Partial (API) | Medium | Keyword FTS done |
-| Playlists Expo UI | MediaCMS, OPlayer, TODO #9 | Partial (API CRUD) | High (TODO #9) | Fast UI win |
-| API keys Expo UI | TODO #10 | Partial (API) | Medium | Lab/Account surface |
+| In-app WHIP publish (dev client) | OvenLiveKit, WHIP articles, TODO #3 | Partial (URL + MediaMTX) | **Last** | Industry WHIP RFC wave; Expo Go cannot encode — **build last** (keep `/demo/whip/`) |
+| Semantic search UI toggle | TODO #4 | **Shipped** | Medium | Keyword / semantic; capabilities + dim-mismatch skip; mock labeled as lab |
+| Playlists Expo UI | MediaCMS, OPlayer, TODO #9 | **Shipped** | High (TODO #9) | Library + playlist screens |
+| API keys Expo UI | TODO #10 | **Shipped** | Medium | Scopes enforced; JWT-only key admin; last_used throttled |
 | All my share links screen | TODO #8 | **Shipped** | Medium | Lab + Library inbox: audit/revoke; tokens still once-at-create |
 | Live chat | Owncast, CyTube | Gap | Medium | Distinct live product slice |
 | Live → VOD / DVR archive | PingOS, PeerTube, OME | **Shipped** (EVENT DVR while live + revoke → READY VOD) | High | Mid-stream scrub on the archive playlist |
@@ -140,10 +140,10 @@ Legend: **Have** / **Partial** / **Gap**. Priority = fit for *next* work given c
 
 If picking **one** research-backed slice after the merge:
 
-1. **Playlists UI + polish** (API exists) — MediaCMS/OPlayer pattern; closes TODO #9.  
-2. **Channels / orgs** — PeerTube/MediaCMS pattern; unlocks multi-user (TODO #1).  
+1. **Playlists UI + polish** — shipped (Library + playlist screens).  
+2. **Channels / orgs / multi-user ownership** — PeerTube/MediaCMS pattern; unlocks multi-user (TODO #1). **Build last** (new tenancy model).  
 3. **Live → VOD archive** — shipped (DVR while live + revoke promote).  
-4. **In-app WHIP (dev client)** — industry WHIP RFC wave; TODO #3.  
+4. **In-app WHIP publish (dev client)** — industry WHIP RFC wave; TODO #3. **Build last** (Expo Go cannot encode; keep `/demo/whip/`).  
 5. **Player scrub previews + `/demo/` upgrade** — OPlayer/CF/Mux pattern; visible quality jump.
 
 Defer for later: federation, danmaku, full DRM, MoQ (watch space, don’t build yet).

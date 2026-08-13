@@ -252,6 +252,53 @@ def test_semantic_search_ranks_with_mock_embeddings(db_session: Session, test_us
     assert len(results) >= 1
     assert results[0]["upload_id"] == "semaaaaa"
     assert results[0]["score"] >= results[-1]["score"]
+    assert response.json()["data"]["provider"] == "mock"
+    assert response.json()["data"]["skipped_incompatible"] == 0
+
+
+def test_search_capabilities_and_incompatible_index(db_session: Session, test_user):
+    from src.infrastructure.db.repositories import embedding_repository
+
+    token = _auth_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    caps = client.get("/v1/search/capabilities", headers=headers)
+    assert caps.status_code == 200
+    body = caps.json()["data"]
+    assert body["semantic_available"] is True
+    assert body["provider"] == "mock"
+
+    video = _make_video(
+        db_session,
+        test_user,
+        upload_id="semdwwzz",
+        title="Wrong dimension clip",
+    )
+    embedding_repository.replace_chunks(
+        db_session,
+        video.id,
+        [{"chunk_index": 0, "start_ms": 0, "end_ms": 1000, "text": "x"}],
+        [[0.1, 0.2, 0.3]],
+    )
+    response = client.get(
+        "/v1/search/?q=anything&mode=semantic&limit=5",
+        headers=headers,
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["results"] == []
+    assert data["skipped_incompatible"] >= 1
+    assert data["reason"] == "incompatible_index"
+
+
+def test_semantic_search_disabled(db_session: Session, test_user, monkeypatch):
+    monkeypatch.setattr(settings, "AI_EMBEDDINGS_ENABLED", False)
+    token = _auth_token()
+    response = client.get(
+        "/v1/search/?q=cats&mode=semantic",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "SEARCH_UNAVAILABLE"
 
 
 def test_queue_typed_enqueue_dequeue(db_session: Session):

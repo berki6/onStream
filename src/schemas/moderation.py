@@ -20,3 +20,15 @@ class SearchResponse(BaseModel):
     mode: str
     q: str
     results: List[SearchResultItem] = Field(default_factory=list)
+    semantic_available: bool = True
+    provider: Optional[str] = None
+    indexed_videos: int = 0
+    reason: Optional[str] = None
+    skipped_incompatible: int = 0
+
+
+class SearchCapabilities(BaseModel):
+    semantic_available: bool
+    provider: str
+    indexed_videos: int = 0
+    reason: Optional[str] = None

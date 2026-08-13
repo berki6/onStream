@@ -105,7 +105,7 @@ Profiles keep the **happy path small**. A laptop `docker compose up` should not 
 
 OnStream separates **control-plane auth** (who may call `/v1/videos`, `/v1/live`, …) from **playback auth** (who may fetch an `.m3u8` / `.ts`). Mixing those into one long-lived user JWT on every segment request would either over-share credentials with CDN edges or force players to send full session cookies. Instead, login issues short-lived access/refresh JWTs for the API; when you want someone (or VLC) to play a private asset, you mint a **stream token** whose `sub` is the video or live id and whose `type` is `stream`. Playlists rewrite child URLs so the token rides along without the player implementing custom headers.
 
-API keys (`X-API-Key`) exist for machine-to-machine control-plane calls (CI, backends) without pretending to be a browser user session.
+API keys (`X-API-Key`) exist for machine-to-machine control-plane calls (CI, backends) without pretending to be a browser user session. Scopes (`read`, `upload`, `write`, `webhooks`) are enforced; key administration is JWT-only so a key cannot mint more keys. `last_used_at` is throttled to once per minute.
 
 Errors use the same envelope shape as successes (`success: false`) with a nested `error.code` in SCREAMING_SNAKE form — see [`API.md`](API.md). There is no FastAPI `{detail}` body on `/v1`.
 

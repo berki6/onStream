@@ -40,6 +40,7 @@ from src.schemas.webhook import WebhookEndpointCreate
 from src.schemas.api_key import ApiKeyCreate
 from src.schemas.moderation import (
     ModerationReviewRequest,
+    SearchCapabilities,
     SearchResponse,
     SearchResultItem,
 )
@@ -100,6 +101,7 @@ __all__ = [
     "ModerationReviewRequest",
     "SearchResponse",
     "SearchResultItem",
+    "SearchCapabilities",
     "LiveStreamCreate",
     "LiveStreamResponse",
     "LiveStreamCreateResponse",

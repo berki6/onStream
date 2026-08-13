@@ -126,6 +126,14 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
           }}
         />
         <Stack.Screen
+          name="lab/api-keys"
+          options={{
+            headerShown: true,
+            title: "API keys",
+            animation: "slide_from_right",
+          }}
+        />
+        <Stack.Screen
           name="playlist/index"
           options={{
             headerShown: true,

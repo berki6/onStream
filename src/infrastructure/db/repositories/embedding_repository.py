@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import List, Sequence
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from src.infrastructure.db import models
@@ -57,10 +58,26 @@ def list_by_video(db: Session, video_id: int) -> List[models.VideoEmbedding]:
     )
 
 
-def list_all_with_embeddings(db: Session, limit: int = 500) -> List[models.VideoEmbedding]:
+def list_for_user(
+    db: Session, user_id: int, *, limit: int = 2000
+) -> List[tuple]:
     return (
-        db.query(models.VideoEmbedding)
-        .order_by(models.VideoEmbedding.video_id.asc())
+        db.query(models.VideoEmbedding, models.Video)
+        .join(models.Video, models.Video.id == models.VideoEmbedding.video_id)
+        .filter(models.Video.user_id == user_id)
+        .filter(models.Video.status != models.VideoStatus.DELETED)
+        .order_by(models.VideoEmbedding.id.asc())
         .limit(limit)
         .all()
     )
+
+
+def count_indexed_videos(db: Session, user_id: int) -> int:
+    n = (
+        db.query(func.count(func.distinct(models.VideoEmbedding.video_id)))
+        .join(models.Video, models.Video.id == models.VideoEmbedding.video_id)
+        .filter(models.Video.user_id == user_id)
+        .filter(models.Video.status != models.VideoStatus.DELETED)
+        .scalar()
+    )
+    return int(n or 0)

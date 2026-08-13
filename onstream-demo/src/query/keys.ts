@@ -29,6 +29,11 @@ export const shareKeys = {
   list: () => [...shareKeys.all, "list"] as const,
 };
 
+export const apiKeyKeys = {
+  all: ["api-keys"] as const,
+  list: () => [...apiKeyKeys.all, "list"] as const,
+};
+
 export const liveKeys = {
   all: ["live"] as const,
   list: () => [...liveKeys.all, "list"] as const,

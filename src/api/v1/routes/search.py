@@ -15,6 +15,17 @@ from src.schemas import APIResponse
 router = APIRouter()
 
 
+@router.get("/capabilities", response_model=APIResponse)
+@router.get("/capabilities/", response_model=APIResponse)
+def search_capabilities(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    data = search_service.capabilities(db, current_user.id)
+    return api_ok(request, data, message="Search capabilities")
+
+
 @router.get("/", response_model=APIResponse)
 @router.get("", response_model=APIResponse)
 def search_videos(

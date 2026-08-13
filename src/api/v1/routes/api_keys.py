@@ -41,13 +41,15 @@ def list_api_keys(
     return api_ok(request, data, message="API keys")
 
 
-@router.delete("/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{key_id}", response_model=APIResponse)
 def revoke_api_key(
+    request: Request,
     key_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     try:
-        api_key_service.revoke_key(db, current_user.id, key_id)
+        data = api_key_service.revoke_key(db, current_user.id, key_id)
     except AppError as e:
         raise_app_error(e)
+    return api_ok(request, data, message="API key revoked")

@@ -136,6 +136,47 @@ def test_create_webhook_and_api_key(user_and_token):
     assert r2.json()["data"]["api_key"].startswith("osk_")
 
 
+def test_api_key_scopes_are_enforced(user_and_token):
+    user, token = user_and_token
+    headers = {"Authorization": f"Bearer {token}"}
+    created = client.post(
+        "/v1/api-keys",
+        headers=headers,
+        json={"name": "readonly", "scopes": "read"},
+    )
+    assert created.status_code == 201
+    raw = created.json()["data"]["api_key"]
+    key_headers = {"X-API-Key": raw}
+
+    listed = client.get("/v1/videos", headers=key_headers)
+    assert listed.status_code == 200
+
+    denied_write = client.delete("/v1/videos/AbCdEfGh", headers=key_headers)
+    assert denied_write.status_code == 403
+    assert denied_write.json()["error"]["code"] == "API_KEY_FORBIDDEN"
+
+    denied_upload = client.post(
+        "/v1/uploads",
+        headers=key_headers,
+        json={"title": "Nope"},
+    )
+    assert denied_upload.status_code == 403
+
+    denied_keys = client.get("/v1/api-keys", headers=key_headers)
+    assert denied_keys.status_code == 403
+
+    denied_mod = client.get("/v1/moderation/queue", headers=key_headers)
+    assert denied_mod.status_code == 403
+
+    bad = client.post(
+        "/v1/api-keys",
+        headers=headers,
+        json={"name": "bad", "scopes": "read,godmode"},
+    )
+    assert bad.status_code == 400
+    assert bad.json()["error"]["code"] == "API_KEY_BAD_REQUEST"
+
+
 def test_direct_upload_session(user_and_token):
     user, token = user_and_token
     headers = {"Authorization": f"Bearer {token}", "Idempotency-Key": "idem-1"}

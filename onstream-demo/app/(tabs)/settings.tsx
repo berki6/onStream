@@ -44,8 +44,8 @@ export default function LabScreen() {
         ]}
       >
         <Text style={styles.body}>
-          Operator surfaces for moderation, share-link audit, webhooks, and
-          browser helpers. Connection settings are under Account.
+          Operator surfaces for moderation, share-link audit, API keys,
+          webhooks, and browser helpers. Connection settings are under Account.
         </Text>
 
         <Text style={styles.group}>Review</Text>
@@ -61,6 +61,16 @@ export default function LabScreen() {
             title="Share links"
             subtitle="Audit and revoke every link you created"
             onPress={() => router.push("/shares" as Href)}
+          />
+        </View>
+
+        <Text style={styles.group}>Access</Text>
+        <View style={styles.stack}>
+          <LabToolRow
+            icon="key-outline"
+            title="API keys"
+            subtitle="Least-privilege machine keys (X-API-Key)"
+            onPress={() => router.push("/lab/api-keys" as Href)}
           />
         </View>
 
