@@ -63,6 +63,7 @@ def test_share_create_exchange_revoke(db_session, test_user, ready_video):
     assert created["token"]
     assert "watch_url" in created
     assert created["app_url"].startswith("onstream://watch?")
+    assert created["video_title"] == ready_video.title
     exchanged = share_link_service.exchange(
         db_session, created["public_id"], created["token"]
     )
@@ -114,6 +115,77 @@ def test_share_view_limit(db_session, test_user, ready_video):
             db_session, created["public_id"], created["token"]
         )
     assert ei.value.code == ErrorCode.SHARE_VIEW_LIMIT
+
+
+def test_share_list_all_includes_video_title(db_session, test_user, ready_video):
+    first = share_link_service.create(
+        db_session,
+        test_user.id,
+        ready_video.upload_id,
+        expires_in_seconds=3600,
+        label="alpha",
+    )
+    second = share_link_service.create(
+        db_session,
+        test_user.id,
+        ready_video.upload_id,
+        expires_in_seconds=3600,
+        clip_start=10,
+        clip_end=40,
+    )
+    share_link_service.revoke(db_session, test_user.id, first["public_id"])
+
+    rows = share_link_service.list_for_video(db_session, test_user.id)
+    assert {r["public_id"] for r in rows} == {
+        first["public_id"],
+        second["public_id"],
+    }
+    for row in rows:
+        assert row["video_title"] == ready_video.title
+        assert row["video_id"] == ready_video.upload_id
+        assert "token" not in row
+
+    clip = next(r for r in rows if r["public_id"] == second["public_id"])
+    assert clip["active"] is True
+    assert clip["clip_start"] == 10
+    assert clip["clip_end"] == 40
+
+    revoked = next(r for r in rows if r["public_id"] == first["public_id"])
+    assert revoked["active"] is False
+    assert revoked["revoked_at"] is not None
+
+    per_video = share_link_service.list_for_video(
+        db_session, test_user.id, upload_id=ready_video.upload_id
+    )
+    assert len(per_video) == 2
+    assert all(r["video_title"] == ready_video.title for r in per_video)
+
+    from src.core.security.passwords import get_password_hash
+
+    other = models.User(
+        username="shareother",
+        email="shareother@example.com",
+        hashed_password=get_password_hash("testpass"),
+    )
+    db_session.add(other)
+    db_session.commit()
+    db_session.refresh(other)
+    other_video = models.Video(
+        upload_id="XyZaBcDe",
+        user_id=other.id,
+        title="Other clip",
+        file_path="/tmp/y.mp4",
+        status=VideoStatus.READY,
+        duration=30.0,
+        is_public=False,
+    )
+    db_session.add(other_video)
+    db_session.commit()
+    other_link = share_link_service.create(
+        db_session, other.id, other_video.upload_id, expires_in_seconds=3600
+    )
+    mine = share_link_service.list_for_video(db_session, test_user.id)
+    assert other_link["public_id"] not in {r["public_id"] for r in mine}
 
 
 def test_favorites_toggle(db_session, test_user, ready_video):

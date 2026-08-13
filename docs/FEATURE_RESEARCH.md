@@ -115,7 +115,7 @@ Legend: **Have** / **Partial** / **Gap**. Priority = fit for *next* work given c
 | Semantic search UI toggle | TODO #4 | Partial (API) | Medium | Keyword FTS done |
 | Playlists Expo UI | MediaCMS, OPlayer, TODO #9 | Partial (API CRUD) | High (TODO #9) | Fast UI win |
 | API keys Expo UI | TODO #10 | Partial (API) | Medium | Lab/Account surface |
-| All my share links screen | TODO #8 | Gap | Medium | Management UX |
+| All my share links screen | TODO #8 | **Shipped** | Medium | Lab + Library inbox: audit/revoke; tokens still once-at-create |
 | Live chat | Owncast, CyTube | Gap | Medium | Distinct live product slice |
 | Live → VOD / DVR archive | PingOS, PeerTube, OME | **Shipped** (EVENT DVR while live + revoke → READY VOD) | High | Mid-stream scrub on the archive playlist |
 | LL-HLS delivery | Mux, OME, LiveForge | Gap | Medium–High | Latency product story |

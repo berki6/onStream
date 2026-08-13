@@ -16,6 +16,9 @@ const MAP: Record<string, string> = {
   // webhook delivery
   SUCCESS: colors.ready,
   FAILED: colors.error,
+  ACTIVE: colors.ready,
+  REVOKED: colors.textDim,
+  EXPIRED: colors.warning,
 };
 
 export function StatusPill({ status }: { status: string }) {

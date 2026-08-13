@@ -50,7 +50,7 @@ import { StatusPill } from "@/components/StatusPill";
 import { StoryboardStrip } from "@/components/StoryboardStrip";
 import { videoPipelineHint } from "@/lib/videoStatus";
 import { toast } from "@/lib/toast";
-import { playlistKeys, videoKeys } from "@/query/keys";
+import { playlistKeys, shareKeys, videoKeys } from "@/query/keys";
 import { usePlaylistsQuery } from "@/query/playlists";
 import { useVideoQuery } from "@/query/videos";
 import { scrollPhysics } from "@/theme/scroll";
@@ -349,6 +349,7 @@ export default function VideoDetailScreen() {
         );
       }
       await sharesQuery.refetch();
+      await qc.invalidateQueries({ queryKey: shareKeys.list() });
     } catch (e) {
       toast.error(userFacingError(e, "Share failed"));
     } finally {
@@ -361,6 +362,7 @@ export default function VideoDetailScreen() {
     try {
       await revokeShareLink(link.public_id);
       await sharesQuery.refetch();
+      await qc.invalidateQueries({ queryKey: shareKeys.list() });
       toast.success("Share link revoked.");
     } catch (e) {
       toast.error(userFacingError(e, "Revoke failed"));
@@ -1196,6 +1198,8 @@ export default function VideoDetailScreen() {
                 setShareOpen(true);
                 if (browser) await Clipboard.setStringAsync(browser);
                 toast.success("Clip share link created.");
+                await sharesQuery.refetch();
+                await qc.invalidateQueries({ queryKey: shareKeys.list() });
               })
               .catch((e) => {
                 toast.error(userFacingError(e, "Clip share failed"));

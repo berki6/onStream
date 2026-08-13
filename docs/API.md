@@ -148,7 +148,7 @@ DB-backed expiring watch links. Create returns plaintext token once; exchange (p
 | Method | Path |
 |--------|------|
 | POST | `/` create (auth); optional `clip_start` / `clip_end` |
-| GET | `/?video_id=` list (auth) |
+| GET | `/?video_id=` list for one video (auth); omit `video_id` for all links you created (newest first, cap 100). Each row includes `video_title`. Tokens are never listed. |
 | DELETE | `/{public_id}` revoke (auth) |
 | POST | `/{public_id}/exchange` body `{ token }` (public); returns clip bounds + storyboard/caption URLs |
 

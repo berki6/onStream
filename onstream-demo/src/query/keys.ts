@@ -24,6 +24,11 @@ export const searchKeys = {
   query: (q: string) => [...searchKeys.all, q] as const,
 };
 
+export const shareKeys = {
+  all: ["shares"] as const,
+  list: () => [...shareKeys.all, "list"] as const,
+};
+
 export const liveKeys = {
   all: ["live"] as const,
   list: () => [...liveKeys.all, "list"] as const,

@@ -44,8 +44,8 @@ export default function LabScreen() {
         ]}
       >
         <Text style={styles.body}>
-          Operator surfaces for moderation, webhooks, and browser helpers.
-          Connection settings are under Account.
+          Operator surfaces for moderation, share-link audit, webhooks, and
+          browser helpers. Connection settings are under Account.
         </Text>
 
         <Text style={styles.group}>Review</Text>
@@ -55,6 +55,12 @@ export default function LabScreen() {
             title="Moderation queue"
             subtitle="Review quarantined uploads"
             onPress={() => router.push("/moderation" as Href)}
+          />
+          <LabToolRow
+            icon="link-outline"
+            title="Share links"
+            subtitle="Audit and revoke every link you created"
+            onPress={() => router.push("/shares" as Href)}
           />
         </View>
 

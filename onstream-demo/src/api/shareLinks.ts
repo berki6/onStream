@@ -16,6 +16,7 @@ export type ShareLink = {
   app_url?: string;
   clip_start?: number | null;
   clip_end?: number | null;
+  video_title?: string | null;
 };
 
 export type ShareExchange = {

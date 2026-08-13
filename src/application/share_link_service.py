@@ -49,7 +49,11 @@ def _is_active(link: models.ShareLink, now: datetime) -> bool:
 
 
 def _serialize(
-    link: models.ShareLink, upload_id: str, *, include_secrets: bool = False
+    link: models.ShareLink,
+    upload_id: str,
+    *,
+    include_secrets: bool = False,
+    video_title: Optional[str] = None,
 ) -> Dict[str, Any]:
     now = datetime.now(timezone.utc)
     data: Dict[str, Any] = {
@@ -64,6 +68,7 @@ def _serialize(
         "clip_end": link.clip_end_seconds,
         "created_at": link.created_at,
         "active": _is_active(link, now),
+        "video_title": video_title,
     }
     return data
 
@@ -112,7 +117,7 @@ def create(
     base = settings.PUBLIC_API_BASE_URL.rstrip("/")
     watch_url = f"{base}/demo/watch/?s={public_id}&t={token}"
     app_url = f"onstream://watch?s={public_id}&t={token}"
-    data = _serialize(link, upload_id)
+    data = _serialize(link, upload_id, video_title=video.title)
     data.update(
         {
             "token": token,
@@ -133,7 +138,10 @@ def list_for_video(
         if not video or video.user_id != user_id:
             raise AppError("Video not found", code=ErrorCode.VIDEO_NOT_FOUND)
         links = engagement_repository.list_shares_for_video(db, video.id, user_id)
-        return [_serialize(link, video.upload_id) for link in links]
+        return [
+            _serialize(link, video.upload_id, video_title=video.title)
+            for link in links
+        ]
 
     links = engagement_repository.list_shares_for_user(db, user_id)
     out: List[Dict[str, Any]] = []
@@ -141,7 +149,7 @@ def list_for_video(
         video = video_repository.get_by_id(db, link.video_id)
         if not video:
             continue
-        out.append(_serialize(link, video.upload_id))
+        out.append(_serialize(link, video.upload_id, video_title=video.title))
     return out
 
 
@@ -154,7 +162,8 @@ def revoke(db: Session, user_id: int, public_id: str) -> Dict[str, Any]:
         engagement_repository.save_share(db, link)
     video = video_repository.get_by_id(db, link.video_id)
     upload_id = video.upload_id if video else ""
-    return _serialize(link, upload_id)
+    title = video.title if video else None
+    return _serialize(link, upload_id, video_title=title)
 
 
 def exchange(db: Session, public_id: str, token: str) -> Dict[str, Any]:

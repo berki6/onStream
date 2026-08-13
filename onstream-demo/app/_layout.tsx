@@ -111,6 +111,13 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
           }}
         />
         <Stack.Screen
+          name="shares"
+          options={{
+            headerShown: true,
+            title: "Share links",
+          }}
+        />
+        <Stack.Screen
           name="lab/webhooks"
           options={{
             headerShown: true,

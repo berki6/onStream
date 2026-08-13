@@ -122,6 +122,17 @@ export default function VideosScreen() {
         </Pressable>
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel="Share links"
+          onPress={() => router.push("/shares" as Href)}
+          style={({ pressed }) => [
+            styles.iconBtn,
+            pressed && { opacity: 0.88 },
+          ]}
+        >
+          <Ionicons name="link-outline" size={22} color={colors.text} />
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
           accessibilityLabel="Playlists"
           onPress={() => router.push("/playlist" as Href)}
           style={({ pressed }) => [

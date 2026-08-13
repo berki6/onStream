@@ -33,6 +33,7 @@ class ShareLinkResponse(BaseModel):
     clip_end: Optional[float] = None
     created_at: Optional[datetime] = None
     active: bool = True
+    video_title: Optional[str] = None
 
 
 class ShareLinkCreateResponse(ShareLinkResponse):
