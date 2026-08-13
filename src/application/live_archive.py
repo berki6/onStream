@@ -74,8 +74,8 @@ def _existing_archive_video(
 def promote(db: Session, stream: models.LiveStream) -> Optional[models.Video]:
     """Copy archive HLS into VIDEO_HLS_DIR and insert a READY video. Soft-fail.
 
-    Duration comes from #EXTINF (no ffprobe). Storyboard is skipped on this
-    path so revoke stays a control-plane call.
+    Duration comes from #EXTINF (no ffprobe). Poster and storyboard run on the
+    worker so revoke stays a control-plane call.
     """
     if not is_enabled():
         return None
@@ -85,6 +85,8 @@ def promote(db: Session, stream: models.LiveStream) -> Optional[models.Video]:
             live_stream_repository.update_fields(
                 db, stream, archived_upload_id=existing.upload_id
             )
+        if not existing.storyboard_path or not existing.thumbnail_path:
+            _enqueue_previews(db, existing)
         return existing
     src = find_archive_playlist(stream)
     if src is None:
@@ -133,6 +135,7 @@ def promote(db: Session, stream: models.LiveStream) -> Optional[models.Video]:
         )
     except Exception as exc:
         logger.warning("Live archive webhook failed: %s", exc)
+    _enqueue_previews(db, video)
     logger.info(
         "Archived live %s → VOD %s (%.1fs)",
         stream.stream_id,
@@ -140,3 +143,19 @@ def promote(db: Session, stream: models.LiveStream) -> Optional[models.Video]:
         duration or 0.0,
     )
     return video
+
+
+def _enqueue_previews(db: Session, video: models.Video) -> None:
+    """Poster + filmstrip are async so revoke stays a control-plane call."""
+    try:
+        from src.infrastructure.queue.job_queue import job_queue
+
+        ok = job_queue.enqueue_job(video.upload_id, db, job_type="storyboard")
+        if not ok:
+            logger.warning(
+                "Live archive preview enqueue returned false for %s", video.upload_id
+            )
+    except Exception as exc:
+        logger.warning(
+            "Live archive preview enqueue failed for %s: %s", video.upload_id, exc
+        )

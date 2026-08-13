@@ -31,6 +31,7 @@ class JobType(PyEnum):
     MODERATION = "moderation"
     EMBEDDINGS = "embeddings"
     SMART_THUMBNAIL = "smart_thumbnail"
+    STORYBOARD = "storyboard"
 
 
 class UploadSessionStatus(PyEnum):

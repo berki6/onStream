@@ -188,7 +188,7 @@ Direct upload separates session creation, byte transfer, and completion so clien
 
 ## Playback
 
-Playback routes serve HLS masters and assets for VOD and live. Authorization accepts a stream token query parameter, a Bearer token, or public/unlisted visibility. Stream JWTs may include `clip_start` / `clip_end`; the master playlist injects `#EXT-X-START` when `clip_start` is present. Storyboard sprites live at `/v1/playback/{id}/storyboard.jpg` and `.vtt`. Live `POST /v1/playback/live/{stream_id}/whep` is the viewer WHEP gateway (SDP in/out, opaque session `Location`); it does not expose the encoder stream key. `POST /v1/live/{id}/tokens` returns `playback_url` (HLS) and `whep_playback_url` (signaling).
+Playback routes serve HLS masters and assets for VOD and live. Authorization accepts a stream token query parameter, a Bearer token, or public/unlisted visibility. Stream JWTs may include `clip_start` / `clip_end`; the master playlist injects `#EXT-X-START` when `clip_start` is present. Storyboard sprites live at `/v1/playback/{id}/storyboard.jpg` and `.vtt` (live archives enqueue a `storyboard` worker job after revoke so Watch replay gets the same filmstrip). Live `POST /v1/playback/live/{stream_id}/whep` is the viewer WHEP gateway (SDP in/out, opaque session `Location`); it does not expose the encoder stream key. `POST /v1/live/{id}/tokens` returns `playback_url` (HLS) and `whep_playback_url` (signaling).
 
 | Method | Path |
 |--------|------|

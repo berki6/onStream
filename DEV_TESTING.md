@@ -541,7 +541,7 @@ Requires `alembic upgrade head` (`j0a1b2c3d4e5`) and `LIVE_ARCHIVE_ENABLED=true`
 3. `/demo/?url=` with the tokenized live master — hls.js timeline should seek within the EVENT playlist.
 4. Expo → **Revoke stream**.
 5. Same screen: **Watch replay** opens the Library VOD (`/video/{upload_id}`). HLS should play the recording; live playlist 404s.
-6. Library list should show a new READY video with the live title.
+6. Library list should show a new READY video with the live title. After the worker runs the `storyboard` job, Library/Watch replay get a poster and filmstrip.
 
 Revoke without a dedicated archive playlist still ends the stream (`archived_upload_id` null). The sliding live window is never promoted.
 

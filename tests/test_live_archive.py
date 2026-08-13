@@ -37,6 +37,10 @@ def _archive_defaults(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "src.application.live_service.live_record.start_record", lambda *a, **k: None
     )
+    monkeypatch.setattr(
+        "src.infrastructure.queue.job_queue.job_queue.enqueue_job",
+        lambda *a, **k: True,
+    )
 
 
 def _write_archive(stream_id: str) -> None:
@@ -196,4 +200,34 @@ def test_live_hls_serves_dvr_archive_while_live(test_user, db_session: Session):
     )
     assert seg.status_code == 200
     assert len(seg.content) == 32
+
+
+def test_revoke_enqueues_storyboard_job(test_user, db_session: Session, monkeypatch):
+    seen: list[tuple[str, str]] = []
+
+    def capture(upload_id, db, job_type="transcode"):
+        seen.append((upload_id, job_type))
+        return True
+
+    monkeypatch.setattr(
+        "src.infrastructure.queue.job_queue.job_queue.enqueue_job",
+        capture,
+    )
+    token = _auth_token()
+    created = _create_stream(token, title="Preview me")
+    stream_id = created["stream_id"]
+    key = created["stream_key"]
+    client.post(
+        "/v1/live/mediamtx-auth",
+        json={"action": "publish", "path": f"live/{key}"},
+    )
+    _write_archive(stream_id)
+    deleted = client.delete(
+        f"/v1/live/{stream_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert deleted.status_code == 200
+    upload_id = deleted.json()["data"]["archived_upload_id"]
+    assert upload_id
+    assert seen == [(upload_id, "storyboard")]
 

@@ -119,7 +119,7 @@ Legend: **Have** / **Partial** / **Gap**. Priority = fit for *next* work given c
 | Live chat | Owncast, CyTube | Gap | Medium | Distinct live product slice |
 | Live → VOD / DVR archive | PingOS, PeerTube, OME | **Shipped** (EVENT DVR while live + revoke → READY VOD) | High | Mid-stream scrub on the archive playlist |
 | LL-HLS delivery | Mux, OME, LiveForge | Gap | Medium–High | Latency product story |
-| Scrub / storyboard previews | OPlayer, CF Stream, Mux | Partial (storyboard infra exists in media stack?) | Medium | Browser `/demo/` + Expo later |
+| Scrub / storyboard previews | OPlayer, CF Stream, Mux | **Partial** (VOD transcode + live-archive async job; Expo filmstrip) | Medium | Live DVR hover still uses VOD sprite after revoke |
 | Instant / clip highlights | Mux clips, CF transforms | Gap | Medium | Builds on chapters + share |
 | Video trimmer | MediaCMS | Gap | Low–Medium | Editing slice |
 | Chromecast / AirPlay | OPlayer, CF player | Gap | Low | Player polish |
