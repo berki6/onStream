@@ -94,6 +94,10 @@ class Video(VideoBase):
     updated_at: Optional[datetime] = None
     status: VideoStatus
     is_public: bool = False
+    visibility: str = "private"
+    storyboard_url: Optional[str] = None
+    storyboard_vtt_url: Optional[str] = None
+    captions_url: Optional[str] = None
 
     @field_validator("upload_id")
     @classmethod
@@ -132,6 +136,7 @@ class VideoUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=2, max_length=200)
     description: Optional[str] = Field(None, max_length=2000)
     is_public: Optional[bool] = None
+    visibility: Optional[Literal["private", "unlisted", "public"]] = None
 
     @field_validator("title")
     @classmethod
@@ -165,6 +170,7 @@ class VideoVisibilityUpdate(BaseModel):
     """Compatibility alias body for visibility-only updates."""
 
     is_public: bool
+    visibility: Optional[Literal["private", "unlisted", "public"]] = None
 
 
 class VideoJobBase(BaseModel):
@@ -196,12 +202,16 @@ class VideoJobResponse(VideoJob):
 class PlaybackTokenCreate(BaseModel):
     expires_in: Optional[int] = None
     type: Literal["playback"] = "playback"
+    clip_start: Optional[float] = Field(None, ge=0)
+    clip_end: Optional[float] = Field(None, ge=0)
 
 
 class PlaybackTokenResponse(BaseModel):
     token: str
     expires_in: int
     playback_url: str
+    clip_start: Optional[float] = None
+    clip_end: Optional[float] = None
 
 
 class JobActionRequest(BaseModel):

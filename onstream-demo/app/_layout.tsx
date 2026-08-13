@@ -23,6 +23,8 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { CinemaSheetProvider } from "@/components/CinemaSheetHost";
+import { ConnectivityHost } from "@/components/ConnectivityBanner";
+import { ToastHost } from "@/components/ToastHost";
 import { queryClient } from "@/query/client";
 import { colors } from "@/theme/tokens";
 
@@ -117,6 +119,22 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
           }}
         />
         <Stack.Screen
+          name="playlist/index"
+          options={{
+            headerShown: true,
+            title: "Playlists",
+            animation: "slide_from_right",
+          }}
+        />
+        <Stack.Screen
+          name="playlist/[id]"
+          options={{
+            headerShown: true,
+            title: "Playlist",
+            animation: "slide_from_right",
+          }}
+        />
+        <Stack.Screen
           name="library/[kind]"
           options={{
             headerShown: true,
@@ -175,6 +193,8 @@ export default function RootLayout() {
                 <SplashController fontsLoaded={fontsLoaded} />
                 <StatusBar style="light" />
                 <RootNavigator fontsLoaded={fontsLoaded} />
+                <ConnectivityHost />
+                <ToastHost />
               </CinemaSheetProvider>
             </AuthProvider>
           </ThemeProvider>

@@ -57,6 +57,7 @@ async def live_master_playlist(
         )
         path = live_service.resolve_master(stream)
         raw = path.read_text(encoding="utf-8", errors="ignore")
+        raw = playback_service.inject_live_edge_start(raw)
         body = playback_service.rewrite_playlist(raw, stream_token or token)
     except AppError as e:
         raise_app_error(e)

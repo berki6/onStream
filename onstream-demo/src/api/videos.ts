@@ -1,15 +1,24 @@
 import { apiRequest, ApiEnvelope, getApiBase } from "./client";
 
+export type VideoVisibility = "private" | "unlisted" | "public";
+
 export type Video = {
   upload_id: string;
   title: string;
   description?: string | null;
   status: string;
   is_public: boolean;
+  visibility?: VideoVisibility;
+  duration?: number | null;
   hls_path?: string | null;
   thumbnail_path?: string | null;
   caption_vtt_path?: string | null;
   transcript_path?: string | null;
+  storyboard_path?: string | null;
+  storyboard_vtt_path?: string | null;
+  storyboard_url?: string | null;
+  storyboard_vtt_url?: string | null;
+  captions_url?: string | null;
   detected_language?: string | null;
   quality_score?: number | null;
   created_at?: string | null;
@@ -25,6 +34,11 @@ export type PlaybackToken = {
   token: string;
   expires_in: number;
   playback_url: string;
+  clip_start?: number | null;
+  clip_end?: number | null;
+  storyboard_url?: string | null;
+  storyboard_vtt_url?: string | null;
+  captions_url?: string | null;
 };
 
 export async function listVideos(skip = 0, limit = 50) {
@@ -39,7 +53,12 @@ export async function getVideo(videoId: string) {
 
 export async function updateVideo(
   videoId: string,
-  body: { title?: string; description?: string | null; is_public?: boolean }
+  body: {
+    title?: string;
+    description?: string | null;
+    is_public?: boolean;
+    visibility?: VideoVisibility;
+  }
 ) {
   return apiRequest<ApiEnvelope<Video>>(`/v1/videos/${videoId}`, {
     method: "PATCH",
@@ -59,12 +78,21 @@ export async function getVideoChapters(videoId: string) {
   );
 }
 
-export async function createPlaybackToken(videoId: string, expiresIn = 3600) {
+export async function createPlaybackToken(
+  videoId: string,
+  expiresIn = 3600,
+  clip?: { start?: number; end?: number }
+) {
   return apiRequest<ApiEnvelope<PlaybackToken>>(
     `/v1/videos/${videoId}/tokens`,
     {
       method: "POST",
-      body: JSON.stringify({ expires_in: expiresIn, type: "playback" }),
+      body: JSON.stringify({
+        expires_in: expiresIn,
+        type: "playback",
+        clip_start: clip?.start,
+        clip_end: clip?.end,
+      }),
     }
   );
 }

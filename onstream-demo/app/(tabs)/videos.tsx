@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter, type Href } from "expo-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { onlineManager, useQuery, useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { listSavedVideos } from "@/api/favorites";
 import { listContinueWatching } from "@/api/watch";
+import { queryErrorText } from "@/api/client";
 import { ElasticRefreshFlatList } from "@/components/ElasticRefreshFlatList";
 import { LibraryShelves } from "@/components/LibraryShelves";
 import { Screen } from "@/components/Screen";
@@ -20,6 +21,7 @@ import { StatusPill } from "@/components/StatusPill";
 import { VideoUploadComposer } from "@/components/VideoUploadComposer";
 import { videoPipelineHint } from "@/lib/videoStatus";
 import { videoKeys } from "@/query/keys";
+import { usePlaylistsQuery } from "@/query/playlists";
 import { prefetchVideo, useVideosQuery } from "@/query/videos";
 import { colors, radii, spacing } from "@/theme/tokens";
 
@@ -56,17 +58,21 @@ export default function VideosScreen() {
     queryKey: videoKeys.saved(),
     queryFn: async () => (await listSavedVideos(12)).data,
   });
+  const playlistsQuery = usePlaylistsQuery();
 
   useFocusEffect(
     useCallback(() => {
       focusedRef.current = true;
-      refetch();
-      void continueQuery.refetch();
-      void savedQuery.refetch();
+      if (onlineManager.isOnline()) {
+        refetch();
+        void continueQuery.refetch();
+        void savedQuery.refetch();
+        void playlistsQuery.refetch();
+      }
       return () => {
         focusedRef.current = false;
       };
-    }, [refetch, continueQuery.refetch, savedQuery.refetch])
+    }, [refetch, continueQuery.refetch, savedQuery.refetch, playlistsQuery.refetch])
   );
 
   useEffect(() => {
@@ -75,7 +81,7 @@ export default function VideosScreen() {
     );
     if (!busy) return;
     const id = setInterval(() => {
-      if (focusedRef.current) refetch();
+      if (focusedRef.current && onlineManager.isOnline()) refetch();
     }, 2500);
     return () => clearInterval(id);
   }, [items, refetch]);
@@ -87,12 +93,7 @@ export default function VideosScreen() {
   }, [savedQuery.data]);
 
   const listError =
-    uploadError ||
-    (isError
-      ? error instanceof Error
-        ? error.message
-        : "Failed to load videos"
-      : null);
+    uploadError || queryErrorText(isError, error, items.length > 0);
 
   return (
     <Screen>
@@ -118,6 +119,17 @@ export default function VideosScreen() {
           ]}
         >
           <Ionicons name="time-outline" size={22} color={colors.text} />
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Playlists"
+          onPress={() => router.push("/playlist" as Href)}
+          style={({ pressed }) => [
+            styles.iconBtn,
+            pressed && { opacity: 0.88 },
+          ]}
+        >
+          <Ionicons name="list-outline" size={22} color={colors.text} />
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -163,12 +175,14 @@ export default function VideosScreen() {
               refetch(),
               continueQuery.refetch(),
               savedQuery.refetch(),
+              playlistsQuery.refetch(),
             ]);
           }}
           ListHeaderComponent={
             <LibraryShelves
               continueItems={continueQuery.data ?? []}
               savedItems={savedQuery.data ?? []}
+              playlists={playlistsQuery.data ?? []}
             />
           }
           ListEmptyComponent={
@@ -268,6 +282,11 @@ export default function VideosScreen() {
                   ) : null}
                   <StatusPill status={item.status} />
                 </View>
+                {item.visibility && item.visibility !== "private" ? (
+                  <Text style={styles.meta}>
+                    {item.visibility === "public" ? "Public" : "Unlisted"}
+                  </Text>
+                ) : null}
                 <Text style={[styles.hint, { color: HINT_COLOR[hint.tone] }]}>
                   {hint.text}
                 </Text>

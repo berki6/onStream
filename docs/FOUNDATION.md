@@ -141,6 +141,7 @@ data/
 │                 /{height}p/index.m3u8 + segment_*.ts
 ├── thumbnails/{video_db_id}.jpg
 ├── live/live/{stream_key}/…          # MediaMTX remux (volume shared)
+│    └── {stream_id}/index.m3u8       # FFmpeg normalize (WHIP)
 │    └── {stream_id}/abr/…            # optional live ABR
 └── cache/…                           # S3 download cache when backend≠local
 ```

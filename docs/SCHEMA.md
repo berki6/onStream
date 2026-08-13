@@ -44,9 +44,9 @@ erDiagram
 | Table | Model | Responsibility |
 |-------|--------|----------------|
 | `users` | `User` | Credentials, ownership root |
-| `videos` | `Video` | VOD metadata; public id = `upload_id`; AI + `quality_score`; Postgres `search_vector` FTS |
+| `videos` | `Video` | VOD metadata; public id = `upload_id`; AI + `quality_score`; Postgres `search_vector` FTS; `visibility` (`private`/`unlisted`/`public`) with derived `is_public` |
 | `video_watch_progress` | `VideoWatchProgress` | Per-user resume position / completed |
-| `share_links` | `ShareLink` | Expiring share credentials (hashed token) |
+| `share_links` | `ShareLink` | Expiring share credentials (hashed token); optional `clip_start_seconds` / `clip_end_seconds` |
 | `video_favorites` | `VideoFavorite` | Saved / liked videos |
 | `video_jobs` | `VideoJob` | User-visible transcode progress / stages |
 | `queued_jobs` | `QueuedJob` | Redis outage fallback queue rows |
@@ -101,6 +101,7 @@ Secrets: only `stream_key_hash` and `stream_key_prefix` are persisted. The plain
 | Moderation | `moderation_score`, `moderation_labels`, `quarantined_at` |
 | Quality | `quality_score` |
 | Storyboard | `storyboard_path`, `storyboard_vtt_path` |
+| Visibility | `visibility`, `is_public` (derived: true only when public) |
 
 ## Migrations
 

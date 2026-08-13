@@ -123,9 +123,9 @@ Video identifiers in paths are public `upload_id` values. Multipart create is th
 | GET | `/` list |
 | POST | `/` multipart upload |
 | GET | `/{video_id}` |
-| PATCH | `/{video_id}` |
+| PATCH | `/{video_id}` title, description, `visibility` (`private` \| `unlisted` \| `public`) or legacy `is_public` |
 | DELETE | `/{video_id}` |
-| POST | `/{video_id}/tokens` signed playback |
+| POST | `/{video_id}/tokens` signed playback; optional `clip_start` / `clip_end` |
 | GET | `/{video_id}/job` (jobs router) |
 | GET | `/{video_id}/chapters` |
 | GET | `/continue` continue-watching shelf |
@@ -147,12 +147,34 @@ DB-backed expiring watch links. Create returns plaintext token once; exchange (p
 
 | Method | Path |
 |--------|------|
-| POST | `/` create (auth) |
+| POST | `/` create (auth); optional `clip_start` / `clip_end` |
 | GET | `/?video_id=` list (auth) |
 | DELETE | `/{public_id}` revoke (auth) |
-| POST | `/{public_id}/exchange` body `{ token }` (public) |
+| POST | `/{public_id}/exchange` body `{ token }` (public); returns clip bounds + storyboard/caption URLs |
 
-Browser landing: `/demo/watch/?s={public_id}&t={token}`. Create also returns `app_url` (`onstream://watch?s=…&t=…`) for the Expo demo.
+Browser landing: `/demo/watch/?s={public_id}&t={token}`. Add `embed=1` for iframe chrome, `playlist={id}` for a public playlist side panel. Create also returns `app_url` (`onstream://watch?s=…&t=…`) for the Expo demo.
+
+**Visibility.** `private` needs a token or owner JWT. `unlisted` and `public` play without a token when `READY`. Only `public` appears in RSS.
+
+## Feeds — `/v1/feeds` (public)
+
+| Method | Path |
+|--------|------|
+| GET | `/{username}/videos.rss` public READY videos |
+| GET | `/{username}/playlists/{playlist_id}.rss` public playlist (public videos only) |
+
+## Playlists — `/v1/playlists`
+
+| Method | Path |
+|--------|------|
+| POST | `/` create (`name`, optional `is_public`) |
+| GET | `/` list (auth). `?contains_video={upload_id}` adds `contains_video` per row |
+| GET | `/public/{playlist_id}` public playlist + public videos (no auth) |
+| GET | `/{playlist_id}` |
+| PATCH | `/{playlist_id}` `name` / `is_public` |
+| DELETE | `/{playlist_id}` |
+| GET | `/{playlist_id}/videos` |
+| POST / PUT / DELETE | `/{playlist_id}/videos/{video_id}` |
 
 ## Uploads — `/v1/uploads`
 
@@ -166,7 +188,7 @@ Direct upload separates session creation, byte transfer, and completion so clien
 
 ## Playback
 
-Playback routes serve HLS masters and assets for VOD and live. Authorization accepts a stream token query parameter, a Bearer token, or public visibility. Playlist responses rewrite child URLs so tokens propagate to segments.
+Playback routes serve HLS masters and assets for VOD and live. Authorization accepts a stream token query parameter, a Bearer token, or public/unlisted visibility. Stream JWTs may include `clip_start` / `clip_end`; the master playlist injects `#EXT-X-START` when `clip_start` is present. Storyboard sprites live at `/v1/playback/{id}/storyboard.jpg` and `.vtt`.
 
 | Method | Path |
 |--------|------|
@@ -215,7 +237,8 @@ Payload shape: `{ "type", "created_at", "data": { stream_id, user_id, title, sta
 |--------|---------|
 | `/webhooks` | endpoint CRUD + deliveries |
 | `/api-keys` | API key management |
-| `/playlists` | user playlists |
+| `/playlists` | user playlists + public GET |
+| `/feeds` | public RSS (user library / playlist) |
 | `/moderation` | quarantine queue + review |
 | `/search` | keyword (Postgres FTS + rank; ILIKE fallback) / semantic |
 
@@ -231,7 +254,7 @@ These routes are mounted on the application root for probes, metrics scrapers, a
 | `/metrics` | Prometheus (if enabled) |
 | `/scalar` | Scalar interactive API reference |
 | `/demo/` | static hls.js (if `DEMO_PLAYER_ENABLED`) |
-| `/demo/watch/` | anonymous share-link landing (`?s=` + `?t=`) |
+| `/demo/watch/` | anonymous share-link landing (`?s=` + `?t=`; `embed=1`, `playlist=`) |
 
 ## Client guides
 

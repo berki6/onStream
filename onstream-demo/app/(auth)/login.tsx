@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { ApiError, getApiBase, pingHealthLabel, setApiBase } from "@/api/client";
+import { getApiBase, pingHealthLabel, setApiBase, userFacingError } from "@/api/client";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
 import { FormScroll } from "@/components/FormScroll";
@@ -77,7 +77,7 @@ export default function LoginScreen() {
                 await setApiBase(apiBase);
                 await signIn(username.trim(), password);
               } catch (e) {
-                setError(e instanceof ApiError ? e.message : "Sign in failed");
+                setError(userFacingError(e, "Sign in failed"));
               } finally {
                 setLoading(false);
               }

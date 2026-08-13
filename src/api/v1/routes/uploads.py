@@ -12,7 +12,8 @@ from src.api.v1.responses import api_ok, raise_app_error
 from src.application import upload_service
 from src.application.errors import AppError
 from src.infrastructure.db.session import get_db
-from src.schemas import APIResponse, DirectUploadCreate, Video
+from src.application.media_urls import video_payload
+from src.schemas import APIResponse, DirectUploadCreate
 
 router = APIRouter()
 
@@ -72,6 +73,6 @@ def complete_upload(
         raise_app_error(e)
     return api_ok(
         request,
-        Video.model_validate(video),
+        video_payload(video),
         message="Upload completed; processing queued",
     )

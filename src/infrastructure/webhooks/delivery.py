@@ -171,6 +171,7 @@ def emit_video_event(
         "title": video.title,
         "status": video.status.value if hasattr(video.status, "value") else video.status,
         "is_public": video.is_public,
+        "visibility": getattr(video, "visibility", None),
         "hls_path": video.hls_path,
         "thumbnail_path": video.thumbnail_path,
     }

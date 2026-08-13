@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApiError } from "@/api/client";
 import { requestPasswordReset } from "@/api/auth";
+import { toast } from "@/lib/toast";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
 import { FormScroll } from "@/components/FormScroll";
@@ -20,7 +21,6 @@ export default function ForgotPasswordScreen() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   return (
@@ -52,7 +52,6 @@ export default function ForgotPasswordScreen() {
             keyboardType="email-address"
           />
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          {note ? <Text style={styles.note}>{note}</Text> : null}
 
           <Button
             label="Send reset"
@@ -60,7 +59,6 @@ export default function ForgotPasswordScreen() {
             onPress={async () => {
               setLoading(true);
               setError(null);
-              setNote(null);
               try {
                 const res = await requestPasswordReset(email.trim());
                 const token = res.data?.reset_token;
@@ -70,7 +68,7 @@ export default function ForgotPasswordScreen() {
                   );
                   return;
                 }
-                setNote(
+                toast.info(
                   "If that email exists, a reset was sent. Check SMTP inbox or API logs (EMAIL_PROVIDER=log)."
                 );
               } catch (e) {
@@ -115,12 +113,6 @@ const styles = StyleSheet.create({
     color: colors.danger,
     fontFamily: "DMSans_500Medium",
     fontSize: 14,
-  },
-  note: {
-    color: colors.brandDim,
-    fontFamily: "DMSans_400Regular",
-    fontSize: 13,
-    lineHeight: 20,
   },
   link: {
     color: colors.text,

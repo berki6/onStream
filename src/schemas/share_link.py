@@ -11,6 +11,8 @@ class ShareLinkCreate(BaseModel):
     expires_in_seconds: int = Field(86400, ge=60, le=60 * 60 * 24 * 90)
     label: Optional[str] = Field(None, max_length=120)
     max_views: Optional[int] = Field(None, ge=1, le=1_000_000)
+    clip_start: Optional[float] = Field(None, ge=0)
+    clip_end: Optional[float] = Field(None, ge=0)
 
 
 class ShareLinkExchange(BaseModel):
@@ -27,6 +29,8 @@ class ShareLinkResponse(BaseModel):
     revoked_at: Optional[datetime] = None
     max_views: Optional[int] = None
     view_count: int = 0
+    clip_start: Optional[float] = None
+    clip_end: Optional[float] = None
     created_at: Optional[datetime] = None
     active: bool = True
 
@@ -47,3 +51,8 @@ class ShareExchangeResponse(BaseModel):
     upload_id: str
     title: str
     expires_at: datetime
+    clip_start: Optional[float] = None
+    clip_end: Optional[float] = None
+    storyboard_url: Optional[str] = None
+    storyboard_vtt_url: Optional[str] = None
+    captions_url: Optional[str] = None

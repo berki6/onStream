@@ -8,7 +8,7 @@ import React, {
 } from "react";
 
 import { loginUser, logoutUser, registerUser } from "../api/auth";
-import { initApiBase, tryRefreshAccessToken } from "../api/client";
+import { initApiBase, isNetworkError, tryRefreshAccessToken } from "../api/client";
 import { storage } from "../lib/storage";
 
 type SessionSnapshot = {
@@ -47,7 +47,14 @@ async function readSessionFromStorage(): Promise<
 
   // Access missing but refresh present → one hydrate attempt (expired access).
   if (!access && refresh) {
-    access = await tryRefreshAccessToken();
+    try {
+      access = await tryRefreshAccessToken();
+    } catch (e) {
+      if (isNetworkError(e)) {
+        return { signedIn: true, username };
+      }
+      access = null;
+    }
     if (!access) {
       await storage.clearSession();
       return { signedIn: false, username: null };
@@ -75,10 +82,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const next = await readSessionFromStorage();
         if (!cancelled) setSession({ ready: true, ...next });
-      } catch {
-        if (!cancelled) {
-          setSession({ ready: true, signedIn: false, username: null });
+      } catch (e) {
+        if (cancelled) return;
+        if (isNetworkError(e)) {
+          const username = await storage.getUsername();
+          const refresh = await storage.getRefreshToken();
+          setSession({
+            ready: true,
+            signedIn: Boolean(refresh),
+            username,
+          });
+          return;
         }
+        setSession({ ready: true, signedIn: false, username: null });
       }
     })();
     return () => {

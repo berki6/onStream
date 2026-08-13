@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { getApiBase, pingHealthLabel, setApiBase } from "@/api/client";
 import { Button } from "@/components/Button";
+import { CopyRow } from "@/components/CopyRow";
 import { Field } from "@/components/Field";
 import { FormScroll } from "@/components/FormScroll";
 import { Screen } from "@/components/Screen";
@@ -73,6 +74,13 @@ export default function AccountScreen() {
             </Text>
           </View>
         </View>
+
+        {username ? (
+          <CopyRow
+            label="Public RSS"
+            value={`${getApiBase()}/v1/feeds/${encodeURIComponent(username)}/videos.rss`}
+          />
+        ) : null}
 
         <View style={styles.block}>
           <View style={styles.sectionRow}>

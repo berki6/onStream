@@ -42,7 +42,12 @@ def create_password_reset_token(email: str) -> str:
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
 
 
-def create_stream_token(upload_id: str, expires_delta: Optional[timedelta] = None) -> str:
+def create_stream_token(
+    upload_id: str,
+    expires_delta: Optional[timedelta] = None,
+    clip_start: Optional[float] = None,
+    clip_end: Optional[float] = None,
+) -> str:
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
@@ -50,6 +55,10 @@ def create_stream_token(upload_id: str, expires_delta: Optional[timedelta] = Non
             seconds=settings.STREAM_TOKEN_EXPIRE_SECONDS
         )
     to_encode = {"sub": upload_id, "exp": expire, "type": "stream"}
+    if clip_start is not None:
+        to_encode["clip_start"] = float(clip_start)
+    if clip_end is not None:
+        to_encode["clip_end"] = float(clip_end)
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
 
 

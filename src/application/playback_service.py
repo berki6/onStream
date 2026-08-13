@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from src.application.error_codes import ErrorCode
 from src.application.errors import AppError
 from src.application.ids import validate_public_video_id
+from src.application.visibility import allows_tokenless_playback
 from src.core.config import settings
 from src.core.security.tokens import create_stream_token, decode_token
 from src.infrastructure.db import models
@@ -29,11 +30,72 @@ def _is_playable(video: models.Video) -> bool:
     return video.status in (models.VideoStatus.READY, models.VideoStatus.QUARANTINED)
 
 
+def normalize_clip_window(
+    clip_start: Optional[float],
+    clip_end: Optional[float],
+    duration: Optional[float] = None,
+) -> Tuple[Optional[float], Optional[float]]:
+    start = None if clip_start is None else float(clip_start)
+    end = None if clip_end is None else float(clip_end)
+    if start is None and end is None:
+        return None, None
+    if start is not None and start < 0:
+        raise AppError("clip_start must be >= 0", code=ErrorCode.PLAYBACK_BAD_REQUEST)
+    if end is not None and end < 0:
+        raise AppError("clip_end must be >= 0", code=ErrorCode.PLAYBACK_BAD_REQUEST)
+    if start is not None and end is not None and end <= start:
+        raise AppError(
+            "clip_end must be greater than clip_start",
+            code=ErrorCode.PLAYBACK_BAD_REQUEST,
+        )
+    if duration and duration > 0:
+        if start is not None and start >= duration:
+            raise AppError(
+                "clip_start is past video duration",
+                code=ErrorCode.PLAYBACK_BAD_REQUEST,
+            )
+        if end is not None:
+            end = min(end, duration)
+    return start, end
+
+
+def clip_start_from_token(token: Optional[str]) -> Optional[float]:
+    if not token:
+        return None
+    try:
+        payload = decode_token(token, expected_type="stream")
+        raw = payload.get("clip_start")
+        if raw is None:
+            return None
+        return float(raw)
+    except (JWTError, TypeError, ValueError):
+        return None
+
+
+def inject_clip_start(content: str, offset: Optional[float]) -> str:
+    if offset is None or offset <= 0:
+        return content
+    lines = content.splitlines()
+    out = []
+    inserted = False
+    for line in lines:
+        out.append(line)
+        if not inserted and line.startswith("#EXTM3U"):
+            out.append(f"#EXT-X-START:TIME-OFFSET={offset:.3f}")
+            inserted = True
+    dumped = "\n".join(out)
+    if not dumped.endswith("\n"):
+        dumped += "\n"
+    return dumped
+
+
 def issue_token(
     db: Session,
     video_id: str,
     user_id: int,
     expires_in: Optional[int] = None,
+    clip_start: Optional[float] = None,
+    clip_end: Optional[float] = None,
 ) -> dict:
     """Issue a signed playback token. ``video_id`` is the public upload_id."""
     validate_public_video_id(video_id)
@@ -47,17 +109,31 @@ def issue_token(
             "Video is not ready for streaming", code=ErrorCode.PLAYBACK_NOT_READY
         )
 
+    start, end = normalize_clip_window(
+        clip_start, clip_end, duration=video.duration
+    )
     ttl = expires_in if expires_in is not None else settings.STREAM_TOKEN_EXPIRE_SECONDS
-    token = create_stream_token(video_id, expires_delta=timedelta(seconds=ttl))
+    token = create_stream_token(
+        video_id,
+        expires_delta=timedelta(seconds=ttl),
+        clip_start=start,
+        clip_end=end,
+    )
     playback_url = (
         f"{settings.PUBLIC_API_BASE_URL}/v1/playback/{video_id}/master.m3u8"
         f"?token={token}"
     )
-    return {
+    data = {
         "token": token,
         "expires_in": ttl,
         "playback_url": playback_url,
+        "clip_start": start,
+        "clip_end": end,
     }
+    from src.application.media_urls import playback_media_urls
+
+    data.update(playback_media_urls(video, token=token))
+    return data
 
 
 def check_origin(origin_or_referer: str) -> None:
@@ -111,7 +187,7 @@ def authorize_access(
             code=ErrorCode.PLAYBACK_UNAUTHORIZED,
         )
 
-    if video.is_public and video.status == models.VideoStatus.READY:
+    if allows_tokenless_playback(video):
         return token
 
     candidate = token or bearer
@@ -200,11 +276,32 @@ def rewrite_playlist(content: str, token: Optional[str]) -> bytes:
         return ("\n".join(out_lines) + "\n").encode("utf-8")
 
 
-def prepare_master_playlist(video: models.Video, content: str) -> str:
-    """Inject subtitle track into master playlist when captions exist."""
-    if not video.caption_vtt_path:
+def inject_live_edge_start(content: str, offset: float = -2.0) -> str:
+    """Point players at the live edge (negative TIME-OFFSET = from end of playlist)."""
+    if not content or "#EXT-X-START:" in content:
         return content
-    return inject_subtitle_track(content, captions_uri="captions.vtt")
+    lines = content.splitlines()
+    out = []
+    inserted = False
+    for line in lines:
+        out.append(line)
+        if not inserted and line.startswith("#EXTM3U"):
+            out.append(f"#EXT-X-START:TIME-OFFSET={offset:.3f}")
+            inserted = True
+    dumped = "\n".join(out)
+    if not dumped.endswith("\n"):
+        dumped += "\n"
+    return dumped
+
+
+def prepare_master_playlist(
+    video: models.Video, content: str, stream_token: Optional[str] = None
+) -> str:
+    """Inject subtitle track and optional clip start offset into master playlist."""
+    if video.caption_vtt_path:
+        content = inject_subtitle_track(content, captions_uri="captions.vtt")
+    offset = clip_start_from_token(stream_token)
+    return inject_clip_start(content, offset)
 
 
 def get_ready_video(db: Session, video_id: str) -> models.Video:

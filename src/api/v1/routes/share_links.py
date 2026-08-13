@@ -34,6 +34,8 @@ def create_share_link(
             expires_in_seconds=body.expires_in_seconds,
             label=body.label,
             max_views=body.max_views,
+            clip_start=body.clip_start,
+            clip_end=body.clip_end,
         )
     except AppError as e:
         raise_app_error(e)

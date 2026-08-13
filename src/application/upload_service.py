@@ -19,6 +19,7 @@ from src.infrastructure.db import models
 from src.infrastructure.queue.job_queue import job_queue
 from src.infrastructure.storage import get_storage
 from src.infrastructure.webhooks.delivery import emit_video_event
+from src.application.visibility import apply_visibility
 from src.schemas.upload import DirectUploadCreate
 from src.schemas.video import Video
 from src.utils.paths import ensure_dir, to_absolute_path
@@ -107,7 +108,11 @@ def create_session(
         description=body.description,
         file_path=storage_key,
         status=models.VideoStatus.PENDING,
-        is_public=body.is_public or False,
+        is_public=False,
+        visibility="private",
+    )
+    apply_visibility(
+        video, visibility=getattr(body, "visibility", None), is_public=body.is_public
     )
     db.add(video)
     db.flush()

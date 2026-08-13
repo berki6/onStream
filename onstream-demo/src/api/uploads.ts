@@ -1,4 +1,5 @@
-import { apiRequest, ApiEnvelope, ApiError, getApiBase } from "./client";
+import { apiRequest, ApiEnvelope, ApiError, fetchWithTimeout, getApiBase } from "./client";
+import { reportApiResult } from "../lib/connectivity";
 import { storage } from "../lib/storage";
 import type { Video } from "./videos";
 
@@ -57,18 +58,40 @@ export async function putUploadBytes(
   const headers = await authHeaders();
   if (contentRange) headers["Content-Range"] = contentRange;
 
-  let res = await fetch(url, { method: "PUT", headers, body });
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(
+      url,
+      { method: "PUT", headers, body },
+      30_000
+    );
+  } catch (e) {
+    reportApiResult(false);
+    throw e;
+  }
   if (res.status === 401) {
     // Let apiRequest refresh path stay single-source: one retry after soft refresh.
     const { tryRefreshAccessToken } = await import("./client");
     const next = await tryRefreshAccessToken();
     if (next) {
       headers.Authorization = `Bearer ${next}`;
-      res = await fetch(url, { method: "PUT", headers, body });
+      try {
+        res = await fetchWithTimeout(
+          url,
+          { method: "PUT", headers, body },
+          30_000
+        );
+      } catch (e) {
+        reportApiResult(false);
+        throw e;
+      }
     }
   }
 
-  if (res.status === 204 || res.ok) return;
+  if (res.status === 204 || res.ok) {
+    reportApiResult(true);
+    return;
+  }
 
   let json: unknown = null;
   try {

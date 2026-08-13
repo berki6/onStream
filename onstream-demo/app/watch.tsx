@@ -13,8 +13,9 @@ import {
 import { ApiError } from "@/api/client";
 import { exchangeShareLink } from "@/api/shareLinks";
 import { Button } from "@/components/Button";
-import { HlsPlayer } from "@/components/HlsPlayer";
+import { HlsPlayer, type HlsPlayerHandle } from "@/components/HlsPlayer";
 import { Screen } from "@/components/Screen";
+import { StoryboardStrip } from "@/components/StoryboardStrip";
 import { colors, radii, spacing } from "@/theme/tokens";
 
 /**
@@ -51,6 +52,7 @@ function paramsFromUrl(url: string | null): { s?: string; t?: string } {
 
 export default function WatchShareScreen() {
   const router = useRouter();
+  const playerRef = React.useRef<HlsPlayerHandle>(null);
   const routeParams = useLocalSearchParams<{
     s?: string | string[];
     t?: string | string[];
@@ -65,6 +67,10 @@ export default function WatchShareScreen() {
   const [loading, setLoading] = useState(true);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [retryTick, setRetryTick] = useState(0);
+  const [clipStart, setClipStart] = useState(0);
+  const [clipEnd, setClipEnd] = useState<number | null>(null);
+  const [storyboardVtt, setStoryboardVtt] = useState<string | null>(null);
+  const [storyboardImg, setStoryboardImg] = useState<string | null>(null);
 
   const missing = useMemo(() => !s || !t, [s, t]);
 
@@ -102,6 +108,10 @@ export default function WatchShareScreen() {
       setPlaybackUrl(res.data.playback_url);
       setTitle(res.data.title);
       setExpiresAt(res.data.expires_at);
+      setClipStart(res.data.clip_start || 0);
+      setClipEnd(res.data.clip_end ?? null);
+      setStoryboardVtt(res.data.storyboard_vtt_url || null);
+      setStoryboardImg(res.data.storyboard_url || null);
     } catch (e) {
       const code = e instanceof ApiError ? e.code : null;
       if (code === "SHARE_EXPIRED") setError("This share link has expired.");
@@ -189,7 +199,18 @@ export default function WatchShareScreen() {
                 Link expires {new Date(expiresAt).toLocaleString()}
               </Text>
             ) : null}
-            <HlsPlayer uri={playbackUrl} title={title} />
+            <HlsPlayer
+              ref={playerRef}
+              uri={playbackUrl}
+              title={title}
+              initialPositionSeconds={clipStart}
+              clipEndSeconds={clipEnd}
+            />
+            <StoryboardStrip
+              vttUrl={storyboardVtt}
+              imageUrl={storyboardImg}
+              onSeek={(sec) => playerRef.current?.seekTo(sec)}
+            />
             <Text style={styles.hint}>
               Shared playback — no account required for this screen.
             </Text>

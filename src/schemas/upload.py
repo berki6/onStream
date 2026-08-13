@@ -8,3 +8,4 @@ class DirectUploadCreate(BaseModel):
     description: Optional[str] = None
     content_type: Optional[str] = "video/mp4"
     is_public: bool = False
+    visibility: Optional[str] = None

@@ -24,6 +24,20 @@ def get_by_id(db: Session, video_id: int):
     return db.query(models.Video).filter(models.Video.id == video_id).first()
 
 
+def list_public_ready(db: Session, user_id: int, skip: int = 0, limit: int = 50):
+    from src.application.visibility import PUBLIC
+
+    q = (
+        db.query(models.Video)
+        .filter(models.Video.user_id == user_id)
+        .filter(models.Video.status == VideoStatus.READY)
+        .filter(models.Video.visibility == PUBLIC)
+    )
+    total = q.count()
+    rows = q.order_by(models.Video.created_at.desc()).offset(skip).limit(limit).all()
+    return rows, total
+
+
 def list_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 100):
     total_count = (
         db.query(models.Video)

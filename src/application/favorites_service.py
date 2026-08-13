@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 from src.application.error_codes import ErrorCode
 from src.application.errors import AppError
 from src.application.ids import validate_public_video_id
+from src.application.media_urls import video_payload
 from src.infrastructure.db.repositories import engagement_repository, video_repository
-from src.schemas.video import Video as VideoSchema
 
 
 def add(db: Session, user_id: int, upload_id: str) -> Dict[str, Any]:
@@ -43,7 +43,7 @@ def list_saved(db: Session, user_id: int, limit: int = 50) -> List[Dict[str, Any
     rows = engagement_repository.list_favorites(db, user_id, limit=limit)
     out: List[Dict[str, Any]] = []
     for fav, video in rows:
-        item = VideoSchema.model_validate(video).model_dump()
+        item = video_payload(video)
         item["favorited"] = True
         item["favorited_at"] = fav.created_at
         out.append(item)

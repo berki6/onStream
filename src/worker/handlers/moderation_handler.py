@@ -16,6 +16,7 @@ from src.infrastructure.db.session import engine
 from src.infrastructure.ai.registry import get_moderation_provider
 from src.infrastructure.queue.job_queue import job_queue
 from src.infrastructure.webhooks.delivery import emit_video_event
+from src.application.visibility import apply_visibility
 from src.utils.paths import to_absolute_path
 
 logger = get_logger(__name__)
@@ -75,7 +76,7 @@ def process_moderation(upload_id: str) -> None:
         threshold = settings.AI_MODERATION_THRESHOLD
         if result["score"] >= threshold:
             video.status = models.VideoStatus.QUARANTINED
-            video.is_public = False
+            apply_visibility(video, is_public=False)
             video.quarantined_at = datetime.now(timezone.utc)
             session.commit()
             emit_video_event(

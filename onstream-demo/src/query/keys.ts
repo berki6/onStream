@@ -10,6 +10,15 @@ export const videoKeys = {
   chapters: (id: string) => [...videoKeys.all, "chapters", id] as const,
 };
 
+export const playlistKeys = {
+  all: ["playlists"] as const,
+  list: () => [...playlistKeys.all, "list"] as const,
+  listForVideo: (uploadId: string) =>
+    [...playlistKeys.all, "list", "contains", uploadId] as const,
+  detail: (id: number) => [...playlistKeys.all, "detail", id] as const,
+  videos: (id: number) => [...playlistKeys.all, "videos", id] as const,
+};
+
 export const searchKeys = {
   all: ["search"] as const,
   query: (q: string) => [...searchKeys.all, q] as const,

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { onlineManager, useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useMemo } from "react";
 import {
   ActivityIndicator,
@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { type LiveStream } from "@/api/live";
+import { queryErrorText } from "@/api/client";
 import { Button } from "@/components/Button";
 import { ElasticRefreshFlatList } from "@/components/ElasticRefreshFlatList";
 import { Screen } from "@/components/Screen";
@@ -42,7 +43,7 @@ export default function LiveTabScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      refetch();
+      if (onlineManager.isOnline()) refetch();
     }, [refetch])
   );
 
@@ -76,11 +77,7 @@ export default function LiveTabScreen() {
     return out;
   }, [items]);
 
-  const listError = isError
-    ? error instanceof Error
-      ? error.message
-      : "Failed to load live streams"
-    : null;
+  const listError = queryErrorText(isError, error, items.length > 0);
 
   return (
     <Screen>

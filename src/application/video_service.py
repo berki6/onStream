@@ -25,6 +25,7 @@ from src.infrastructure.media import ffmpeg as media_ffmpeg
 from src.infrastructure.queue.job_queue import job_queue
 from src.infrastructure.storage import get_storage
 from src.infrastructure.webhooks.delivery import emit_video_event
+from src.application.visibility import apply_visibility
 from src.schemas.video import VideoCreate, VideoJobCreate, VideoUpdate
 from src.utils.paths import ensure_dir, to_relative_path
 
@@ -69,15 +70,16 @@ def _playback_purge_urls(upload_id: str) -> list[str]:
 def update_video(db: Session, video_id: str, user_id: int, body: VideoUpdate):
     bind_context(upload_id=video_id, user_id=user_id)
     video = _owned_video(db, video_id, user_id)
-    became_private = (
-        body.is_public is False and video.is_public is True
-    )
+    was_public = bool(video.is_public)
     if body.title is not None:
         video.title = body.title
     if body.description is not None:
         video.description = body.description
-    if body.is_public is not None:
-        video.is_public = body.is_public
+    if body.visibility is not None or body.is_public is not None:
+        apply_visibility(
+            video, visibility=body.visibility, is_public=body.is_public
+        )
+    became_private = was_public and not video.is_public
     db.commit()
     db.refresh(video)
     if became_private:

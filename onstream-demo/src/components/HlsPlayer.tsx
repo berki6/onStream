@@ -14,7 +14,10 @@ type Props = {
   uri: string | null;
   title?: string;
   initialPositionSeconds?: number;
+  clipEndSeconds?: number | null;
+  liveEdge?: boolean;
   onProgress?: (positionSeconds: number, durationSeconds: number) => void;
+  onEnded?: () => void;
 };
 
 export type HlsPlayerHandle = {
@@ -22,7 +25,15 @@ export type HlsPlayerHandle = {
 };
 
 export const HlsPlayer = forwardRef<HlsPlayerHandle, Props>(function HlsPlayer(
-  { uri, title, initialPositionSeconds = 0, onProgress },
+  {
+    uri,
+    title,
+    initialPositionSeconds = 0,
+    clipEndSeconds,
+    liveEdge = false,
+    onProgress,
+    onEnded,
+  },
   ref
 ) {
   const [playing, setPlaying] = useState(false);
@@ -34,6 +45,11 @@ export const HlsPlayer = forwardRef<HlsPlayerHandle, Props>(function HlsPlayer(
   const loadedUri = useRef<string | null>(null);
   const onProgressRef = useRef(onProgress);
   onProgressRef.current = onProgress;
+  const onEndedRef = useRef(onEnded);
+  onEndedRef.current = onEnded;
+  const clipEndRef = useRef(clipEndSeconds);
+  clipEndRef.current = clipEndSeconds;
+  const endedOnce = useRef(false);
 
   const player = useVideoPlayer(null, (p) => {
     p.loop = false;
@@ -63,6 +79,7 @@ export const HlsPlayer = forwardRef<HlsPlayerHandle, Props>(function HlsPlayer(
     loadedUri.current = uri;
     resumeTarget.current = initialPositionSeconds;
     seekDone.current = false;
+    endedOnce.current = false;
   }
 
   useEffect(() => {
@@ -76,15 +93,27 @@ export const HlsPlayer = forwardRef<HlsPlayerHandle, Props>(function HlsPlayer(
       }
       await player.replaceAsync({ uri, contentType: "hls" as const });
       if (cancelled) return;
-      const target = resumeTarget.current;
-      if (target > 2) {
-        try {
-          player.currentTime = target;
-        } catch {
-          /* seek may fail until buffered — retry in progress loop */
+      if (liveEdge) {
+        const dur = Number(player.duration) || 0;
+        if (dur > 3) {
+          try {
+            player.currentTime = Math.max(0, dur - 1.5);
+            seekDone.current = true;
+          } catch {
+            /* retry via progress loop */
+          }
         }
       } else {
-        seekDone.current = true;
+        const target = resumeTarget.current;
+        if (target > 2) {
+          try {
+            player.currentTime = target;
+          } catch {
+            /* seek may fail until buffered — retry in progress loop */
+          }
+        } else {
+          seekDone.current = true;
+        }
       }
       player.play();
       setPlaying(true);
@@ -94,7 +123,7 @@ export const HlsPlayer = forwardRef<HlsPlayerHandle, Props>(function HlsPlayer(
     };
     // Intentionally omit initialPositionSeconds — frozen per uri via resumeTarget.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uri, player]);
+  }, [uri, player, liveEdge]);
 
   useEffect(() => {
     if (!uri) return;
@@ -104,6 +133,18 @@ export const HlsPlayer = forwardRef<HlsPlayerHandle, Props>(function HlsPlayer(
       if (pos > 0) {
         lastPos.current = pos;
         lastDur.current = dur > 0 ? dur : pos;
+      }
+
+      if (liveEdge && !seekDone.current) {
+        if (dur > 3) {
+          try {
+            player.currentTime = Math.max(0, dur - 1.5);
+          } catch {
+            /* ignore */
+          }
+          seekDone.current = true;
+        }
+        return;
       }
 
       const target = resumeTarget.current;
@@ -121,6 +162,27 @@ export const HlsPlayer = forwardRef<HlsPlayerHandle, Props>(function HlsPlayer(
       }
 
       if (!seekDone.current) return;
+      const clipEnd = clipEndRef.current;
+      if (
+        clipEnd != null &&
+        clipEnd > 0 &&
+        pos >= clipEnd - 0.25 &&
+        !endedOnce.current
+      ) {
+        endedOnce.current = true;
+        try {
+          player.pause();
+          setPlaying(false);
+        } catch {
+          /* ignore */
+        }
+        onEndedRef.current?.();
+        return;
+      }
+      if (!liveEdge && dur > 0 && pos >= dur - 0.35 && !endedOnce.current) {
+        endedOnce.current = true;
+        onEndedRef.current?.();
+      }
       if (pos <= 0) return;
       // Don't overwrite resume with a pre-seek near-zero sample.
       if (target > 2 && pos < Math.min(5, target * 0.5)) return;
@@ -133,7 +195,7 @@ export const HlsPlayer = forwardRef<HlsPlayerHandle, Props>(function HlsPlayer(
     return () => {
       clearInterval(id);
     };
-  }, [uri, player]);
+  }, [uri, player, liveEdge]);
 
   // Flush progress only on true unmount (not when uri deps churn).
   useEffect(() => {

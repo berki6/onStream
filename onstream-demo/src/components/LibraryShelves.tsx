@@ -9,8 +9,10 @@ import {
   View,
 } from "react-native";
 
+import type { Playlist } from "@/api/playlists";
 import type { ContinueItem } from "@/api/watch";
 import type { Video } from "@/api/videos";
+import { PlaylistArt } from "@/components/PlaylistArt";
 import { colors, radii, spacing } from "@/theme/tokens";
 
 function formatRemain(pos: number, dur?: number | null) {
@@ -24,6 +26,7 @@ function formatRemain(pos: number, dur?: number | null) {
 type Props = {
   continueItems: ContinueItem[];
   savedItems: Video[];
+  playlists?: Playlist[];
 };
 
 function SectionHead({
@@ -52,9 +55,18 @@ function SectionHead({
 /**
  * Horizontal shelves — only render when the shelf has items (no empty states).
  */
-export function LibraryShelves({ continueItems, savedItems }: Props) {
+export function LibraryShelves({
+  continueItems,
+  savedItems,
+  playlists = [],
+}: Props) {
   const router = useRouter();
-  if (continueItems.length === 0 && savedItems.length === 0) return null;
+  if (
+    continueItems.length === 0 &&
+    savedItems.length === 0 &&
+    playlists.length === 0
+  )
+    return null;
 
   return (
     <View style={styles.wrap}>
@@ -134,6 +146,38 @@ export function LibraryShelves({ continueItems, savedItems }: Props) {
           </ScrollView>
         </View>
       ) : null}
+
+      {playlists.length > 0 ? (
+        <View style={styles.section}>
+          <SectionHead title="Playlists" href={"/playlist" as Href} />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.row}
+          >
+            {playlists.map((item) => (
+              <Pressable
+                key={item.id}
+                onPress={() => router.push(`/playlist/${item.id}` as Href)}
+                style={({ pressed }) => [
+                  styles.tile,
+                  pressed && { opacity: 0.88 },
+                ]}
+              >
+                <View style={styles.playlistPoster}>
+                  <PlaylistArt size="md" isPublic={item.is_public} />
+                </View>
+                <Text style={styles.tileTitle} numberOfLines={2}>
+                  {item.name}
+                </Text>
+                <Text style={styles.tileMeta}>
+                  {item.is_public ? "Public" : "Private"}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -183,6 +227,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
+  },
+  playlistPoster: {
+    height: 96,
+    borderRadius: radii.md,
+    alignItems: "center",
+    justifyContent: "center",
   },
   savedPoster: {
     backgroundColor: "rgba(255,77,106,0.08)",
