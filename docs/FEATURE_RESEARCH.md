@@ -119,7 +119,7 @@ Legend: **Have** / **Partial** / **Gap**. Priority = fit for *next* work given c
 | Live chat | Owncast, CyTube | Gap | Medium | Distinct live product slice |
 | Live → VOD / DVR archive | PingOS, PeerTube, OME | **Shipped** (EVENT DVR while live + revoke → READY VOD) | High | Mid-stream scrub on the archive playlist |
 | LL-HLS delivery | Mux, OME, LiveForge | Gap | Medium–High | Latency product story |
-| Scrub / storyboard previews | OPlayer, CF Stream, Mux | **Partial** (VOD transcode + live-archive async job; Expo filmstrip) | Medium | Live DVR hover still uses VOD sprite after revoke |
+| Scrub / storyboard previews | OPlayer, CF Stream, Mux | **Shipped** (`/demo/` quality + keyboard + DVR-safe hover; sprite after VOD transcode or live-archive job; Expo filmstrip) | Medium | Live DVR hover does not invent a mid-stream sprite |
 | Instant / clip highlights | Mux clips, CF transforms | Gap | Medium | Builds on chapters + share |
 | Video trimmer | MediaCMS | Gap | Low–Medium | Editing slice |
 | Chromecast / AirPlay | OPlayer, CF player | Gap | Low | Player polish |
@@ -129,7 +129,7 @@ Legend: **Have** / **Partial** / **Gap**. Priority = fit for *next* work given c
 | Origin–edge / cluster docs | Streamline, SRS, PingOS | Partial (Compose) | Low | Ops docs slice |
 | QoE / Mux-like analytics | Mux Data articles | Partial (metrics exist) | Medium | Viewer QoE dashboard |
 | Scheduled / 24-7 channel | OME | Gap | Low | Niche live |
-| Embeddable player + oEmbed | PeerTube, Owncast | Partial (`/demo/`) | Medium | Creator distribution |
+| Embeddable player + oEmbed | PeerTube, Owncast | **Shipped** (`GET /v1/oembed` spec JSON; `/demo/watch/?v=` + share peek; embed click-to-play) | Medium | Creator distribution |
 | RBAC categories | MediaCMS | Gap | Medium | With channels/orgs |
 | Unlisted visibility | MediaCMS | Partial (`is_public`) | Easy win | Third state: unlisted |
 | RSS / Atom feeds | PeerTube, Tube | Gap | Easy win | Per-channel or user library |
@@ -144,7 +144,7 @@ If picking **one** research-backed slice after the merge:
 2. **Channels / orgs / multi-user ownership** — PeerTube/MediaCMS pattern; unlocks multi-user (TODO #1). **Build last** (new tenancy model).  
 3. **Live → VOD archive** — shipped (DVR while live + revoke promote).  
 4. **In-app WHIP publish (dev client)** — industry WHIP RFC wave; TODO #3. **Build last** (Expo Go cannot encode; keep `/demo/whip/`).  
-5. **Player scrub previews + `/demo/` upgrade** — OPlayer/CF/Mux pattern; visible quality jump.
+5. **Player scrub previews + `/demo/` upgrade** — shipped (quality, keyboard, honest DVR thumbs; sprite after transcode/promote).
 
 Defer for later: federation, danmaku, full DRM, MoQ (watch space, don’t build yet).
 

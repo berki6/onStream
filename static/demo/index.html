@@ -4,80 +4,127 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>OnStream Demo Player</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
+  <script src="/demo/player.js"></script>
   <style>
     :root {
-      --bg: #0f1419;
-      --fg: #e8eef4;
-      --accent: #3d9cf0;
-      --muted: #8b9aab;
+      --bg: #0B1210;
+      --elev: #121A17;
+      --line: #24312B;
+      --fg: #E8F2ED;
+      --muted: #8FA399;
+      --dim: #5E7369;
+      --brand: #2EE6A6;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       min-height: 100vh;
-      font-family: "Segoe UI", system-ui, sans-serif;
-      background: radial-gradient(ellipse at top, #1a2836 0%, var(--bg) 55%);
+      font-family: "DM Sans", "Segoe UI", system-ui, sans-serif;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(46,230,166,0.12), transparent),
+        var(--bg);
       color: var(--fg);
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 2rem 1rem;
+      padding: 2.5rem 1.25rem 3rem;
     }
-    h1 { font-weight: 600; letter-spacing: -0.02em; margin: 0 0 0.5rem; }
-    p { color: var(--muted); margin: 0 0 1.5rem; max-width: 36rem; text-align: center; }
-    .row { display: flex; gap: 0.5rem; width: min(720px, 100%); margin-bottom: 1rem; }
+    h1 {
+      font-family: Syne, "Segoe UI", sans-serif;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      font-size: 1.75rem;
+      color: var(--brand);
+      margin: 0 0 0.5rem;
+    }
+    p { color: var(--muted); margin: 0 0 1.5rem; max-width: 40rem; text-align: center; line-height: 1.5; }
+    a { color: var(--brand); }
+    .row { display: flex; gap: 0.5rem; width: min(960px, 100%); margin-bottom: 1rem; }
     .meta {
       display: flex;
       flex-wrap: wrap;
       gap: 0.75rem 1.25rem;
       align-items: center;
-      width: min(720px, 100%);
+      width: min(960px, 100%);
       margin: 0.75rem 0 0;
       color: var(--muted);
-      font-size: 0.9rem;
+      font-size: 0.85rem;
     }
     .meta label { display: flex; align-items: center; gap: 0.4rem; }
+    select, input, button {
+      font-family: inherit;
+    }
     select {
       padding: 0.35rem 0.5rem;
-      border: 1px solid #2a3a4a;
-      border-radius: 6px;
-      background: #121a22;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--elev);
       color: var(--fg);
     }
     input {
       flex: 1;
       padding: 0.65rem 0.85rem;
-      border: 1px solid #2a3a4a;
-      border-radius: 6px;
-      background: #121a22;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--elev);
       color: var(--fg);
     }
     button {
       padding: 0.65rem 1.1rem;
       border: none;
-      border-radius: 6px;
-      background: var(--accent);
+      border-radius: 10px;
+      background: var(--brand);
       color: #041018;
       font-weight: 600;
       cursor: pointer;
     }
-    video {
-      width: min(720px, 100%);
-      background: #000;
-      border-radius: 8px;
-      aspect-ratio: 16 / 9;
+    .player-wrap {
+      position: relative;
+      width: min(960px, 100%);
     }
-    #captionStatus { min-height: 1.25rem; }
+    video {
+      width: 100%;
+      background: #000;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      aspect-ratio: 16 / 9;
+      display: block;
+    }
+    #sbPreview {
+      display: none;
+      position: fixed;
+      width: 160px;
+      height: 90px;
+      overflow: hidden;
+      border: 1px solid var(--brand);
+      border-radius: 8px;
+      pointer-events: none;
+      z-index: 9;
+      background: #000;
+    }
+    #sbPreview img { position: absolute; max-width: none; }
+    #captionStatus, #sbStatus { min-height: 1.15rem; }
+    kbd {
+      font-size: 0.75rem;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 0.05rem 0.35rem;
+      color: var(--dim);
+    }
   </style>
 </head>
 <body>
   <h1>OnStream</h1>
   <p>
     Paste an HLS master playlist URL (public or with <code>?token=</code>) and play.
-    Live EVENT playlists are DVR: the timeline scrubs; the playhead starts near the live edge.
-    VOD masters with captions expose a subtitle track here.
-    Tools: <a href="/demo/whip/">WHIP publish</a> ·
+    Live EVENT playlists are DVR: the timeline scrubs from the seekable window, not a fake VOD duration.
+    Scrub thumbs exist after VOD transcode or live archive promote — not mid-stream.
+    Tools:
+    <a href="/demo/whip/">WHIP publish</a> ·
     <a href="/demo/upload/">direct upload</a> ·
     <a href="/demo/watch/">shared watch</a> ·
     <a href="/demo/reset/">password reset</a>.
@@ -86,8 +133,17 @@
     <input id="url" type="url" placeholder="http://localhost:8000/v1/playback/{id}/master.m3u8" />
     <button id="play" type="button">Play</button>
   </div>
-  <video id="video" controls playsinline crossorigin="anonymous"></video>
+  <div class="player-wrap">
+    <video id="video" controls playsinline crossorigin="anonymous"></video>
+    <div id="sbPreview"><img id="sbImg" alt="" /></div>
+  </div>
   <div class="meta">
+    <label>
+      Quality
+      <select id="qualitySelect" disabled>
+        <option value="-1">Auto</option>
+      </select>
+    </label>
     <label>
       Captions
       <select id="captionSelect" disabled>
@@ -95,23 +151,23 @@
       </select>
     </label>
     <span id="captionStatus">No stream loaded</span>
-  </div>
-  <div id="sbPreview" style="display:none;position:fixed;width:160px;height:90px;overflow:hidden;border:1px solid #3d9cf0;border-radius:6px;pointer-events:none;z-index:9;background:#000">
-    <img id="sbImg" alt="" style="position:absolute;max-width:none" />
+    <span id="sbStatus"></span>
+    <span><kbd>K</kbd> play · <kbd>J</kbd>/<kbd>L</kbd> ±10s · <kbd>F</kbd> fullscreen</span>
   </div>
   <script>
+    const D = window.OnStreamDemo;
     const video = document.getElementById("video");
     const input = document.getElementById("url");
     const captionSelect = document.getElementById("captionSelect");
     const captionStatus = document.getElementById("captionStatus");
+    const qualitySelect = document.getElementById("qualitySelect");
+    const sbStatus = document.getElementById("sbStatus");
     let hls;
+    let unbindKb;
 
-    // Prefill from ?url= (Expo "Open in /demo/" bridge)
     try {
       const prefill = new URLSearchParams(window.location.search).get("url");
-      if (prefill) {
-        input.value = prefill;
-      }
+      if (prefill) input.value = prefill;
     } catch (_) { /* ignore */ }
 
     function resetCaptionUi(message) {
@@ -182,71 +238,6 @@
       };
     }
 
-    function storyboardFromMaster(src) {
-      try {
-        const u = new URL(src, location.origin);
-        u.pathname = u.pathname.replace(/master\.m3u8$/, "storyboard.vtt");
-        const img = new URL(u.href);
-        img.pathname = img.pathname.replace(/storyboard\.vtt$/, "storyboard.jpg");
-        return { vtt: u.href, img: img.href };
-      } catch {
-        return null;
-      }
-    }
-
-    function parseSbVtt(text) {
-      const cues = [];
-      const blocks = text.replace(/\r/g, "").split("\n\n");
-      const cueArrow = "--" + ">";
-      const ts = new RegExp(
-        "(\\d{2}):(\\d{2}):(\\d{2})\\.(\\d{3})\\s+" +
-          cueArrow +
-          "\\s+(\\d{2}):(\\d{2}):(\\d{2})\\.(\\d{3})"
-      );
-      const xywh = /#xywh=(\d+),(\d+),(\d+),(\d+)/;
-      const toSec = (h,m,s,ms) => (+h)*3600+(+m)*60+(+s)+(+ms)/1000;
-      for (const block of blocks) {
-        const lines = block.split("\n").filter(Boolean);
-        const timeLine = lines.find((l) => l.includes(cueArrow));
-        const uriLine = lines.find((l) => l.includes("#xywh="));
-        if (!timeLine || !uriLine) continue;
-        const tm = timeLine.match(ts);
-        const xy = uriLine.match(xywh);
-        if (!tm || !xy) continue;
-        cues.push({
-          start: toSec(tm[1], tm[2], tm[3], tm[4]),
-          end: toSec(tm[5], tm[6], tm[7], tm[8]),
-          x: +xy[1], y: +xy[2], w: +xy[3], h: +xy[4],
-        });
-      }
-      return cues;
-    }
-
-    function wireStoryboard(src) {
-      const urls = storyboardFromMaster(src);
-      const box = document.getElementById("sbPreview");
-      const img = document.getElementById("sbImg");
-      if (!urls || !box) return;
-      fetch(urls.vtt).then((r) => r.ok ? r.text() : Promise.reject()).then((text) => {
-        const cues = parseSbVtt(text);
-        if (!cues.length) return;
-        img.src = urls.img;
-        video.onmousemove = (ev) => {
-          const rect = video.getBoundingClientRect();
-          const x = ev.clientX - rect.left;
-          const ratio = Math.max(0, Math.min(1, x / rect.width));
-          const t = ratio * (video.duration || cues[cues.length - 1].end);
-          const cue = cues.find((c) => t >= c.start && t < c.end) || cues[0];
-          box.style.display = "block";
-          box.style.left = (ev.clientX - 80) + "px";
-          box.style.top = (rect.top - 100) + "px";
-          img.style.left = -cue.x + "px";
-          img.style.top = -cue.y + "px";
-        };
-        video.onmouseleave = () => { box.style.display = "none"; };
-      }).catch(() => {});
-    }
-
     document.getElementById("play").addEventListener("click", () => {
       const src = input.value.trim();
       if (!src) return;
@@ -254,34 +245,36 @@
         hls.destroy();
         hls = null;
       }
+      if (unbindKb) {
+        unbindKb();
+        unbindKb = null;
+      }
       resetCaptionUi("Loading…");
+      qualitySelect.disabled = true;
+      sbStatus.textContent = "";
 
-      if (Hls.isSupported()) {
-        hls = new Hls({
-          enableWorker: true,
-          // Prefer native cues when possible so the <video> CC button works too.
-          renderTextTracksNatively: true,
-          // EVENT / DVR live: keep the full back buffer so the timeline can scrub.
-          backBufferLength: Infinity,
-          liveSyncDurationCount: 3,
+      const attachStoryboard = () => {
+        const urls = D.storyboardFromMaster(src);
+        D.wireStoryboard(video, urls && urls.vtt, urls && urls.img, sbStatus);
+      };
+
+      if (window.Hls && Hls.isSupported()) {
+        hls = D.attachHls(video, src, {
+          qualitySelect: qualitySelect,
+          onHls: wireHlsCaptions,
         });
-        wireHlsCaptions(hls);
-        hls.loadSource(src);
-        hls.attachMedia(video);
         hls.on(Hls.Events.ERROR, (_e, data) => {
           if (data.fatal) {
             captionStatus.textContent = "Playback error — check URL / token";
           }
         });
-        wireStoryboard(src);
+        attachStoryboard();
+        unbindKb = D.wireKeyboard(video);
       } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
         video.src = src;
-        video.addEventListener(
-          "loadedmetadata",
-          () => applyNativeTextTracks(),
-          { once: true }
-        );
-        wireStoryboard(src);
+        video.addEventListener("loadedmetadata", () => applyNativeTextTracks(), { once: true });
+        attachStoryboard();
+        unbindKb = D.wireKeyboard(video);
       } else {
         alert("HLS is not supported in this browser.");
         resetCaptionUi("HLS not supported");
@@ -289,7 +282,6 @@
     });
 
     if (input.value.trim()) {
-      // Lab bridge: Expo opens /demo/?url=...
       document.getElementById("play").click();
     }
   </script>

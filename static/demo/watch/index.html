@@ -3,8 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>OnStream · Shared watch</title>
+  <title>OnStream · Watch</title>
+  <link id="oembed-alt" rel="alternate" type="application/json+oembed" href="" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
+  <script src="/demo/player.js"></script>
   <style>
     :root {
       --bg: #0B1210;
@@ -82,6 +87,24 @@
       margin: 0 0 0.35rem;
     }
     .meta { color: var(--muted); font-size: 0.9rem; margin: 0; }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1.1rem;
+      align-items: center;
+      margin-top: 0.75rem;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+    .controls label { display: flex; align-items: center; gap: 0.35rem; }
+    select {
+      padding: 0.3rem 0.45rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--soft);
+      color: var(--fg);
+      font-family: inherit;
+    }
     .player-wrap { position: relative; }
     video {
       width: 100%;
@@ -93,7 +116,7 @@
     }
     #thumb {
       display: none;
-      position: absolute;
+      position: fixed;
       pointer-events: none;
       width: 160px;
       height: 90px;
@@ -108,6 +131,17 @@
     .state h2 { font-family: Syne, sans-serif; margin: 0 0 0.5rem; font-size: 1.4rem; }
     .state p { color: var(--muted); margin: 0; line-height: 1.5; }
     .danger h2 { color: var(--danger); }
+    .gate-play {
+      margin-top: 1.25rem;
+      padding: 0.7rem 1.4rem;
+      border: none;
+      border-radius: 10px;
+      background: var(--brand);
+      color: #041018;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+    }
     .spinner {
       width: 28px; height: 28px;
       border: 2px solid var(--line);
@@ -118,6 +152,13 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     a.home { margin-top: 2rem; color: var(--dim); font-size: 0.85rem; }
+    kbd {
+      font-size: 0.72rem;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 0.05rem 0.3rem;
+      color: var(--dim);
+    }
     @media (max-width: 720px) {
       .layout { flex-direction: column; }
       .side { width: 100%; }
@@ -126,24 +167,36 @@
 </head>
 <body>
   <p class="brand chrome">OnStream</p>
-  <p class="kicker chrome">Shared playback</p>
+  <p class="kicker chrome">Watch</p>
   <div class="stage" id="root">
     <div class="panel state">
       <div class="spinner"></div>
-      <h2>Opening share…</h2>
-      <p>Exchanging credentials for a short-lived stream.</p>
+      <h2>Opening…</h2>
+      <p>Resolving playback.</p>
     </div>
   </div>
   <a class="home chrome" href="/demo/">← Demo home</a>
   <script>
+    const D = window.OnStreamDemo;
     const params = new URLSearchParams(location.search);
     const s = params.get("s");
     const t = params.get("t");
+    const v = params.get("v");
     const embed = params.get("embed") === "1";
     const playlistId = params.get("playlist");
     const root = document.getElementById("root");
     const apiBase = location.origin;
     if (embed) document.body.classList.add("embed");
+
+    (function setOembedLink() {
+      const link = document.getElementById("oembed-alt");
+      if (!link) return;
+      const u = new URL(location.href);
+      u.searchParams.delete("embed");
+      if (u.searchParams.get("v") || (u.searchParams.get("s") && u.searchParams.get("t"))) {
+        link.href = apiBase + "/v1/oembed?url=" + encodeURIComponent(u.toString());
+      }
+    })();
 
     function showError(title, body) {
       root.innerHTML = `
@@ -161,62 +214,8 @@
         .replace(/"/g, "&quot;");
     }
 
-    function parseVtt(text) {
-      const cues = [];
-      const blocks = text.replace(/\r/g, "").split("\n\n");
-      const cueArrow = "--" + ">";
-      const ts = new RegExp(
-        "(\\d{2}):(\\d{2}):(\\d{2})\\.(\\d{3})\\s+" +
-          cueArrow +
-          "\\s+(\\d{2}):(\\d{2}):(\\d{2})\\.(\\d{3})"
-      );
-      const xywh = /#xywh=(\d+),(\d+),(\d+),(\d+)/;
-      const toSec = (h,m,s,ms) => (+h)*3600+(+m)*60+(+s)+(+ms)/1000;
-      for (const block of blocks) {
-        const lines = block.split("\n").filter(Boolean);
-        const timeLine = lines.find((l) => l.includes(cueArrow));
-        const uriLine = lines.find((l) => l.includes("#xywh="));
-        if (!timeLine || !uriLine) continue;
-        const tm = timeLine.match(ts);
-        const xy = uriLine.match(xywh);
-        if (!tm || !xy) continue;
-        cues.push({
-          start: toSec(tm[1], tm[2], tm[3], tm[4]),
-          end: toSec(tm[5], tm[6], tm[7], tm[8]),
-          x: +xy[1], y: +xy[2], w: +xy[3], h: +xy[4],
-        });
-      }
-      return cues;
-    }
-
-    function attachStoryboard(videoEl, vttUrl, imgUrl) {
-      if (!vttUrl || !imgUrl) return;
-      fetch(vttUrl).then((r) => r.ok ? r.text() : Promise.reject()).then((text) => {
-        const cues = parseVtt(text);
-        if (!cues.length) return;
-        const thumb = document.getElementById("thumb");
-        const img = thumb.querySelector("img");
-        img.src = imgUrl;
-        videoEl.addEventListener("mousemove", (ev) => {
-          const rect = videoEl.getBoundingClientRect();
-          const x = ev.clientX - rect.left;
-          const ratio = Math.max(0, Math.min(1, x / rect.width));
-          const t = ratio * (videoEl.duration || cues[cues.length - 1].end);
-          const cue = cues.find((c) => t >= c.start && t < c.end) || cues[Math.floor(ratio * (cues.length - 1))];
-          if (!cue) return;
-          thumb.style.display = "block";
-          thumb.style.left = Math.min(rect.width - 168, Math.max(0, x - 80)) + "px";
-          thumb.style.top = "-100px";
-          img.style.left = -cue.x + "px";
-          img.style.top = -cue.y + "px";
-          img.style.width = "auto";
-        });
-        videoEl.addEventListener("mouseleave", () => { thumb.style.display = "none"; });
-      }).catch(() => {});
-    }
-
     async function loadPlaylist(side, currentId) {
-      if (!playlistId) return;
+      if (!playlistId || !side) return;
       try {
         const res = await fetch(`${apiBase}/v1/playlists/public/${encodeURIComponent(playlistId)}`);
         const json = await res.json();
@@ -224,54 +223,47 @@
         const data = json.data || {};
         const vids = data.videos || [];
         side.innerHTML = `<h2>${escapeHtml(data.name || "Playlist")}</h2>` +
-          vids.map((v) => `<a href="${escapeHtml(location.pathname + location.search.replace(/([?&])s=[^&]*/, "$1s="))}">${escapeHtml(v.title)}</a>`).join("");
-        side.innerHTML = `<h2>${escapeHtml(data.name || "Playlist")}</h2>` +
-          vids.map((v) => {
-            const mark = v.upload_id === currentId ? " · now" : "";
-            return `<div>${escapeHtml(v.title)}${mark}</div>`;
+          vids.map((item) => {
+            const mark = item.upload_id === currentId ? " · now" : "";
+            return `<div>${escapeHtml(item.title)}${mark}</div>`;
           }).join("");
       } catch (_) { /* optional */ }
     }
 
-    async function main() {
-      if (!s || !t) {
-        showError("Invalid link", "This URL is missing share id or token.");
-        return;
-      }
-      let res;
-      try {
-        res = await fetch(`${apiBase}/v1/share-links/${encodeURIComponent(s)}/exchange`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ token: t }),
-        });
-      } catch (e) {
-        showError("Network error", "Could not reach the API.");
-        return;
-      }
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const code = json?.error?.code || "";
-        const msg = json?.error?.message || "Share unavailable.";
-        if (code === "SHARE_EXPIRED") showError("Expired", msg);
-        else if (code === "SHARE_REVOKED") showError("Revoked", msg);
-        else if (code === "SHARE_VIEW_LIMIT") showError("View limit", msg);
-        else showError("Unavailable", msg);
-        return;
-      }
-      const data = json.data || {};
+    function shareError(json) {
+      const code = json?.error?.code || "";
+      const msg = json?.error?.message || "Share unavailable.";
+      if (code === "SHARE_EXPIRED") showError("Expired", msg);
+      else if (code === "SHARE_REVOKED") showError("Revoked", msg);
+      else if (code === "SHARE_VIEW_LIMIT") showError("View limit", msg);
+      else showError("Unavailable", msg);
+    }
+
+    function mountPlayer(data, { sbStatus } = {}) {
       const expires = data.expires_at
         ? new Date(data.expires_at).toLocaleString()
         : "—";
       const clipNote = (data.clip_start != null || data.clip_end != null)
         ? ` · clip ${data.clip_start || 0}s–${data.clip_end != null ? data.clip_end + "s" : "end"}`
         : "";
+      const expiryLine = data.expires_at
+        ? `Link expires ${escapeHtml(expires)}${escapeHtml(clipNote)}`
+        : (clipNote ? escapeHtml(clipNote.replace(/^ · /, "")) : "Public playback");
       root.innerHTML = `
         <div class="layout">
           <div class="player-col">
             <div class="panel chrome">
-              <h1>${escapeHtml(data.title || "Shared video")}</h1>
-              <p class="meta">Link expires ${escapeHtml(expires)}${escapeHtml(clipNote)}</p>
+              <h1>${escapeHtml(data.title || "Video")}</h1>
+              <p class="meta">${expiryLine}</p>
+              <div class="controls chrome">
+                <label>Quality
+                  <select id="qualitySelect" disabled>
+                    <option value="-1">Auto</option>
+                  </select>
+                </label>
+                <span id="sbStatus"></span>
+                <span><kbd>K</kbd> play · <kbd>J</kbd>/<kbd>L</kbd> ±10s · <kbd>F</kbd> fullscreen</span>
+              </div>
             </div>
             <div class="player-wrap">
               <div id="thumb"><img alt="" /></div>
@@ -282,6 +274,8 @@
         </div>
       `;
       const video = document.getElementById("v");
+      const qualitySelect = document.getElementById("qualitySelect");
+      const statusEl = document.getElementById("sbStatus") || sbStatus;
       const url = data.playback_url;
       const start = Number(data.clip_start || 0);
       const end = data.clip_end != null ? Number(data.clip_end) : null;
@@ -296,10 +290,10 @@
         }
       });
       if (window.Hls && Hls.isSupported()) {
-        const hls = new Hls({ renderTextTracksNatively: true });
-        hls.loadSource(url);
-        hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, onReady);
+        const hls = D.attachHls(video, url, {
+          qualitySelect: qualitySelect,
+          onHls: (instance) => instance.on(Hls.Events.MANIFEST_PARSED, onReady),
+        });
       } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
         video.src = url;
         video.addEventListener("loadedmetadata", onReady, { once: true });
@@ -315,8 +309,92 @@
         track.default = true;
         video.appendChild(track);
       }
-      attachStoryboard(video, data.storyboard_vtt_url, data.storyboard_url);
+      D.wireStoryboard(video, data.storyboard_vtt_url, data.storyboard_url, statusEl);
+      D.wireKeyboard(video);
       loadPlaylist(document.getElementById("side"), data.upload_id);
+    }
+
+    async function exchangeAndPlay() {
+      let res;
+      try {
+        res = await fetch(`${apiBase}/v1/share-links/${encodeURIComponent(s)}/exchange`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ token: t }),
+        });
+      } catch (e) {
+        showError("Network error", "Could not reach the API.");
+        return;
+      }
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        shareError(json);
+        return;
+      }
+      mountPlayer(json.data || {});
+    }
+
+    async function embedGate() {
+      let res;
+      try {
+        res = await fetch(`${apiBase}/v1/share-links/${encodeURIComponent(s)}/peek`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ token: t }),
+        });
+      } catch (e) {
+        showError("Network error", "Could not reach the API.");
+        return;
+      }
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        shareError(json);
+        return;
+      }
+      const data = json.data || {};
+      root.innerHTML = `
+        <div class="panel state">
+          <h2>${escapeHtml(data.title || "Shared video")}</h2>
+          <p>Click to play. Embeds peek the link without burning a view until you start playback.</p>
+          <button class="gate-play" type="button" id="gatePlay">Play</button>
+        </div>`;
+      document.getElementById("gatePlay").addEventListener("click", () => {
+        root.innerHTML = `
+          <div class="panel state">
+            <div class="spinner"></div>
+            <h2>Starting…</h2>
+          </div>`;
+        exchangeAndPlay();
+      });
+    }
+
+    async function playPublic() {
+      let res;
+      try {
+        res = await fetch(`${apiBase}/v1/public/videos/${encodeURIComponent(v)}`);
+      } catch (e) {
+        showError("Network error", "Could not reach the API.");
+        return;
+      }
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showError("Unavailable", json?.error?.message || "This video is not public.");
+        return;
+      }
+      mountPlayer(json.data || {});
+    }
+
+    async function main() {
+      if (v) {
+        await playPublic();
+        return;
+      }
+      if (!s || !t) {
+        showError("Invalid link", "Use ?v={upload_id} for public/unlisted, or ?s= and ?t= for a share.");
+        return;
+      }
+      if (embed) await embedGate();
+      else await exchangeAndPlay();
     }
 
     main();

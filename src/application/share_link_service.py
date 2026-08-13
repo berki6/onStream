@@ -166,7 +166,9 @@ def revoke(db: Session, user_id: int, public_id: str) -> Dict[str, Any]:
     return _serialize(link, upload_id, video_title=title)
 
 
-def exchange(db: Session, public_id: str, token: str) -> Dict[str, Any]:
+def _active_share_and_video(
+    db: Session, public_id: str, token: str
+) -> tuple[models.ShareLink, models.Video]:
     link = engagement_repository.get_share_by_public_id(db, public_id)
     if not link:
         raise AppError("Share link not found", code=ErrorCode.SHARE_NOT_FOUND)
@@ -184,11 +186,40 @@ def exchange(db: Session, public_id: str, token: str) -> Dict[str, Any]:
     if exp <= now:
         raise AppError("Share link has expired", code=ErrorCode.SHARE_EXPIRED)
 
+    if link.max_views is not None and int(link.view_count or 0) >= link.max_views:
+        raise AppError("Share view limit reached", code=ErrorCode.SHARE_VIEW_LIMIT)
+
     video = video_repository.get_by_id(db, link.video_id)
     if not video or video.status == VideoStatus.DELETED:
         raise AppError("Video not found", code=ErrorCode.SHARE_NOT_FOUND)
     if video.status != VideoStatus.READY:
         raise AppError("Video is not ready", code=ErrorCode.PLAYBACK_NOT_READY)
+    return link, video
+
+
+def peek(db: Session, public_id: str, token: str) -> Dict[str, Any]:
+    """Validate share credentials without minting playback or burning max_views."""
+    from src.application.visibility import allows_tokenless_playback
+
+    link, video = _active_share_and_video(db, public_id, token)
+    return {
+        "upload_id": video.upload_id,
+        "title": video.title,
+        "duration": video.duration,
+        "clip_start": link.clip_start_seconds,
+        "clip_end": link.clip_end_seconds,
+        "expires_at": link.expires_at,
+        "tokenless": allows_tokenless_playback(video),
+        "has_storyboard": bool(video.storyboard_path),
+    }
+
+
+def exchange(db: Session, public_id: str, token: str) -> Dict[str, Any]:
+    link, video = _active_share_and_video(db, public_id, token)
+    now = datetime.now(timezone.utc)
+    exp = link.expires_at
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
 
     # Atomic conditional increment — closes TOCTOU on max_views under concurrency.
     bumped = engagement_repository.try_increment_share_view(db, link.id, now=now)

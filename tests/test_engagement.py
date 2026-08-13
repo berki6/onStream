@@ -117,6 +117,32 @@ def test_share_view_limit(db_session, test_user, ready_video):
     assert ei.value.code == ErrorCode.SHARE_VIEW_LIMIT
 
 
+def test_share_peek_does_not_increment_views(db_session, test_user, ready_video):
+    created = share_link_service.create(
+        db_session,
+        test_user.id,
+        ready_video.upload_id,
+        expires_in_seconds=3600,
+        max_views=1,
+    )
+    peeked = share_link_service.peek(
+        db_session, created["public_id"], created["token"]
+    )
+    assert peeked["title"] == ready_video.title
+    assert peeked["upload_id"] == ready_video.upload_id
+    assert peeked["tokenless"] is False
+    link = (
+        db_session.query(models.ShareLink)
+        .filter_by(public_id=created["public_id"])
+        .one()
+    )
+    assert int(link.view_count or 0) == 0
+    share_link_service.exchange(db_session, created["public_id"], created["token"])
+    with pytest.raises(AppError) as ei:
+        share_link_service.peek(db_session, created["public_id"], created["token"])
+    assert ei.value.code == ErrorCode.SHARE_VIEW_LIMIT
+
+
 def test_share_list_all_includes_video_title(db_session, test_user, ready_video):
     first = share_link_service.create(
         db_session,

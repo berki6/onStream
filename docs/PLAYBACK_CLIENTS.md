@@ -93,9 +93,11 @@ curl -s -X POST "http://localhost:8000/v1/videos/{video_id}/tokens" \
 
 Public videos (`is_public=true` or `visibility=public`) and **unlisted** videos can omit the token for VLC. Private videos need a stream token or owner JWT.
 
-Clip shares bake `clip_start` / `clip_end` into the stream JWT. Compatible players should seek to start and stop at end; OnStream also injects `#EXT-X-START:TIME-OFFSET` on the master playlist. Storyboard scrub uses `/v1/playback/{id}/storyboard.vtt` + `storyboard.jpg` (same token as HLS).
+Clip shares bake `clip_start` / `clip_end` into the stream JWT. Compatible players should seek to start and stop at end; OnStream also injects `#EXT-X-START:TIME-OFFSET` on the master playlist. Storyboard scrub uses `/v1/playback/{id}/storyboard.vtt` + `storyboard.jpg` (same token as HLS). Live EVENT hover maps against `seekable.end`, not `Infinity`; `/live/` masters do not invent a sprite until the archive is promoted.
 
-`/demo/watch/?s=&t=` is the share landing page. Append `embed=1` for iframe chrome, `playlist={id}` when the playlist is public.
+`/demo/` (when `DEMO_PLAYER_ENABLED`) is the lab player: ABR quality menu, keyboard (`K`/`J`/`L`/`F`/`0–9`), captions, DVR-safe scrub thumbs.
+
+`/demo/watch/?s=&t=` is the share landing page. `/demo/watch/?v={upload_id}` plays `public`/`unlisted` without a share token. Append `embed=1` for iframe chrome, `playlist={id}` when the playlist is public. Share embeds peek first and start playback on click so crawlers cannot burn `max_views`. oEmbed discovery: `GET /v1/oembed?url=` (bare JSON, not the API envelope).
 
 Example URL shape:
 

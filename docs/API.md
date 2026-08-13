@@ -84,6 +84,8 @@ All `/v1` errors (except MediaMTX auth webhook, which returns bare status) use:
 | `VALIDATION_FAILED` | 422 | Request body/schema |
 | `VALIDATION_INVALID_ID` | 400 | Public id format |
 | `VALIDATION_BAD_REQUEST` | 400 | Generic validation |
+| `OEMBED_NOT_FOUND` | 404 | URL is not an embeddable OnStream watch page, or the video/share is not resolvable |
+| `OEMBED_BAD_REQUEST` | 400 | Missing url or `format` other than json |
 | `RATE_LIMIT_EXCEEDED` | 429 | Auth rate limit |
 | `INTERNAL_SERVER_ERROR` | 500 | Unhandled / generic server |
 | `INTERNAL_STORAGE_FAILURE` | 500 | Object storage I/O |
@@ -101,7 +103,7 @@ flowchart TB
   Client --> Videos["/v1/videos + /uploads"]
   Client --> Play["/v1/playback"]
   Client --> Live["/v1/live"]
-  Client --> More["webhooks api-keys playlists moderation search"]
+  Client --> More["webhooks api-keys playlists moderation search oembed"]
   MTX[MediaMTX] --> LiveAuth["/v1/live/mediamtx-auth"]
 ```
 
@@ -153,9 +155,10 @@ DB-backed expiring watch links. Create returns plaintext token once; exchange (p
 | POST | `/` create (auth); optional `clip_start` / `clip_end` |
 | GET | `/?video_id=` list for one video (auth); omit `video_id` for all links you created (newest first, cap 100). Each row includes `video_title`. Tokens are never listed. |
 | DELETE | `/{public_id}` revoke (auth) |
+| POST | `/{public_id}/peek` body `{ token }` (public); validates without minting a stream JWT or incrementing `max_views` |
 | POST | `/{public_id}/exchange` body `{ token }` (public); returns clip bounds + storyboard/caption URLs |
 
-Browser landing: `/demo/watch/?s={public_id}&t={token}`. Add `embed=1` for iframe chrome, `playlist={id}` for a public playlist side panel. Create also returns `app_url` (`onstream://watch?s=…&t=…`) for the Expo demo.
+Browser landing: `/demo/watch/?s={public_id}&t={token}` or tokenless `/demo/watch/?v={upload_id}` for `public`/`unlisted`. Add `embed=1` for iframe chrome (`embed=1` + share credentials **peek** first and wait for click so crawler iframes do not burn `max_views`). Optional `playlist={id}` for a public playlist side panel. Create also returns `app_url` (`onstream://watch?s=…&t=…`) for the Expo demo. Discovery: `<link rel="alternate" type="application/json+oembed" href="/v1/oembed?url=…">`.
 
 **Visibility.** `private` needs a token or owner JWT. `unlisted` and `public` play without a token when `READY`. Only `public` appears in RSS.
 
@@ -165,6 +168,15 @@ Browser landing: `/demo/watch/?s={public_id}&t={token}`. Add `embed=1` for ifram
 |--------|------|
 | GET | `/{username}/videos.rss` public READY videos |
 | GET | `/{username}/playlists/{playlist_id}.rss` public playlist (public videos only) |
+
+## oEmbed + public cards (no auth)
+
+`GET /v1/oembed` is **oEmbed 1.0 JSON at the document root** (not the `{ success, data }` envelope). Only `format=json`. The `url` host must match this request, `PUBLIC_API_BASE_URL`, or lab hosts (`localhost` / `127.0.0.1` / `testserver`). Share URLs are **peeked** (token checked, views not incremented). Private-via-share responses omit `thumbnail_url` so crawlers never get a tokenized sprite. Iframe `html` points at `/demo/watch/?…&embed=1`.
+
+| Method | Path | Notes |
+|--------|------|--------|
+| GET | `/v1/oembed` | query `url`, optional `maxwidth` / `maxheight`, `format=json` |
+| GET | `/v1/public/videos/{video_id}` | tokenless card for `public`/`unlisted` READY (API envelope) |
 
 ## Playlists — `/v1/playlists`
 
@@ -258,8 +270,8 @@ These routes are mounted on the application root for probes, metrics scrapers, a
 | `/health/ready` | readiness |
 | `/metrics` | Prometheus (if enabled) |
 | `/scalar` | Scalar interactive API reference |
-| `/demo/` | static hls.js (if `DEMO_PLAYER_ENABLED`) |
-| `/demo/watch/` | anonymous share-link landing (`?s=` + `?t=`; `embed=1`, `playlist=`) |
+| `/demo/` | static hls.js (if `DEMO_PLAYER_ENABLED`) — quality menu, keyboard, DVR-safe scrub thumbs |
+| `/demo/watch/` | watch landing (`?v=` public/unlisted, or `?s=` + `?t=` share; `embed=1`, `playlist=`) |
 
 ## Client guides
 

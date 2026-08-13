@@ -65,8 +65,8 @@ With API + worker + MediaMTX running, live create → OBS **or** FFmpeg publish 
 | Surface | Path / URL | Role |
 |---------|------------|------|
 | **Expo lab** | [`onstream-demo/`](onstream-demo/) | Full product path: auth, VOD upload/play, live create/health/play/revoke |
-| **Web hls.js player** | `http://localhost:8000/demo/` | Paste a signed HLS URL and play (captions + storyboard hover) |
-| **Shared / embed watch** | `http://localhost:8000/demo/watch/?s=&t=` | Anonymous share landing; `embed=1` strips chrome for iframe |
+| **Web hls.js player** | `http://localhost:8000/demo/` | Paste a signed HLS URL: quality, keyboard, captions; hover scrub thumbs when a sprite exists |
+| **Shared / embed watch** | `http://localhost:8000/demo/watch/` | `?v=` public/unlisted or `?s=&t=` share; `embed=1` strips chrome and click-to-plays shares |
 | **Scalar** | `http://localhost:8000/scalar` | Interactive API (same as curl, in-browser) |
 | **Swagger** | `http://localhost:8000/docs` | OpenAPI |
 
@@ -80,9 +80,9 @@ More encoder/player recipes: [`docs/PLAYBACK_CLIENTS.md`](docs/PLAYBACK_CLIENTS.
 | VOD (Expo / API) | **Ready** | Upload → worker → READY → token → HLS (verified by `scripts/e2e_smoke.py`) |
 | VOD on a **physical phone** | **Config** | `PUBLIC_API_BASE_URL` must be LAN IP (this machine: `http://192.168.43.246:8000`) |
 | Live create / token / revoke | **Ready** | Verified by smoke; manual publish via OBS or FFmpeg (below) |
-| `/demo/` | **Player + tools** | HLS player, storyboard hover, `/demo/watch/`, `/demo/whip/`, `/demo/whep/`, `/demo/upload/`, `/demo/reset/` |
+| `/demo/` | **Player + tools** | Quality, keyboard, DVR-safe hover thumbs, `/demo/watch/`, `/demo/whip/`, `/demo/whep/`, `/demo/upload/`, `/demo/reset/` |
 | Captions in demo UI | **Ready** | Status + Open in `/demo/` for track menu; Expo player has no full track picker |
-| Watch & collect | **Ready** | Unlisted visibility, playlists, instant clips, storyboard filmstrip, embed iframe, RSS feeds |
+| Watch & collect | **Ready** | Unlisted visibility, playlists, instant clips, storyboard filmstrip, oEmbed, embed iframe, RSS feeds |
 | Live list ended history | **Ready** | `include_ended=true`; Expo shows Active + Recently ended |
 | Live → VOD replay | **Ready** | Revoke archives HLS; Expo **Watch replay** |
 | Live HLS DVR scrub | **Ready** | EVENT archive is the live playlist; Expo **Jump to live** |
@@ -94,6 +94,7 @@ More encoder/player recipes: [`docs/PLAYBACK_CLIENTS.md`](docs/PLAYBACK_CLIENTS.
 | Share-link inbox | **Ready** | Lab / Library link icon → audit + revoke; token still once at create |
 | API keys | **Ready** | Account / Lab → create (secret once) + revoke; scopes enforced on `X-API-Key` |
 | Semantic search | **Ready** | Library search → Keyword / Semantic; needs embeddings job for hits |
+| oEmbed | **Ready** | `GET /v1/oembed?url=` (bare JSON); watch `?v=` + share peek |
 
 **Critical DB fix (was blocking VOD):** Postgres `videostatus` enum was missing `PROCESSING`. Migration `f6a7b8c9d0e1` adds it.
 
@@ -435,13 +436,15 @@ Requires `alembic upgrade head` through `i9c0d1e2f3a4`. Use a **READY** VOD.
 
 1. Confirm `data/hls/<upload_id>/storyboard.jpg` and `storyboard.vtt` exist (written at transcode).
 2. After **Issue playback token**, Expo shows a **Scrub preview** filmstrip under the player — tap a tile to seek.
-3. Paste the same `playback_url` into `http://localhost:8000/demo/` and hover the video for a sprite thumb.
+3. Paste the same `playback_url` into `http://localhost:8000/demo/` and hover the video for a sprite thumb. Live `/live/` masters should say there is no sprite until archive promote. Keyboard: `K` / `J` `L` / `F`. Quality menu when the master has multiple rungs.
 
-**Embed**
+**Embed / oEmbed**
 
 1. From the share sheet, copy **Embed iframe**.
-2. Or open `http://localhost:8000/demo/watch/?s=<public_id>&t=<token>&embed=1` — brand/kicker/home should be gone.
+2. Or open `http://localhost:8000/demo/watch/?s=<public_id>&t=<token>&embed=1` — brand/kicker/home should be gone; **Play** should appear (peek, no view burn) until you click.
 3. Optional: `&playlist=<id>` shows a side panel only if that playlist is **public**.
+4. Public/unlisted: `/demo/watch/?v=<upload_id>` should play without a share token.
+5. `GET /v1/oembed?url=<watch URL>` returns bare JSON (`type`/`html` at the root, not `{success,data}`). Private share must omit `thumbnail_url`. `format=xml` is 400.
 
 **RSS**
 
@@ -579,9 +582,9 @@ Worker injects `#EXT-X-MEDIA:TYPE=SUBTITLES` into `data/hls/{id}/master.m3u8` af
 ### Watch & collect
 - **Visibility:** `private` | `unlisted` | `public`. `is_public` is derived (`true` only when public). Unlisted is tokenless playback, omitted from RSS.
 - **Clips:** share create / `POST /v1/videos/{id}/tokens` accept `clip_start` / `clip_end`. Stream JWT carries the window; master injects `#EXT-X-START`. Players seek/stop; no re-encode.
-- **Storyboard:** transcode writes `storyboard.jpg` + `.vtt`; serve via `/v1/playback/{id}/storyboard.*`. Video GET and share exchange return tokenized URLs.
+- **Storyboard:** transcode writes `storyboard.jpg` + `.vtt`; serve via `/v1/playback/{id}/storyboard.*`. Video GET and share exchange return tokenized URLs. `/demo/` hover uses `seekable.end` for live DVR; live masters do not fetch a sprite.
 - **Playlists:** `PATCH /v1/playlists/{id}` (`name`, `is_public`); `GET /v1/playlists/public/{id}` for embeds. Expo: `/playlist`, Library shelf, add-to-playlist, play-next.
-- **Embed:** `/demo/watch/?s=&t=&embed=1` (+ optional `playlist=`).
+- **Embed / oEmbed:** `/demo/watch/?v=` or `?s=&t=&embed=1` (+ optional `playlist=`). Share embeds peek then click-to-play. `GET /v1/oembed` is spec JSON.
 - **RSS:** `GET /v1/feeds/{username}/videos.rss` and `.../playlists/{id}.rss`.
 
 ---

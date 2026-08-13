@@ -73,6 +73,21 @@ def revoke_share_link(
     return api_ok(request, data, message="Share link revoked")
 
 
+@router.post("/{public_id}/peek", response_model=APIResponse)
+def peek_share_link(
+    request: Request,
+    public_id: str,
+    body: ShareLinkExchange,
+    db: Session = Depends(get_db),
+):
+    """Public: validate share credentials without minting playback or burning max_views."""
+    try:
+        data = share_link_service.peek(db, public_id, body.token)
+    except AppError as e:
+        raise_app_error(e)
+    return api_ok(request, data, message="Share valid")
+
+
 @router.post("/{public_id}/exchange", response_model=APIResponse)
 def exchange_share_link(
     request: Request,
