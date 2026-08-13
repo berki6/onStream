@@ -60,6 +60,8 @@ class ShareLink(Base):
     revoked_at = Column(DateTime(timezone=True), nullable=True)
     max_views = Column(Integer, nullable=True)
     view_count = Column(Integer, nullable=False, default=0)
+    clip_start_seconds = Column(Float, nullable=True)
+    clip_end_seconds = Column(Float, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     video = relationship("Video", back_populates="share_links")

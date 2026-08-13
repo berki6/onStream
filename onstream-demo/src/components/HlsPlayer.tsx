@@ -14,7 +14,9 @@ type Props = {
   uri: string | null;
   title?: string;
   initialPositionSeconds?: number;
+  clipEndSeconds?: number | null;
   onProgress?: (positionSeconds: number, durationSeconds: number) => void;
+  onEnded?: () => void;
 };
 
 export type HlsPlayerHandle = {
@@ -22,7 +24,7 @@ export type HlsPlayerHandle = {
 };
 
 export const HlsPlayer = forwardRef<HlsPlayerHandle, Props>(function HlsPlayer(
-  { uri, title, initialPositionSeconds = 0, onProgress },
+  { uri, title, initialPositionSeconds = 0, clipEndSeconds, onProgress, onEnded },
   ref
 ) {
   const [playing, setPlaying] = useState(false);
@@ -34,6 +36,11 @@ export const HlsPlayer = forwardRef<HlsPlayerHandle, Props>(function HlsPlayer(
   const loadedUri = useRef<string | null>(null);
   const onProgressRef = useRef(onProgress);
   onProgressRef.current = onProgress;
+  const onEndedRef = useRef(onEnded);
+  onEndedRef.current = onEnded;
+  const clipEndRef = useRef(clipEndSeconds);
+  clipEndRef.current = clipEndSeconds;
+  const endedOnce = useRef(false);
 
   const player = useVideoPlayer(null, (p) => {
     p.loop = false;
@@ -63,6 +70,7 @@ export const HlsPlayer = forwardRef<HlsPlayerHandle, Props>(function HlsPlayer(
     loadedUri.current = uri;
     resumeTarget.current = initialPositionSeconds;
     seekDone.current = false;
+    endedOnce.current = false;
   }
 
   useEffect(() => {
@@ -121,6 +129,27 @@ export const HlsPlayer = forwardRef<HlsPlayerHandle, Props>(function HlsPlayer(
       }
 
       if (!seekDone.current) return;
+      const clipEnd = clipEndRef.current;
+      if (
+        clipEnd != null &&
+        clipEnd > 0 &&
+        pos >= clipEnd - 0.25 &&
+        !endedOnce.current
+      ) {
+        endedOnce.current = true;
+        try {
+          player.pause();
+          setPlaying(false);
+        } catch {
+          /* ignore */
+        }
+        onEndedRef.current?.();
+        return;
+      }
+      if (dur > 0 && pos >= dur - 0.35 && !endedOnce.current) {
+        endedOnce.current = true;
+        onEndedRef.current?.();
+      }
       if (pos <= 0) return;
       // Don't overwrite resume with a pre-seek near-zero sample.
       if (target > 2 && pos < Math.min(5, target * 0.5)) return;

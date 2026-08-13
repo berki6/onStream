@@ -69,7 +69,9 @@ async def master_playlist(
         video = playback_service.get_ready_video(db, video_id)
         path, _ = playback_service.resolve_master(video)
         raw = path.read_text(encoding="utf-8", errors="ignore")
-        raw = playback_service.prepare_master_playlist(video, raw)
+        raw = playback_service.prepare_master_playlist(
+            video, raw, stream_token or token
+        )
         body = playback_service.rewrite_playlist(raw, stream_token or token)
     except AppError as e:
         raise_app_error(e)

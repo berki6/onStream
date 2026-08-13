@@ -20,6 +20,7 @@ import { StatusPill } from "@/components/StatusPill";
 import { VideoUploadComposer } from "@/components/VideoUploadComposer";
 import { videoPipelineHint } from "@/lib/videoStatus";
 import { videoKeys } from "@/query/keys";
+import { usePlaylistsQuery } from "@/query/playlists";
 import { prefetchVideo, useVideosQuery } from "@/query/videos";
 import { colors, radii, spacing } from "@/theme/tokens";
 
@@ -56,6 +57,7 @@ export default function VideosScreen() {
     queryKey: videoKeys.saved(),
     queryFn: async () => (await listSavedVideos(12)).data,
   });
+  const playlistsQuery = usePlaylistsQuery();
 
   useFocusEffect(
     useCallback(() => {
@@ -63,10 +65,11 @@ export default function VideosScreen() {
       refetch();
       void continueQuery.refetch();
       void savedQuery.refetch();
+      void playlistsQuery.refetch();
       return () => {
         focusedRef.current = false;
       };
-    }, [refetch, continueQuery.refetch, savedQuery.refetch])
+    }, [refetch, continueQuery.refetch, savedQuery.refetch, playlistsQuery.refetch])
   );
 
   useEffect(() => {
@@ -121,6 +124,17 @@ export default function VideosScreen() {
         </Pressable>
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel="Playlists"
+          onPress={() => router.push("/playlist" as Href)}
+          style={({ pressed }) => [
+            styles.iconBtn,
+            pressed && { opacity: 0.88 },
+          ]}
+        >
+          <Ionicons name="list-outline" size={22} color={colors.text} />
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
           accessibilityLabel="Search"
           onPress={() => router.push("/search")}
           style={({ pressed }) => [
@@ -163,12 +177,14 @@ export default function VideosScreen() {
               refetch(),
               continueQuery.refetch(),
               savedQuery.refetch(),
+              playlistsQuery.refetch(),
             ]);
           }}
           ListHeaderComponent={
             <LibraryShelves
               continueItems={continueQuery.data ?? []}
               savedItems={savedQuery.data ?? []}
+              playlists={playlistsQuery.data ?? []}
             />
           }
           ListEmptyComponent={
@@ -268,6 +284,11 @@ export default function VideosScreen() {
                   ) : null}
                   <StatusPill status={item.status} />
                 </View>
+                {item.visibility && item.visibility !== "private" ? (
+                  <Text style={styles.meta}>
+                    {item.visibility === "public" ? "Public" : "Unlisted"}
+                  </Text>
+                ) : null}
                 <Text style={[styles.hint, { color: HINT_COLOR[hint.tone] }]}>
                   {hint.text}
                 </Text>

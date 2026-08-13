@@ -10,7 +10,8 @@ from src.api.v1.responses import api_ok, api_page, raise_app_error
 from src.application import moderation_service
 from src.application.errors import AppError
 from src.infrastructure.db.session import get_db
-from src.schemas import APIResponse, ModerationReviewRequest, Video
+from src.application.media_urls import video_payload
+from src.schemas import APIResponse, ModerationReviewRequest
 
 router = APIRouter()
 
@@ -28,7 +29,7 @@ def list_quarantine_queue(
     )
     return api_page(
         request,
-        [Video.model_validate(v) for v in videos],
+        [video_payload(v) for v in videos],
         total_count=total,
         skip=skip,
         limit=limit,
@@ -56,6 +57,6 @@ def review_video(
         raise_app_error(e)
     return api_ok(
         request,
-        Video.model_validate(video),
+        video_payload(video),
         message=f"Moderation review: {body.action}",
     )

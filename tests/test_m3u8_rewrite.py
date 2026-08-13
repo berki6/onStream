@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.application.playback_service import rewrite_playlist
+from src.application.playback_service import inject_clip_start, rewrite_playlist
 from src.infrastructure.media.abr import inject_subtitle_track
 
 
@@ -39,6 +39,14 @@ def test_rewrite_no_token_unchanged():
     out = rewrite_playlist(content, None).decode("utf-8")
     assert out == content or out == content  # exact bytes of original
     assert "token=" not in out
+
+
+def test_inject_clip_start_after_extm3u():
+    content = "#EXTM3U\n#EXT-X-VERSION:3\n#EXTINF:2.0,\nseg0.ts\n"
+    out = inject_clip_start(content, 12.5)
+    assert "#EXT-X-START:TIME-OFFSET=12.500" in out
+    assert out.splitlines()[0] == "#EXTM3U"
+    assert out.splitlines()[1].startswith("#EXT-X-START")
 
 
 def test_inject_subtitle_track_adds_media_and_stream_inf():

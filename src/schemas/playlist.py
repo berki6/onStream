@@ -1,6 +1,6 @@
 import re
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -22,7 +22,19 @@ class PlaylistBase(BaseModel):
 
 
 class PlaylistCreate(PlaylistBase):
-    pass
+    is_public: bool = False
+
+
+class PlaylistUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    is_public: Optional[bool] = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_playlist_name(cls, v):
+        if v is None:
+            return v
+        return PlaylistBase.validate_playlist_name(v)
 
 
 class Playlist(PlaylistBase):

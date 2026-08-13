@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 from src.application.error_codes import ErrorCode
 from src.application.errors import AppError
 from src.application.ids import validate_public_video_id
+from src.application.media_urls import playback_media_urls
+from src.application.playback_service import normalize_clip_window
 from src.core.config import settings
 from src.core.security.tokens import create_stream_token
 from src.infrastructure.db import models
@@ -58,6 +60,8 @@ def _serialize(
         "revoked_at": link.revoked_at,
         "max_views": link.max_views,
         "view_count": int(link.view_count or 0),
+        "clip_start": link.clip_start_seconds,
+        "clip_end": link.clip_end_seconds,
         "created_at": link.created_at,
         "active": _is_active(link, now),
     }
@@ -71,6 +75,8 @@ def create(
     expires_in_seconds: int = 86400,
     label: Optional[str] = None,
     max_views: Optional[int] = None,
+    clip_start: Optional[float] = None,
+    clip_end: Optional[float] = None,
 ) -> Dict[str, Any]:
     validate_public_video_id(upload_id)
     video = video_repository.get_by_upload_id(db, upload_id)
@@ -80,6 +86,10 @@ def create(
         raise AppError(
             "Only READY videos can be shared", code=ErrorCode.SHARE_BAD_REQUEST
         )
+
+    start, end = normalize_clip_window(
+        clip_start, clip_end, duration=video.duration
+    )
 
     expires_in_seconds = max(60, min(int(expires_in_seconds), 60 * 60 * 24 * 90))
     token = secrets.token_urlsafe(24)
@@ -94,6 +104,8 @@ def create(
         expires_at=now + timedelta(seconds=expires_in_seconds),
         max_views=max_views,
         view_count=0,
+        clip_start_seconds=start,
+        clip_end_seconds=end,
     )
     engagement_repository.create_share(db, link)
 
@@ -188,18 +200,27 @@ def exchange(db: Session, public_id: str, token: str) -> Dict[str, Any]:
     ttl = min(settings.STREAM_TOKEN_EXPIRE_SECONDS, 3600)
     remaining = max(60, int((exp - now).total_seconds()))
     ttl = min(ttl, remaining)
+    start = link.clip_start_seconds
+    end = link.clip_end_seconds
     stream = create_stream_token(
-        video.upload_id, expires_delta=timedelta(seconds=ttl)
+        video.upload_id,
+        expires_delta=timedelta(seconds=ttl),
+        clip_start=start,
+        clip_end=end,
     )
     playback_url = (
         f"{settings.PUBLIC_API_BASE_URL.rstrip('/')}/v1/playback/"
         f"{video.upload_id}/master.m3u8?token={stream}"
     )
-    return {
+    data = {
         "token": stream,
         "expires_in": ttl,
         "playback_url": playback_url,
         "upload_id": video.upload_id,
         "title": video.title,
         "expires_at": link.expires_at,
+        "clip_start": start,
+        "clip_end": end,
     }
+    data.update(playback_media_urls(video, token=stream))
+    return data

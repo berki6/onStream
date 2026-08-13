@@ -43,6 +43,7 @@ class Video(Base):
     preview_clip_path = Column(String(500), nullable=True)
     status = Column(Enum(VideoStatus), default=VideoStatus.PENDING, index=True)
     is_public = Column(Boolean, default=False)
+    visibility = Column(String(16), nullable=False, default="private")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

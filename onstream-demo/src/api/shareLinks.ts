@@ -14,6 +14,8 @@ export type ShareLink = {
   watch_url?: string;
   share_url?: string;
   app_url?: string;
+  clip_start?: number | null;
+  clip_end?: number | null;
 };
 
 export type ShareExchange = {
@@ -23,6 +25,11 @@ export type ShareExchange = {
   upload_id: string;
   title: string;
   expires_at: string;
+  clip_start?: number | null;
+  clip_end?: number | null;
+  storyboard_url?: string | null;
+  storyboard_vtt_url?: string | null;
+  captions_url?: string | null;
 };
 
 export async function createShareLink(input: {
@@ -30,6 +37,8 @@ export async function createShareLink(input: {
   expiresInSeconds: number;
   label?: string;
   maxViews?: number;
+  clipStart?: number;
+  clipEnd?: number;
 }) {
   return apiRequest<ApiEnvelope<ShareLink>>("/v1/share-links", {
     method: "POST",
@@ -38,6 +47,8 @@ export async function createShareLink(input: {
       expires_in_seconds: input.expiresInSeconds,
       label: input.label,
       max_views: input.maxViews,
+      clip_start: input.clipStart,
+      clip_end: input.clipEnd,
     }),
   });
 }

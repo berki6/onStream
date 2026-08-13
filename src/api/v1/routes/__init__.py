@@ -1,6 +1,7 @@
 from src.api.v1.routes import (
     api_keys,
     auth,
+    feeds,
     health,
     jobs,
     live,
@@ -18,6 +19,7 @@ from src.api.v1.routes import (
 __all__ = [
     "api_keys",
     "auth",
+    "feeds",
     "health",
     "jobs",
     "live",

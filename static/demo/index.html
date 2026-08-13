@@ -95,6 +95,9 @@
     </label>
     <span id="captionStatus">No stream loaded</span>
   </div>
+  <div id="sbPreview" style="display:none;position:fixed;width:160px;height:90px;overflow:hidden;border:1px solid #3d9cf0;border-radius:6px;pointer-events:none;z-index:9;background:#000">
+    <img id="sbImg" alt="" style="position:absolute;max-width:none" />
+  </div>
   <script>
     const video = document.getElementById("video");
     const input = document.getElementById("url");
@@ -178,6 +181,71 @@
       };
     }
 
+    function storyboardFromMaster(src) {
+      try {
+        const u = new URL(src, location.origin);
+        u.pathname = u.pathname.replace(/master\.m3u8$/, "storyboard.vtt");
+        const img = new URL(u.href);
+        img.pathname = img.pathname.replace(/storyboard\.vtt$/, "storyboard.jpg");
+        return { vtt: u.href, img: img.href };
+      } catch {
+        return null;
+      }
+    }
+
+    function parseSbVtt(text) {
+      const cues = [];
+      const blocks = text.replace(/\r/g, "").split("\n\n");
+      const cueArrow = "--" + ">";
+      const ts = new RegExp(
+        "(\\d{2}):(\\d{2}):(\\d{2})\\.(\\d{3})\\s+" +
+          cueArrow +
+          "\\s+(\\d{2}):(\\d{2}):(\\d{2})\\.(\\d{3})"
+      );
+      const xywh = /#xywh=(\d+),(\d+),(\d+),(\d+)/;
+      const toSec = (h,m,s,ms) => (+h)*3600+(+m)*60+(+s)+(+ms)/1000;
+      for (const block of blocks) {
+        const lines = block.split("\n").filter(Boolean);
+        const timeLine = lines.find((l) => l.includes(cueArrow));
+        const uriLine = lines.find((l) => l.includes("#xywh="));
+        if (!timeLine || !uriLine) continue;
+        const tm = timeLine.match(ts);
+        const xy = uriLine.match(xywh);
+        if (!tm || !xy) continue;
+        cues.push({
+          start: toSec(tm[1], tm[2], tm[3], tm[4]),
+          end: toSec(tm[5], tm[6], tm[7], tm[8]),
+          x: +xy[1], y: +xy[2], w: +xy[3], h: +xy[4],
+        });
+      }
+      return cues;
+    }
+
+    function wireStoryboard(src) {
+      const urls = storyboardFromMaster(src);
+      const box = document.getElementById("sbPreview");
+      const img = document.getElementById("sbImg");
+      if (!urls || !box) return;
+      fetch(urls.vtt).then((r) => r.ok ? r.text() : Promise.reject()).then((text) => {
+        const cues = parseSbVtt(text);
+        if (!cues.length) return;
+        img.src = urls.img;
+        video.onmousemove = (ev) => {
+          const rect = video.getBoundingClientRect();
+          const x = ev.clientX - rect.left;
+          const ratio = Math.max(0, Math.min(1, x / rect.width));
+          const t = ratio * (video.duration || cues[cues.length - 1].end);
+          const cue = cues.find((c) => t >= c.start && t < c.end) || cues[0];
+          box.style.display = "block";
+          box.style.left = (ev.clientX - 80) + "px";
+          box.style.top = (rect.top - 100) + "px";
+          img.style.left = -cue.x + "px";
+          img.style.top = -cue.y + "px";
+        };
+        video.onmouseleave = () => { box.style.display = "none"; };
+      }).catch(() => {});
+    }
+
     document.getElementById("play").addEventListener("click", () => {
       const src = input.value.trim();
       if (!src) return;
@@ -201,6 +269,7 @@
             captionStatus.textContent = "Playback error — check URL / token";
           }
         });
+        wireStoryboard(src);
       } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
         video.src = src;
         video.addEventListener(
@@ -208,6 +277,7 @@
           () => applyNativeTextTracks(),
           { once: true }
         );
+        wireStoryboard(src);
       } else {
         alert("HLS is not supported in this browser.");
         resetCaptionUi("HLS not supported");

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from src.application.error_codes import ErrorCode
 from src.application.errors import AppError
 from src.application.ids import validate_public_video_id
+from src.application.visibility import apply_visibility
 from src.infrastructure.db import models
 from src.infrastructure.db.repositories import video_repository
 
@@ -47,13 +48,13 @@ def review(
         video.status = models.VideoStatus.READY
         video.quarantined_at = None
         if make_public is not None:
-            video.is_public = bool(make_public)
+            apply_visibility(video, is_public=bool(make_public))
         db.commit()
         db.refresh(video)
         return video
 
     if action == "reject":
-        video.is_public = False
+        apply_visibility(video, is_public=False)
         if make_public is False:
             pass
         # Keep quarantined; stamp review time via updated_at

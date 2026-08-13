@@ -28,6 +28,7 @@ from src.application import (
     video_service,
     watch_history_service,
 )
+from src.application.media_urls import video_payload
 from src.application.errors import AppError
 from src.infrastructure.db.session import get_db
 from src.core.logger import get_logger
@@ -35,7 +36,6 @@ from src.schemas import (
     APIResponse,
     PaginatedResponse,
     PlaybackTokenCreate,
-    Video,
     VideoUpdate,
 )
 from src.schemas.watch import ProgressUpdate
@@ -69,7 +69,7 @@ async def upload_video(
         raise_app_error(e)
     return api_ok(
         request,
-        Video.model_validate(video),
+        video_payload(video),
         message="Video uploaded successfully and queued for processing",
     )
 
@@ -90,7 +90,7 @@ def list_videos(
         raise_app_error(e)
     return api_page(
         request,
-        [Video.model_validate(v) for v in videos],
+        [video_payload(v) for v in videos],
         total_count=total_count,
         skip=skip,
         limit=limit,
@@ -192,7 +192,7 @@ def get_video(
     except AppError as e:
         raise_app_error(e)
     return api_ok(
-        request, Video.model_validate(video), message="Video retrieved successfully"
+        request, video_payload(video), message="Video retrieved successfully"
     )
 
 
@@ -209,7 +209,7 @@ def update_video(
         video = video_service.update_video(db, video_id, current_user.id, body)
     except AppError as e:
         raise_app_error(e)
-    return api_ok(request, Video.model_validate(video), message="Video updated")
+    return api_ok(request, video_payload(video), message="Video updated")
 
 
 @router.delete("/{video_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -237,7 +237,12 @@ def create_playback_token(
     payload = body or PlaybackTokenCreate()
     try:
         data = playback_service.issue_token(
-            db, video_id, current_user.id, expires_in=payload.expires_in
+            db,
+            video_id,
+            current_user.id,
+            expires_in=payload.expires_in,
+            clip_start=payload.clip_start,
+            clip_end=payload.clip_end,
         )
     except AppError as e:
         raise_app_error(e)

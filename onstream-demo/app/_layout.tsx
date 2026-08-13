@@ -117,6 +117,22 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
           }}
         />
         <Stack.Screen
+          name="playlist/index"
+          options={{
+            headerShown: true,
+            title: "Playlists",
+            animation: "slide_from_right",
+          }}
+        />
+        <Stack.Screen
+          name="playlist/[id]"
+          options={{
+            headerShown: true,
+            title: "Playlist",
+            animation: "slide_from_right",
+          }}
+        />
+        <Stack.Screen
           name="library/[kind]"
           options={{
             headerShown: true,

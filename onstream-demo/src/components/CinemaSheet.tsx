@@ -4,12 +4,15 @@ import {
   Pressable,
   StyleSheet,
   View,
+  useWindowDimensions,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, {
   Easing,
+  interpolate,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -18,6 +21,7 @@ import { scheduleOnRN } from "react-native-worklets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useCinemaSheetHost } from "@/components/CinemaSheetHost";
+import { scrollPhysics } from "@/theme/scroll";
 import { colors, radii, spacing } from "@/theme/tokens";
 
 const OPEN_MS = 300;
@@ -25,6 +29,7 @@ const CLOSE_MS = 240;
 const DISMISS_DRAG_PX = 110;
 const DISMISS_VELOCITY = 900;
 const SHEET_HEIGHT_FALLBACK = 420;
+const HANDLE_CHROME = 44;
 
 type Props = {
   visible: boolean;
@@ -55,6 +60,10 @@ export function CinemaSheet({
   const sheetId = useId();
   const bus = useMemo(() => host.createBus(), [host]);
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const { height: kbHeight, progress: kbProgress } =
+    useReanimatedKeyboardAnimation();
+  const closedPad = Math.max(insets.bottom, 16) + 8;
   const [presented, setPresented] = useState(false);
 
   const progress = useSharedValue(0);
@@ -170,13 +179,14 @@ export function CinemaSheet({
           if (shouldDismiss) {
             // Fling sheet + scrim off together (do NOT snap dragY→0 — that
             // desynced the backdrop and flashed after close).
-            const dist = Math.max(24, h - dragY.value);
+            const hideY = h - kbHeight.value;
+            const dist = Math.max(24, hideY - dragY.value);
             const dur = Math.min(
               CLOSE_MS,
               Math.max(160, (dist / Math.max(e.velocityY, 900)) * 1000)
             );
             dragY.value = withTiming(
-              h,
+              hideY,
               { duration: dur, easing: Easing.in(Easing.cubic) },
               (finished) => {
                 if (finished) scheduleOnRN(completeDragDismiss);
@@ -201,12 +211,27 @@ export function CinemaSheet({
 
   const slideStyle = useAnimatedStyle(() => {
     const h = Math.max(sheetHeight.value, fallbackHeight);
+    const kb = kbHeight.value;
+    // kb is 0 closed, negative when open. Mix it with progress so close/drag
+    // still travel fully off-screen.
     return {
       transform: [
         {
-          translateY: (1 - progress.value) * h + dragY.value,
+          translateY: (1 - progress.value) * (h - kb) + dragY.value + kb,
         },
       ],
+      maxHeight: Math.max(160, windowHeight + kb),
+      paddingBottom: interpolate(kbProgress.value, [0, 1], [closedPad, 8]),
+    };
+  });
+
+  const bodyScrollStyle = useAnimatedStyle(() => {
+    const pad = interpolate(kbProgress.value, [0, 1], [closedPad, 8]);
+    return {
+      maxHeight: Math.max(
+        120,
+        windowHeight + kbHeight.value - pad - HANDLE_CHROME
+      ),
     };
   });
 
@@ -231,12 +256,7 @@ export function CinemaSheet({
           />
         </Animated.View>
         <Animated.View
-          style={[
-            styles.sheet,
-            { paddingBottom: Math.max(insets.bottom, 16) + 8 },
-            sheetStyle,
-            slideStyle,
-          ]}
+          style={[styles.sheet, sheetStyle, slideStyle]}
           onLayout={(e) => {
             const h = e.nativeEvent.layout.height;
             if (h > 0) sheetHeight.value = h;
@@ -252,7 +272,18 @@ export function CinemaSheet({
               <View style={styles.handle} />
             </Animated.View>
           </GestureDetector>
-          {children}
+          <Animated.ScrollView
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+            showsVerticalScrollIndicator={false}
+            bounces={scrollPhysics.bounces}
+            alwaysBounceVertical={scrollPhysics.alwaysBounceVertical}
+            overScrollMode={scrollPhysics.overScrollMode}
+            style={bodyScrollStyle}
+            contentContainerStyle={styles.sheetBody}
+          >
+            {children}
+          </Animated.ScrollView>
         </Animated.View>
       </View>
     );
@@ -290,6 +321,11 @@ const styles = StyleSheet.create({
     gap: 12,
     borderTopWidth: 1,
     borderColor: colors.line,
+    overflow: "hidden",
+    width: "100%",
+  },
+  sheetBody: {
+    gap: 12,
   },
   handleHit: {
     alignItems: "center",

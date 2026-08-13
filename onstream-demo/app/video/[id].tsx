@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
-import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter, type Href } from "expo-router";
 import * as Linking from "expo-linking";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -23,10 +23,15 @@ import {
   type ShareLink,
 } from "@/api/shareLinks";
 import {
+  addVideoToPlaylist,
+  type Playlist,
+} from "@/api/playlists";
+import {
   createPlaybackToken,
   deleteVideo,
   getVideoChapters,
   updateVideo,
+  type VideoVisibility,
 } from "@/api/videos";
 import {
   clearWatchProgress,
@@ -41,8 +46,10 @@ import { Field } from "@/components/Field";
 import { HlsPlayer, type HlsPlayerHandle } from "@/components/HlsPlayer";
 import { Screen } from "@/components/Screen";
 import { StatusPill } from "@/components/StatusPill";
+import { StoryboardStrip } from "@/components/StoryboardStrip";
 import { videoPipelineHint } from "@/lib/videoStatus";
-import { videoKeys } from "@/query/keys";
+import { playlistKeys, videoKeys } from "@/query/keys";
+import { usePlaylistsQuery } from "@/query/playlists";
 import { useVideoQuery } from "@/query/videos";
 import { scrollPhysics } from "@/theme/scroll";
 import { colors, radii, spacing } from "@/theme/tokens";
@@ -79,7 +86,11 @@ const MAX_VIEWS_PRESETS: { label: string; value: number | null }[] = [
 ];
 
 export default function VideoDetailScreen() {
-  const { id, play } = useLocalSearchParams<{ id?: string; play?: string }>();
+  const { id, play, playlist: playlistParam } = useLocalSearchParams<{
+    id?: string;
+    play?: string;
+    playlist?: string;
+  }>();
   const router = useRouter();
   const qc = useQueryClient();
   const playerRef = useRef<HlsPlayerHandle>(null);
@@ -102,6 +113,14 @@ export default function VideoDetailScreen() {
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editBusy, setEditBusy] = useState(false);
+  const [editVisibility, setEditVisibility] =
+    useState<VideoVisibility>("private");
+  const [clipOpen, setClipOpen] = useState(false);
+  const [clipStart, setClipStart] = useState("0");
+  const [clipEnd, setClipEnd] = useState("");
+  const [playlistOpen, setPlaylistOpen] = useState(false);
+  const [createdEmbed, setCreatedEmbed] = useState<string | null>(null);
+  const playlistId = playlistParam ? Number(playlistParam) : NaN;
 
   const {
     data: video,
@@ -121,6 +140,9 @@ export default function VideoDetailScreen() {
     queryKey: videoKeys.shares(id || ""),
     enabled: Boolean(id) && shareOpen,
     queryFn: async () => (await listShareLinks(id!)).data,
+  });
+  const playlistsQuery = usePlaylistsQuery({
+    enabled: playlistOpen || Number.isFinite(playlistId),
   });
 
   const captionsReady = Boolean(video?.caption_vtt_path);
@@ -281,6 +303,11 @@ export default function VideoDetailScreen() {
           : null);
       setCreatedWatchUrl(browser);
       setCreatedAppUrl(app);
+      setCreatedEmbed(
+        browser
+          ? `<iframe src="${browser}${browser.includes("?") ? "&" : "?"}embed=1" width="640" height="360" allow="autoplay; fullscreen" allowfullscreen></iframe>`
+          : null
+      );
       const copyTarget = app || browser;
       if (copyTarget) {
         await Clipboard.setStringAsync(copyTarget);
@@ -313,6 +340,10 @@ export default function VideoDetailScreen() {
   const openEdit = () => {
     setEditTitle(video?.title || "");
     setEditDescription(video?.description || "");
+    setEditVisibility(
+      (video?.visibility as VideoVisibility) ||
+        (video?.is_public ? "public" : "private")
+    );
     setEditOpen(true);
   };
 
@@ -329,6 +360,7 @@ export default function VideoDetailScreen() {
       await updateVideo(id, {
         title,
         description: editDescription.trim() || null,
+        visibility: editVisibility,
       });
       await qc.invalidateQueries({ queryKey: videoKeys.detail(id) });
       await qc.invalidateQueries({ queryKey: videoKeys.list() });
@@ -594,6 +626,21 @@ export default function VideoDetailScreen() {
             uri={playbackUrl}
             title={video?.title}
             initialPositionSeconds={resumeAt}
+            onEnded={() => {
+              if (!Number.isFinite(playlistId) || !id) return;
+              const items = playlistsQuery.data;
+              void (async () => {
+                const { listPlaylistVideos } = await import("@/api/playlists");
+                const vids = (await listPlaylistVideos(playlistId)).data || [];
+                const idx = vids.findIndex((v) => v.upload_id === id);
+                const next = idx >= 0 ? vids[idx + 1] : null;
+                if (next) {
+                  router.replace(
+                    `/video/${next.upload_id}?playlist=${playlistId}&play=1` as Href
+                  );
+                }
+              })();
+            }}
             onProgress={(pos, dur) => {
               if (!id || pos < 1) return;
               void upsertWatchProgress(id, pos, dur).then(() => {
@@ -603,6 +650,30 @@ export default function VideoDetailScreen() {
               });
             }}
           />
+
+          {playbackUrl && (video?.storyboard_vtt_url || video?.storyboard_url) ? (
+            <StoryboardStrip
+              vttUrl={
+                video.storyboard_vtt_url
+                  ? `${video.storyboard_vtt_url}${
+                      video.storyboard_vtt_url.includes("?") ? "&" : "?"
+                    }token=${encodeURIComponent(
+                      playbackUrl.split("token=")[1]?.split("&")[0] || ""
+                    )}`
+                  : null
+              }
+              imageUrl={
+                video.storyboard_url
+                  ? `${video.storyboard_url}${
+                      video.storyboard_url.includes("?") ? "&" : "?"
+                    }token=${encodeURIComponent(
+                      playbackUrl.split("token=")[1]?.split("&")[0] || ""
+                    )}`
+                  : null
+              }
+              onSeek={(sec) => playerRef.current?.seekTo(sec)}
+            />
+          ) : null}
 
           {isReady ? (
             <View style={styles.infoBox}>
@@ -701,6 +772,42 @@ export default function VideoDetailScreen() {
             </Pressable>
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel="Add to playlist"
+              disabled={!isReady}
+              hitSlop={8}
+              onPress={() => setPlaylistOpen(true)}
+              style={({ pressed }) => [
+                styles.iconBtn,
+                !isReady && styles.iconBtnDisabled,
+                pressed && isReady && styles.iconBtnPressed,
+              ]}
+            >
+              <Ionicons
+                name="list-outline"
+                size={22}
+                color={isReady ? colors.text : colors.textDim}
+              />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Create clip"
+              disabled={!isReady}
+              hitSlop={8}
+              onPress={() => setClipOpen(true)}
+              style={({ pressed }) => [
+                styles.iconBtn,
+                !isReady && styles.iconBtnDisabled,
+                pressed && isReady && styles.iconBtnPressed,
+              ]}
+            >
+              <Ionicons
+                name="cut-outline"
+                size={22}
+                color={isReady ? colors.text : colors.textDim}
+              />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
               accessibilityLabel="Refresh status"
               hitSlop={8}
               onPress={() => {
@@ -784,6 +891,7 @@ export default function VideoDetailScreen() {
         onExited={() => {
           setCreatedWatchUrl(null);
           setCreatedAppUrl(null);
+          setCreatedEmbed(null);
         }}
       >
         <View style={styles.sheetHead}>
@@ -866,6 +974,9 @@ export default function VideoDetailScreen() {
         {createdWatchUrl ? (
           <CopyRow label="Browser watch URL" value={createdWatchUrl} />
         ) : null}
+        {createdEmbed ? (
+          <CopyRow label="Embed iframe" value={createdEmbed} />
+        ) : null}
         <Text style={styles.section}>Active links</Text>
         {(sharesQuery.data ?? [])
           .filter((l) => l.active)
@@ -926,6 +1037,30 @@ export default function VideoDetailScreen() {
           style={{ minHeight: 96, textAlignVertical: "top", paddingTop: 14 }}
           maxLength={2000}
         />
+        <Text style={styles.sheetLabel}>Visibility</Text>
+        <View style={styles.presetRow}>
+          {(["private", "unlisted", "public"] as VideoVisibility[]).map(
+            (v) => (
+              <Pressable
+                key={v}
+                onPress={() => setEditVisibility(v)}
+                style={[
+                  styles.preset,
+                  editVisibility === v && styles.presetOn,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.presetText,
+                    editVisibility === v && styles.presetTextOn,
+                  ]}
+                >
+                  {v}
+                </Text>
+              </Pressable>
+            )
+          )}
+        </View>
         <View style={styles.editActions}>
           <Pressable
             hitSlop={12}
@@ -960,6 +1095,151 @@ export default function VideoDetailScreen() {
             )}
           </Pressable>
         </View>
+      </CinemaSheet>
+
+      <CinemaSheet
+        visible={clipOpen}
+        onClose={() => setClipOpen(false)}
+        dismissEnabled={!shareBusy}
+      >
+        <View style={styles.sheetHead}>
+          <View style={styles.sheetTitleRow}>
+            <Ionicons name="cut-outline" size={22} color={colors.brand} />
+            <Text style={styles.sheetTitle}>Instant clip</Text>
+          </View>
+          <Pressable hitSlop={12} onPress={() => setClipOpen(false)}>
+            <Ionicons name="close" size={24} color={colors.textMuted} />
+          </Pressable>
+        </View>
+        <Text style={styles.sheetBody}>
+          Share a time window without re-encoding. The player seeks in and
+          stops at the end.
+        </Text>
+        <Field
+          label="Start (seconds)"
+          value={clipStart}
+          onChangeText={setClipStart}
+          keyboardType="decimal-pad"
+        />
+        <Field
+          label="End (seconds)"
+          value={clipEnd}
+          onChangeText={setClipEnd}
+          keyboardType="decimal-pad"
+          hint="Leave empty to play through the rest"
+        />
+        {(chaptersQuery.data ?? []).length > 0 ? (
+          <>
+            <Text style={styles.sheetLabel}>Use chapter</Text>
+            {(chaptersQuery.data ?? []).slice(0, 8).map((ch, i) => (
+              <Pressable
+                key={`${ch.start}-${i}`}
+                onPress={() => {
+                  setClipStart(String(Math.floor(ch.start)));
+                  setClipEnd(
+                    ch.end != null ? String(Math.ceil(ch.end)) : ""
+                  );
+                }}
+                style={styles.preset}
+              >
+                <Text style={styles.presetText}>
+                  {ch.title} · {formatChapterTime(ch.start)}
+                </Text>
+              </Pressable>
+            ))}
+          </>
+        ) : null}
+        <Button
+          label="Preview start"
+          onPress={() => {
+            const s = Number(clipStart);
+            if (!Number.isFinite(s)) return;
+            void ensurePlaybackUrl().then(() =>
+              playerRef.current?.seekTo(s)
+            );
+          }}
+        />
+        <Button
+          label="Create clip share link"
+          loading={shareBusy}
+          onPress={() => {
+            const start = Number(clipStart);
+            const end = clipEnd.trim() ? Number(clipEnd) : undefined;
+            if (!id || !Number.isFinite(start)) return;
+            setShareBusy(true);
+            void createShareLink({
+              videoId: id,
+              expiresInSeconds: expirySeconds,
+              clipStart: start,
+              clipEnd: Number.isFinite(end as number) ? end : undefined,
+            })
+              .then(async (res) => {
+                const browser =
+                  res.data.watch_url || res.data.share_url || null;
+                setCreatedWatchUrl(browser);
+                setCreatedAppUrl(res.data.app_url || null);
+                setClipOpen(false);
+                setShareOpen(true);
+                if (browser) await Clipboard.setStringAsync(browser);
+                setNote("Clip share link created.");
+              })
+              .catch((e) => {
+                setActionError(
+                  e instanceof ApiError ? e.message : "Clip share failed"
+                );
+              })
+              .finally(() => setShareBusy(false));
+          }}
+        />
+      </CinemaSheet>
+
+      <CinemaSheet
+        visible={playlistOpen}
+        onClose={() => setPlaylistOpen(false)}
+      >
+        <View style={styles.sheetHead}>
+          <View style={styles.sheetTitleRow}>
+            <Ionicons name="list" size={22} color={colors.brand} />
+            <Text style={styles.sheetTitle}>Add to playlist</Text>
+          </View>
+          <Pressable hitSlop={12} onPress={() => setPlaylistOpen(false)}>
+            <Ionicons name="close" size={24} color={colors.textMuted} />
+          </Pressable>
+        </View>
+        {(playlistsQuery.data ?? []).length === 0 ? (
+          <Text style={styles.sheetBody}>
+            No playlists yet. Create one from Library → Playlists.
+          </Text>
+        ) : (
+          (playlistsQuery.data as Playlist[]).map((p) => (
+            <Pressable
+              key={p.id}
+              onPress={() => {
+                if (!id) return;
+                void addVideoToPlaylist(p.id, id, 0)
+                  .then(() => {
+                    void qc.invalidateQueries({
+                      queryKey: playlistKeys.videos(p.id),
+                    });
+                    void qc.invalidateQueries({
+                      queryKey: playlistKeys.list(),
+                    });
+                    setPlaylistOpen(false);
+                    setNote(`Added to ${p.name}.`);
+                  })
+                  .catch((e) => {
+                    setActionError(
+                      e instanceof ApiError ? e.message : "Add failed"
+                    );
+                  });
+              }}
+              style={styles.shareRow}
+            >
+              <Text style={styles.shareId}>{p.name}</Text>
+              <Ionicons name="add" size={20} color={colors.brand} />
+            </Pressable>
+          ))
+        )}
       </CinemaSheet>
     </Screen>
   );

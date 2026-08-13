@@ -85,7 +85,11 @@ curl -s -X POST "http://localhost:8000/v1/videos/{video_id}/tokens" \
    - **VLC:** Media → Open Network Stream → paste URL (includes `?token=...`).
    - **OBS:** Sources → Media Source → Local File unchecked → input the same HLS URL.
 
-Public videos (`is_public=true`) can omit the token for VLC.
+Public videos (`is_public=true` or `visibility=public`) and **unlisted** videos can omit the token for VLC. Private videos need a stream token or owner JWT.
+
+Clip shares bake `clip_start` / `clip_end` into the stream JWT. Compatible players should seek to start and stop at end; OnStream also injects `#EXT-X-START:TIME-OFFSET` on the master playlist. Storyboard scrub uses `/v1/playback/{id}/storyboard.vtt` + `storyboard.jpg` (same token as HLS).
+
+`/demo/watch/?s=&t=` is the share landing page. Append `embed=1` for iframe chrome, `playlist={id}` when the playlist is public.
 
 Example URL shape:
 

@@ -31,6 +31,10 @@
       align-items: center;
       padding: 2.5rem 1.25rem 3rem;
     }
+    body.embed { padding: 0; min-height: 100vh; background: #000; }
+    body.embed .brand, body.embed .kicker, body.embed a.home, body.embed .chrome { display: none !important; }
+    body.embed .stage { width: 100%; max-width: none; }
+    body.embed video { border-radius: 0; border: 0; }
     .brand {
       font-family: Syne, "Segoe UI", sans-serif;
       font-weight: 800;
@@ -47,11 +51,23 @@
       margin: 0 0 2rem;
     }
     .stage {
-      width: min(860px, 100%);
+      width: min(960px, 100%);
       display: flex;
       flex-direction: column;
       gap: 1rem;
     }
+    .layout { display: flex; gap: 1rem; align-items: flex-start; }
+    .player-col { flex: 1; min-width: 0; }
+    .side {
+      width: 220px;
+      background: var(--elev);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 0.85rem;
+    }
+    .side h2 { margin: 0 0 0.6rem; font-size: 0.95rem; font-family: Syne, sans-serif; }
+    .side a { display: block; color: var(--fg); text-decoration: none; padding: 0.4rem 0; font-size: 0.85rem; }
+    .side a:hover { color: var(--brand); }
     .panel {
       background: var(--elev);
       border: 1px solid var(--line);
@@ -66,6 +82,7 @@
       margin: 0 0 0.35rem;
     }
     .meta { color: var(--muted); font-size: 0.9rem; margin: 0; }
+    .player-wrap { position: relative; }
     video {
       width: 100%;
       aspect-ratio: 16 / 9;
@@ -74,15 +91,21 @@
       border: 1px solid var(--line);
       display: block;
     }
-    .state {
-      text-align: center;
-      padding: 2.5rem 1rem;
+    #thumb {
+      display: none;
+      position: absolute;
+      pointer-events: none;
+      width: 160px;
+      height: 90px;
+      overflow: hidden;
+      border: 1px solid var(--brand);
+      border-radius: 8px;
+      background: #000;
+      z-index: 4;
     }
-    .state h2 {
-      font-family: Syne, sans-serif;
-      margin: 0 0 0.5rem;
-      font-size: 1.4rem;
-    }
+    #thumb img { position: absolute; max-width: none; }
+    .state { text-align: center; padding: 2.5rem 1rem; }
+    .state h2 { font-family: Syne, sans-serif; margin: 0 0 0.5rem; font-size: 1.4rem; }
     .state p { color: var(--muted); margin: 0; line-height: 1.5; }
     .danger h2 { color: var(--danger); }
     .spinner {
@@ -94,16 +117,16 @@
       margin: 0 auto 1rem;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    a.home {
-      margin-top: 2rem;
-      color: var(--dim);
-      font-size: 0.85rem;
+    a.home { margin-top: 2rem; color: var(--dim); font-size: 0.85rem; }
+    @media (max-width: 720px) {
+      .layout { flex-direction: column; }
+      .side { width: 100%; }
     }
   </style>
 </head>
 <body>
-  <p class="brand">OnStream</p>
-  <p class="kicker">Shared playback</p>
+  <p class="brand chrome">OnStream</p>
+  <p class="kicker chrome">Shared playback</p>
   <div class="stage" id="root">
     <div class="panel state">
       <div class="spinner"></div>
@@ -111,13 +134,16 @@
       <p>Exchanging credentials for a short-lived stream.</p>
     </div>
   </div>
-  <a class="home" href="/demo/">← Demo home</a>
+  <a class="home chrome" href="/demo/">← Demo home</a>
   <script>
     const params = new URLSearchParams(location.search);
     const s = params.get("s");
     const t = params.get("t");
+    const embed = params.get("embed") === "1";
+    const playlistId = params.get("playlist");
     const root = document.getElementById("root");
     const apiBase = location.origin;
+    if (embed) document.body.classList.add("embed");
 
     function showError(title, body) {
       root.innerHTML = `
@@ -125,6 +151,86 @@
           <h2>${title}</h2>
           <p>${body}</p>
         </div>`;
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function parseVtt(text) {
+      const cues = [];
+      const blocks = text.replace(/\r/g, "").split("\n\n");
+      const cueArrow = "--" + ">";
+      const ts = new RegExp(
+        "(\\d{2}):(\\d{2}):(\\d{2})\\.(\\d{3})\\s+" +
+          cueArrow +
+          "\\s+(\\d{2}):(\\d{2}):(\\d{2})\\.(\\d{3})"
+      );
+      const xywh = /#xywh=(\d+),(\d+),(\d+),(\d+)/;
+      const toSec = (h,m,s,ms) => (+h)*3600+(+m)*60+(+s)+(+ms)/1000;
+      for (const block of blocks) {
+        const lines = block.split("\n").filter(Boolean);
+        const timeLine = lines.find((l) => l.includes(cueArrow));
+        const uriLine = lines.find((l) => l.includes("#xywh="));
+        if (!timeLine || !uriLine) continue;
+        const tm = timeLine.match(ts);
+        const xy = uriLine.match(xywh);
+        if (!tm || !xy) continue;
+        cues.push({
+          start: toSec(tm[1], tm[2], tm[3], tm[4]),
+          end: toSec(tm[5], tm[6], tm[7], tm[8]),
+          x: +xy[1], y: +xy[2], w: +xy[3], h: +xy[4],
+        });
+      }
+      return cues;
+    }
+
+    function attachStoryboard(videoEl, vttUrl, imgUrl) {
+      if (!vttUrl || !imgUrl) return;
+      fetch(vttUrl).then((r) => r.ok ? r.text() : Promise.reject()).then((text) => {
+        const cues = parseVtt(text);
+        if (!cues.length) return;
+        const thumb = document.getElementById("thumb");
+        const img = thumb.querySelector("img");
+        img.src = imgUrl;
+        videoEl.addEventListener("mousemove", (ev) => {
+          const rect = videoEl.getBoundingClientRect();
+          const x = ev.clientX - rect.left;
+          const ratio = Math.max(0, Math.min(1, x / rect.width));
+          const t = ratio * (videoEl.duration || cues[cues.length - 1].end);
+          const cue = cues.find((c) => t >= c.start && t < c.end) || cues[Math.floor(ratio * (cues.length - 1))];
+          if (!cue) return;
+          thumb.style.display = "block";
+          thumb.style.left = Math.min(rect.width - 168, Math.max(0, x - 80)) + "px";
+          thumb.style.top = "-100px";
+          img.style.left = -cue.x + "px";
+          img.style.top = -cue.y + "px";
+          img.style.width = "auto";
+        });
+        videoEl.addEventListener("mouseleave", () => { thumb.style.display = "none"; });
+      }).catch(() => {});
+    }
+
+    async function loadPlaylist(side, currentId) {
+      if (!playlistId) return;
+      try {
+        const res = await fetch(`${apiBase}/v1/playlists/public/${encodeURIComponent(playlistId)}`);
+        const json = await res.json();
+        if (!res.ok) return;
+        const data = json.data || {};
+        const vids = data.videos || [];
+        side.innerHTML = `<h2>${escapeHtml(data.name || "Playlist")}</h2>` +
+          vids.map((v) => `<a href="${escapeHtml(location.pathname + location.search.replace(/([?&])s=[^&]*/, "$1s="))}">${escapeHtml(v.title)}</a>`).join("");
+        side.innerHTML = `<h2>${escapeHtml(data.name || "Playlist")}</h2>` +
+          vids.map((v) => {
+            const mark = v.upload_id === currentId ? " · now" : "";
+            return `<div>${escapeHtml(v.title)}${mark}</div>`;
+          }).join("");
+      } catch (_) { /* optional */ }
     }
 
     async function main() {
@@ -157,32 +263,60 @@
       const expires = data.expires_at
         ? new Date(data.expires_at).toLocaleString()
         : "—";
+      const clipNote = (data.clip_start != null || data.clip_end != null)
+        ? ` · clip ${data.clip_start || 0}s–${data.clip_end != null ? data.clip_end + "s" : "end"}`
+        : "";
       root.innerHTML = `
-        <div class="panel">
-          <h1>${escapeHtml(data.title || "Shared video")}</h1>
-          <p class="meta">Link expires ${escapeHtml(expires)}</p>
+        <div class="layout">
+          <div class="player-col">
+            <div class="panel chrome">
+              <h1>${escapeHtml(data.title || "Shared video")}</h1>
+              <p class="meta">Link expires ${escapeHtml(expires)}${escapeHtml(clipNote)}</p>
+            </div>
+            <div class="player-wrap">
+              <div id="thumb"><img alt="" /></div>
+              <video id="v" controls playsinline></video>
+            </div>
+          </div>
+          <aside class="side chrome" id="side" style="${playlistId ? "" : "display:none"}"></aside>
         </div>
-        <video id="v" controls playsinline></video>
       `;
       const video = document.getElementById("v");
       const url = data.playback_url;
+      const start = Number(data.clip_start || 0);
+      const end = data.clip_end != null ? Number(data.clip_end) : null;
+      function onReady() {
+        if (start > 0) {
+          try { video.currentTime = start; } catch (_) {}
+        }
+      }
+      video.addEventListener("timeupdate", () => {
+        if (end != null && video.currentTime >= end) {
+          video.pause();
+        }
+      });
       if (window.Hls && Hls.isSupported()) {
-        const hls = new Hls();
+        const hls = new Hls({ renderTextTracksNatively: true });
         hls.loadSource(url);
         hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, onReady);
       } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
         video.src = url;
+        video.addEventListener("loadedmetadata", onReady, { once: true });
       } else {
         showError("Unsupported", "HLS playback is not supported in this browser.");
+        return;
       }
-    }
-
-    function escapeHtml(str) {
-      return String(str)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
+      if (data.captions_url) {
+        const track = document.createElement("track");
+        track.kind = "subtitles";
+        track.label = "Captions";
+        track.src = data.captions_url;
+        track.default = true;
+        video.appendChild(track);
+      }
+      attachStoryboard(video, data.storyboard_vtt_url, data.storyboard_url);
+      loadPlaylist(document.getElementById("side"), data.upload_id);
     }
 
     main();

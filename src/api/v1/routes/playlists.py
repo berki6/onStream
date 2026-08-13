@@ -11,6 +11,7 @@ from src.schemas import (
     PaginatedResponse,
     Playlist,
     PlaylistCreate,
+    PlaylistUpdate,
     PlaylistVideoCreate,
 )
 
@@ -59,6 +60,19 @@ def list_playlists(
     )
 
 
+@router.get("/public/{playlist_id}", response_model=APIResponse)
+def get_public_playlist(
+    request: Request,
+    playlist_id: int,
+    db: Session = Depends(get_db),
+):
+    try:
+        data = playlist_service.get_public_playlist(db, playlist_id)
+    except AppError as e:
+        raise_app_error(e)
+    return api_ok(request, data, message="Public playlist")
+
+
 @router.get("/{playlist_id}", response_model=APIResponse)
 def get_playlist(
     request: Request,
@@ -74,6 +88,27 @@ def get_playlist(
         request,
         Playlist.model_validate(playlist),
         message="Playlist retrieved successfully",
+    )
+
+
+@router.patch("/{playlist_id}", response_model=APIResponse)
+def update_playlist(
+    request: Request,
+    playlist_id: int,
+    body: PlaylistUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    try:
+        playlist = playlist_service.update_playlist(
+            db, playlist_id, current_user.id, body
+        )
+    except AppError as e:
+        raise_app_error(e)
+    return api_ok(
+        request,
+        Playlist.model_validate(playlist),
+        message="Playlist updated",
     )
 
 

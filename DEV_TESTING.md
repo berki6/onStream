@@ -47,6 +47,8 @@ cd C:\Users\berek\OneDrive\Documents\DevFiles\Project-Python\onStream
 uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 
 # 2) Worker
+cd C:\Users\berek\OneDrive\Documents\DevFiles\Project-Python\onStream
+.\.venv\Scripts\Activate.ps1
 python start_worker.py
 
 # 3) MediaMTX
@@ -62,13 +64,14 @@ With API + worker + MediaMTX running, live create → OBS **or** FFmpeg publish 
 | Surface | Path / URL | Role |
 |---------|------------|------|
 | **Expo lab** | [`onstream-demo/`](onstream-demo/) | Full product path: auth, VOD upload/play, live create/health/play/revoke |
-| **Web hls.js player** | `http://localhost:8000/demo/` | Paste a signed HLS URL and play (no login) |
+| **Web hls.js player** | `http://localhost:8000/demo/` | Paste a signed HLS URL and play (captions + storyboard hover) |
+| **Shared / embed watch** | `http://localhost:8000/demo/watch/?s=&t=` | Anonymous share landing; `embed=1` strips chrome for iframe |
 | **Scalar** | `http://localhost:8000/scalar` | Interactive API (same as curl, in-browser) |
 | **Swagger** | `http://localhost:8000/docs` | OpenAPI |
 
 More encoder/player recipes: [`docs/PLAYBACK_CLIENTS.md`](docs/PLAYBACK_CLIENTS.md). Expo install notes: [`onstream-demo/README.md`](onstream-demo/README.md).
 
-### Readines
+### Readiness
 
 | Path | Status | Notes |
 |------|--------|-------|
@@ -76,21 +79,24 @@ More encoder/player recipes: [`docs/PLAYBACK_CLIENTS.md`](docs/PLAYBACK_CLIENTS.
 | VOD (Expo / API) | **Ready** | Upload → worker → READY → token → HLS (verified by `scripts/e2e_smoke.py`) |
 | VOD on a **physical phone** | **Config** | `PUBLIC_API_BASE_URL` must be LAN IP (this machine: `http://192.168.43.246:8000`) |
 | Live create / token / revoke | **Ready** | Verified by smoke; manual publish via OBS or FFmpeg (below) |
-| `/demo/` | **Player + tools** | HLS player, `/demo/whip/`, `/demo/upload/`, `/demo/reset/` |
+| `/demo/` | **Player + tools** | HLS player, storyboard hover, `/demo/watch/`, `/demo/whip/`, `/demo/upload/`, `/demo/reset/` |
 | Captions in demo UI | **Ready** | Status + Open in `/demo/` for track menu; Expo player has no full track picker |
+| Watch & collect | **Ready** | Unlisted visibility, playlists, instant clips, storyboard filmstrip, embed iframe, RSS feeds |
 | Live list ended history | **Ready** | `include_ended=true`; Expo shows Active + Recently ended |
 | Direct upload `/v1/uploads` | **Ready** | Expo **+** → **Resumable** + `/demo/upload/` (chunked Content-Range) |
 | WHIP publish | **Ready (browser)** | `/demo/whip/` + Expo **Go Live** opens it; Expo Go has no native WebRTC encoder |
 | Password reset UX | **Ready** | Expo forgot/reset + `/demo/reset/`; `EMAIL_PROVIDER=log` (lab) / `smtp` (prod) |
 | Moderation review | **Ready** | Lab → Moderation queue (approve / reject) |
 
-**Critical DB fix (was blocking VOD):** Postgres `videostatus` enum was missing `PROCESSING`. Migration `f6a7b8c9d0e1` adds it — run `alembic upgrade head` before testing VOD.
+**Critical DB fix (was blocking VOD):** Postgres `videostatus` enum was missing `PROCESSING`. Migration `f6a7b8c9d0e1` adds it.
+
+**Watch & collect:** migration `i9c0d1e2f3a4` adds `videos.visibility` and share-link `clip_start_seconds` / `clip_end_seconds`. Run `alembic upgrade head` before testing unlisted, clips, or RSS.
 
 ---
 
 ## Prerequisites
 
-1. Postgres up, DB `onstream`, migrations: `alembic upgrade head` (must include `PROCESSING` on `videostatus`)
+1. Postgres up, DB `onstream`, migrations: `alembic upgrade head` (must include `PROCESSING` on `videostatus` **and** `i9c0d1e2f3a4` visibility/clips)
 2. Redis reachable (`REDIS_URL` in `.env`, e.g. WSL → `127.0.0.1:6379`)
 3. FFmpeg on `PATH` (VOD transcode)
 4. Python venv activated; deps installed (`requirements.txt`; AI path needs `requirements-ai.txt` if testing captions)
@@ -206,7 +212,9 @@ Covers: health, `/demo/`, register/login, VOD upload→READY→master.m3u8, live
 5. Alternate players:
    - Copy `playback_url` from Scalar `POST /v1/videos/{id}/tokens` → open in `/demo/` or VLC.
    - If captions ran, `/demo/` shows a **Captions** dropdown (and the video CC control) once the master includes `EXT-X-MEDIA TYPE=SUBTITLES`.
+   - After transcode, hover the `/demo/` player for storyboard thumbs (`storyboard.vtt` + `.jpg` next to the master).
 6. If phone play fails with network errors, fix `PUBLIC_API_BASE_URL` to the LAN IP and re-issue a token.
+7. Optional Watch & collect (same READY video): edit **visibility**, add to a **playlist**, create a **clip** share, copy **RSS** / **embed** — see [§1c](#1c-watch--collect-playlists-unlisted-clips-storyboard-embed-rss).
 
 ---
 
@@ -342,6 +350,7 @@ Hard `live.ended` is revoke-only; health soft-fail emits `live.idle`, not `live.
 - [ ] `/health` OK
 - [ ] Register / login (Expo or Scalar)
 - [ ] VOD upload → READY → play (Expo and/or `/demo/`)
+- [ ] Optional: Watch & collect — unlisted play without token; playlist + play-next; clip share; storyboard; `/demo/watch/?embed=1`; RSS feed
 - [ ] Live create → OBS **or** `scripts/live_lab_publish.py` / FFmpeg → play → revoke
 - [ ] After revoke: playback 404; stop encoder if still running
 - [ ] Phone: LAN `PUBLIC_API_BASE_URL` + matching Expo API base
@@ -361,7 +370,7 @@ Hard `live.ended` is revoke-only; health soft-fail emits `live.idle`, not `live.
 Stack should already be up (API + worker + MediaMTX). In Expo **Account**, set API base to your LAN
 (e.g. `http://192.168.1.6:8000`). Sign in as usual (`demo` / `DemoPass123!` if that’s your lab user).
 
-**Fast pass order:** Direct upload → play → continue/resume → share link → search → favorites → captions/`master.m3u8` → Forgot password → Live create → Go Live WHIP → play → Lab moderation (if you have a quarantine item).
+**Fast pass order:** Direct upload → play → continue/resume → share link → playlists / unlisted / clip / storyboard / RSS → search → favorites → captions/`master.m3u8` → Forgot password → Live create → Go Live WHIP → play → Lab moderation (if you have a quarantine item).
 
 ---
 
@@ -387,6 +396,51 @@ Stack should already be up (API + worker + MediaMTX). In Expo **Account**, set A
 7. Library → search icon → type a title keyword → ranked results → open video.
 8. Video detail → pencil → edit title/description → Save; or Delete (confirm) → back to Library.
 9. After captions/chapters jobs: detail **Chapters** list → tap a chapter → player seeks there.
+10. Continue at [§1c](#1c-watch--collect-playlists-unlisted-clips-storyboard-embed-rss) for visibility, playlists, clips, storyboard, embed, RSS.
+
+---
+
+### 1c) Watch & collect (playlists, unlisted, clips, storyboard, embed, RSS)
+
+Requires `alembic upgrade head` through `i9c0d1e2f3a4`. Use a **READY** VOD.
+
+**Playlists**
+
+1. Library → list icon (or **Playlists** shelf) → **+** → name a playlist.
+2. Video detail → list icon → add this video.
+3. Open the playlist → reorder with chevrons, remove with **✕**.
+4. Play the first row (`?playlist=` + `?play=1`) → let it finish → next video should auto-open.
+
+**Unlisted visibility**
+
+1. Video detail → pencil → **Visibility** → **unlisted** → Save.
+2. Library still shows it (owner list is unfiltered). Badge should read Unlisted.
+3. Scalar: `GET /v1/playback/{upload_id}/master.m3u8` **without** a token → not 401 (READY HLS should 200).
+4. `GET /v1/feeds/{username}/videos.rss` must **not** include this title. Switch visibility to **public** → refresh feed → title appears. **Private** still needs a token (401).
+
+**Instant clips**
+
+1. Video detail → scissors → set start/end (or tap a chapter) → **Preview start** → **Create clip share link**.
+2. Open `watch_url` (`/demo/watch/?s=&t=`) — player should seek in and pause at end.
+3. Share sheet also copies an **iframe** snippet (`embed=1`).
+
+**Storyboard**
+
+1. Confirm `data/hls/<upload_id>/storyboard.jpg` and `storyboard.vtt` exist (written at transcode).
+2. After **Issue playback token**, Expo shows a **Scrub preview** filmstrip under the player — tap a tile to seek.
+3. Paste the same `playback_url` into `http://localhost:8000/demo/` and hover the video for a sprite thumb.
+
+**Embed**
+
+1. From the share sheet, copy **Embed iframe**.
+2. Or open `http://localhost:8000/demo/watch/?s=<public_id>&t=<token>&embed=1` — brand/kicker/home should be gone.
+3. Optional: `&playlist=<id>` shows a side panel only if that playlist is **public**.
+
+**RSS**
+
+1. Account → copy **Public RSS** (`/v1/feeds/{username}/videos.rss`) — only `visibility=public` + READY items.
+2. Playlist detail → **Make public** → copy **RSS feed** (`/v1/feeds/{username}/playlists/{id}.rss`).
+3. Unlisted/private videos must not appear in either feed.
 
 ---
 
@@ -456,6 +510,14 @@ Worker injects `#EXT-X-MEDIA:TYPE=SUBTITLES` into `data/hls/{id}/master.m3u8` af
 
 ### Moderation
 - Lab → **Moderation review queue** → approve / reject (optional make-public on approve).
+
+### Watch & collect
+- **Visibility:** `private` | `unlisted` | `public`. `is_public` is derived (`true` only when public). Unlisted is tokenless playback, omitted from RSS.
+- **Clips:** share create / `POST /v1/videos/{id}/tokens` accept `clip_start` / `clip_end`. Stream JWT carries the window; master injects `#EXT-X-START`. Players seek/stop; no re-encode.
+- **Storyboard:** transcode writes `storyboard.jpg` + `.vtt`; serve via `/v1/playback/{id}/storyboard.*`. Video GET and share exchange return tokenized URLs.
+- **Playlists:** `PATCH /v1/playlists/{id}` (`name`, `is_public`); `GET /v1/playlists/public/{id}` for embeds. Expo: `/playlist`, Library shelf, add-to-playlist, play-next.
+- **Embed:** `/demo/watch/?s=&t=&embed=1` (+ optional `playlist=`).
+- **RSS:** `GET /v1/feeds/{username}/videos.rss` and `.../playlists/{id}.rss`.
 
 ---
 

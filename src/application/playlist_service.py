@@ -14,7 +14,7 @@ from src.application.errors import AppError
 from src.application.ids import validate_public_video_id
 from src.core.config import settings
 from src.infrastructure.db.repositories import playlist_repository, video_repository
-from src.schemas.playlist import PlaylistCreate, PlaylistVideoCreate
+from src.schemas.playlist import PlaylistCreate, PlaylistUpdate, PlaylistVideoCreate
 
 MAX_TITLE_LENGTH = 100
 
@@ -62,6 +62,54 @@ def get_playlist(db: Session, playlist_id: int, user_id: int):
 def delete_playlist(db: Session, playlist_id: int, user_id: int) -> None:
     get_playlist(db, playlist_id, user_id)
     playlist_repository.delete(db, playlist_id)
+
+
+def update_playlist(
+    db: Session, playlist_id: int, user_id: int, body: PlaylistUpdate
+):
+    playlist = get_playlist(db, playlist_id, user_id)
+    if body.name is not None:
+        existing_playlists, _ = playlist_repository.list_by_user(db, user_id)
+        if any(p.name == body.name and p.id != playlist_id for p in existing_playlists):
+            raise AppError(
+                "Playlist with this title already exists",
+                code=ErrorCode.PLAYLIST_CONFLICT,
+                status_code=400,
+            )
+        playlist.name = body.name
+    if body.is_public is not None:
+        playlist.is_public = body.is_public
+    db.commit()
+    db.refresh(playlist)
+    return playlist
+
+
+def get_public_playlist(db: Session, playlist_id: int) -> Dict[str, Any]:
+    playlist = playlist_repository.get_by_id(db, playlist_id)
+    if not playlist or not playlist.is_public:
+        raise AppError("Playlist not found", code=ErrorCode.PLAYLIST_NOT_FOUND)
+    from src.application.visibility import is_rss_listed
+
+    items = []
+    for pv in playlist_repository.get_videos(db, playlist_id):
+        video = video_repository.get_by_id(db, pv.video_id)
+        if not video or not is_rss_listed(video):
+            continue
+        items.append(
+            {
+                "upload_id": video.upload_id,
+                "title": video.title,
+                "position": pv.position,
+                "duration": video.duration,
+                "thumbnail_path": video.thumbnail_path,
+            }
+        )
+    return {
+        "id": playlist.id,
+        "name": playlist.name,
+        "is_public": True,
+        "videos": items,
+    }
 
 
 def add_video(
@@ -118,6 +166,11 @@ def list_videos(db: Session, playlist_id: int, user_id: int) -> List[Dict[str, A
                     "upload_id": video.upload_id,
                     "title": video.title,
                     "position": pv.position,
+                    "duration": video.duration,
+                    "status": video.status.value
+                    if hasattr(video.status, "value")
+                    else video.status,
+                    "thumbnail_path": video.thumbnail_path,
                 }
             )
     return videos
