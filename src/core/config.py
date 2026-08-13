@@ -129,6 +129,11 @@ class Settings(BaseSettings):
     MEDIAMTX_RTSP_URL: str = os.environ.get(
         "MEDIAMTX_RTSP_URL", "rtsp://127.0.0.1:8554"
     )
+    # API → MediaMTX WHEP (loopback/docker). Do not use PUBLIC_WEBRTC_BASE_URL
+    # (that is the browser/encoder bind, often a LAN IP).
+    MEDIAMTX_WEBRTC_URL: str = os.environ.get(
+        "MEDIAMTX_WEBRTC_URL", "http://127.0.0.1:8889"
+    )
     MEDIAMTX_AUTH_SECRET: str = os.environ.get("MEDIAMTX_AUTH_SECRET", "")
     PUBLIC_RTMP_BASE_URL: str = os.environ.get(
         "PUBLIC_RTMP_BASE_URL", "rtmp://localhost:1935/live"

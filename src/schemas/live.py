@@ -56,6 +56,7 @@ class LivePlaybackTokenResponse(BaseModel):
     token: str
     expires_in: int
     playback_url: str
+    whep_playback_url: str
 
 
 class MediaMTXAuthRequest(BaseModel):

@@ -80,12 +80,13 @@ More encoder/player recipes: [`docs/PLAYBACK_CLIENTS.md`](docs/PLAYBACK_CLIENTS.
 | VOD (Expo / API) | **Ready** | Upload → worker → READY → token → HLS (verified by `scripts/e2e_smoke.py`) |
 | VOD on a **physical phone** | **Config** | `PUBLIC_API_BASE_URL` must be LAN IP (this machine: `http://192.168.43.246:8000`) |
 | Live create / token / revoke | **Ready** | Verified by smoke; manual publish via OBS or FFmpeg (below) |
-| `/demo/` | **Player + tools** | HLS player, storyboard hover, `/demo/watch/`, `/demo/whip/`, `/demo/upload/`, `/demo/reset/` |
+| `/demo/` | **Player + tools** | HLS player, storyboard hover, `/demo/watch/`, `/demo/whip/`, `/demo/whep/`, `/demo/upload/`, `/demo/reset/` |
 | Captions in demo UI | **Ready** | Status + Open in `/demo/` for track menu; Expo player has no full track picker |
 | Watch & collect | **Ready** | Unlisted visibility, playlists, instant clips, storyboard filmstrip, embed iframe, RSS feeds |
 | Live list ended history | **Ready** | `include_ended=true`; Expo shows Active + Recently ended |
 | Direct upload `/v1/uploads` | **Ready** | Expo **+** → **Resumable** + `/demo/upload/` (chunked Content-Range) |
 | WHIP publish | **Ready (browser)** | `/demo/whip/` + Expo **Go Live** opens it; Expo Go has no native WebRTC encoder |
+| WHEP watch | **Ready (PC Chrome)** | Tokenized `/demo/whep/?stream=&token=`; Expo **Watch live (low latency)** opens it; Expo Go has no WebRTC player |
 | Password reset UX | **Ready** | Expo forgot/reset + `/demo/reset/`; `EMAIL_PROVIDER=log` (lab) / `smtp` (prod) |
 | Moderation review | **Ready** | Lab → Moderation queue (approve / reject) |
 
@@ -516,6 +517,19 @@ Auth still returns immediately. Track probing runs in a background thread so `/v
 
 ---
 
+### 7) WHEP watch (sub-second, PC Chrome)
+
+HLS on Expo stays ~3s. WHEP is a different protocol: authorized signaling through OnStream, media on MediaMTX.
+
+1. Go live with WHIP ([§4](#4-whip-go-live-camera--mediamtx)) so the path is `live`.
+2. Expo stream detail → **Issue live playback token** → copy **PC WHEP watch (localhost)** or tap **Watch live (low latency)**.
+3. Open `http://127.0.0.1:8000/demo/whep/?stream=&token=` in **PC Chrome** (LAN HTTP is not a secure context for `RTCPeerConnection`).
+4. **Watch** — should be near real-time vs the ~3s HLS player. Stop on the page when done.
+
+The demo page POSTs SDP to `/v1/playback/live/{stream_id}/whep` (token in query). It never uses the create-once encoder `whep_url`.
+
+---
+
 ## How these flows work (reference)
 
 ### Captions on disk
@@ -532,10 +546,10 @@ Worker injects `#EXT-X-MEDIA:TYPE=SUBTITLES` into `data/hls/{id}/master.m3u8` af
 - Browser: `/demo/upload/` with Bearer token.
 
 ### Live ingest / WHIP
-- Sidecar design and retest: [§6](#6-live-ingest-normalize-sidecar). Camera walkthrough: [§4](#4-whip-go-live-camera--mediamtx).
+- Sidecar design and retest: [§6](#6-live-ingest-normalize-sidecar). Camera walkthrough: [§4](#4-whip-go-live-camera--mediamtx). WHEP watch: [§7](#7-whep-watch-sub-second-pc-chrome).
 - Expo Live create → **Go Live (WHIP in browser)** opens `/demo/whip/?whip=…`.
 - Use **PC Chrome** at `http://127.0.0.1:8000/demo/whip/` for camera (LAN HTTP has no `getUserMedia`).
-- VP8/Opus ingest is normalized to H.264+AAC HLS (`LIVE_NORMALIZE_ENABLED`, RTSP `:8554`). WHEP stays on raw WebRTC.
+- VP8/Opus ingest is normalized to H.264+AAC HLS (`LIVE_NORMALIZE_ENABLED`, RTSP `:8554`). Viewer WHEP is `/demo/whep/?stream=&token=` (gateway); encoder `whep_url` is create-once only.
 - Phone WHIP POST still needs LAN `PUBLIC_WEBRTC_BASE_URL`. `scripts/sync_lan_ip.py` updates this.
 - OBS / FFmpeg / `scripts/live_lab_publish.py` still valid for RTMP (passthrough remux, no extra encode).
 
@@ -554,6 +568,6 @@ Worker injects `#EXT-X-MEDIA:TYPE=SUBTITLES` into `data/hls/{id}/master.m3u8` af
 
 ## Out of scope / remaining limits
 
-- Native in-app WHIP — **Expo Go limit** (needs `expo-dev-client` + WebRTC); use `/demo/whip/` from the device browser
+- Native in-app WHIP / WHEP — **Expo Go limit** (needs `expo-dev-client` + WebRTC); publish via `/demo/whip/`, watch via `/demo/whep/` on a secure origin
 - Production SMTP inbox branding beyond text/HTML body already sent
 - Multi-tenant admin moderation (queue is per authenticated owner)

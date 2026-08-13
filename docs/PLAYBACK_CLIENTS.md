@@ -141,12 +141,15 @@ MediaMTX WebRTC listens on `PUBLIC_WEBRTC_BASE_URL` (default `http://localhost:8
 
 | Use | URL shape |
 |-----|-----------|
-| Publish (WHIP) | `{PUBLIC_WEBRTC_BASE_URL}/live/{stream_key}/whip` |
-| Play (WHEP) | `{PUBLIC_WEBRTC_BASE_URL}/live/{stream_key}/whep` |
+| Publish (WHIP, encoder) | `{PUBLIC_WEBRTC_BASE_URL}/live/{stream_key}/whip` (create-once) |
+| Play (WHEP, encoder/debug) | `{PUBLIC_WEBRTC_BASE_URL}/live/{stream_key}/whep` (create-once; do not give to viewers) |
+| Play (WHEP, viewers) | `POST /v1/playback/live/{stream_id}/whep?token=` then `DELETE` the `Location` session |
 
-Path remains `live/{plaintext_stream_key}` (same auth as RTMP). Use a WHIP-capable encoder (OBS WHIP plugin, browser WHIP client, etc.).
+Path remains `live/{plaintext_stream_key}` on MediaMTX (same auth as RTMP). Use a WHIP-capable encoder (OBS WHIP plugin, browser WHIP client, etc.).
 
-Browser WHIP is usually VP8 + Opus, which MediaMTX’s MPEG-TS HLS muxer cannot remux. OnStream pulls the same path over RTSP and writes H.264 + AAC HLS under `{LIVE_HLS_DIR}/{stream_id}/`. Expo and `/demo/` play that playlist. WHEP is still the raw WebRTC ingest (not the normalized HLS). Lab camera: open `http://127.0.0.1:8000/demo/whip/` on the PC (LAN HTTP hides `getUserMedia`).
+**Viewer WHEP** goes through OnStream so playback tokens apply and the stream key never appears in the player. The API talks to MediaMTX at `MEDIAMTX_WEBRTC_URL` (loopback/docker), not `PUBLIC_WEBRTC_BASE_URL` (browser/encoder). Signaling is proxied; ICE/RTP still terminates on MediaMTX (`:8889` / `:8189`). Lab player: `http://127.0.0.1:8000/demo/whep/?stream=&token=` (secure context). Expo Go keeps HLS; **Watch live (low latency)** opens the demo page.
+
+Browser WHIP is usually VP8 + Opus, which MediaMTX’s MPEG-TS HLS muxer cannot remux. OnStream pulls the same path over RTSP and writes H.264 + AAC HLS under `{LIVE_HLS_DIR}/{stream_id}/`. Expo HLS plays that playlist (~3s). WHEP plays the **raw ingest** (sub-second). MPEG-TS muxer crashes on Opus are expected and irrelevant to WHEP. Lab camera: open `http://127.0.0.1:8000/demo/whip/` on the PC (LAN HTTP hides `getUserMedia`). TURN / Caddy still apply for internet WebRTC.
 
 ### 4. Watch in VLC
 

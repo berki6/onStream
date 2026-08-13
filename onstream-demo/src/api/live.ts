@@ -33,6 +33,7 @@ export type LiveToken = {
   token: string;
   expires_in: number;
   playback_url: string;
+  whep_playback_url?: string;
 };
 
 export async function listLiveStreams(
