@@ -122,6 +122,11 @@ class Settings(BaseSettings):
     LIVE_NORMALIZE_POLL_INTERVAL: float = float(
         os.environ.get("LIVE_NORMALIZE_POLL_INTERVAL", "0.4")
     )
+    LIVE_ARCHIVE_ENABLED: bool = _env_bool("LIVE_ARCHIVE_ENABLED", "true")
+    # Archive/DVR GOP. Independent of LIVE_HLS_SEGMENT_SECONDS (sliding live edge).
+    LIVE_ARCHIVE_SEGMENT_SECONDS: int = int(
+        os.environ.get("LIVE_ARCHIVE_SEGMENT_SECONDS", "4")
+    )
     # Live HLS only (VOD keeps HLS_SEGMENT_SECONDS=4). 1s is the Expo-safe floor.
     LIVE_HLS_SEGMENT_SECONDS: int = int(
         os.environ.get("LIVE_HLS_SEGMENT_SECONDS", "1")

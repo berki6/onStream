@@ -95,6 +95,8 @@ class Video(VideoBase):
     status: VideoStatus
     is_public: bool = False
     visibility: str = "private"
+    source: str = "upload"
+    live_stream_id: Optional[str] = None
     storyboard_url: Optional[str] = None
     storyboard_vtt_url: Optional[str] = None
     captions_url: Optional[str] = None

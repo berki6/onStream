@@ -175,7 +175,11 @@ curl -s -X DELETE "http://localhost:8000/v1/live/{stream_id}" \
   -H "Authorization: Bearer ACCESS_TOKEN"
 ```
 
-Revoking ends the stream key; further OBS/WHIP publish fails auth; playback eventually 404s when HLS is gone.
+Revoking ends the stream key; further OBS/WHIP publish fails auth; live playback 404s.
+
+If `LIVE_ARCHIVE_ENABLED` (default on), revoke also promotes the archive HLS (kept for the whole session, not the sliding live window) into a READY VOD. Unpublish / OBS reconnect does not close the archive; `#EXT-X-ENDLIST` is written only on revoke. The live GET then includes `archived_upload_id` and `archive_playback_url`. Play that through `/v1/playback/{upload_id}/` like any other video (share, playlists, `/demo/watch`). Expo: ended stream → **Watch replay**.
+
+`alembic upgrade head` through `j0a1b2c3d4e5` is required.
 
 ## Demo HTML player
 

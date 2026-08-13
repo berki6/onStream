@@ -28,6 +28,7 @@ def _live_whep_defaults(monkeypatch):
     monkeypatch.setattr(settings, "PUBLIC_API_BASE_URL", "http://localhost:8000")
     monkeypatch.setattr(settings, "PUBLIC_WEBRTC_BASE_URL", "http://192.168.1.6:8889")
     monkeypatch.setattr(settings, "MEDIAMTX_WEBRTC_URL", "http://127.0.0.1:8889")
+    monkeypatch.setattr(settings, "LIVE_ARCHIVE_ENABLED", False)
 
 
 def _publish(token: str, is_public: bool = False) -> dict:

@@ -30,6 +30,7 @@ class LiveStream(Base):
     abr_hls_path = Column(String(500), nullable=True)
     started_at = Column(DateTime(timezone=True), nullable=True)
     ended_at = Column(DateTime(timezone=True), nullable=True)
+    archived_upload_id = Column(String(12), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

@@ -35,6 +35,8 @@ class LiveStreamResponse(BaseModel):
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
+    archived_upload_id: Optional[str] = None
+    archive_playback_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

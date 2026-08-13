@@ -22,14 +22,16 @@ from src.infrastructure.db import models
 from src.infrastructure.db.repositories import live_stream_repository
 from src.infrastructure.media import live_abr
 from src.infrastructure.media import live_normalize
+from src.infrastructure.media import live_record
 from src.infrastructure.webhooks.delivery import emit_live_event
 
 logger = get_logger(__name__)
 
 
-def _stop_live_encoders(stream_id: str) -> None:
+def _stop_live_encoders(stream_id: str, *, finalize_archive: bool = True) -> None:
     live_abr.stop_abr(stream_id)
     live_normalize.stop_normalize(stream_id)
+    live_record.stop_record(stream_id, finalize=finalize_archive)
 
 
 def _safe_emit_live(
@@ -118,6 +120,15 @@ def _whep_playback_url(stream_id: str, token: Optional[str] = None) -> str:
     return base
 
 
+def _archive_playback_url(upload_id: Optional[str]) -> Optional[str]:
+    if not upload_id:
+        return None
+    return (
+        f"{settings.PUBLIC_API_BASE_URL.rstrip('/')}"
+        f"/v1/playback/{upload_id}/master.m3u8"
+    )
+
+
 def _webrtc_base() -> str:
     return settings.PUBLIC_WEBRTC_BASE_URL.rstrip("/")
 
@@ -150,6 +161,10 @@ def _to_response(
         "ended_at": stream.ended_at,
         "created_at": stream.created_at,
         "webrtc_base": _webrtc_base(),
+        "archived_upload_id": getattr(stream, "archived_upload_id", None),
+        "archive_playback_url": _archive_playback_url(
+            getattr(stream, "archived_upload_id", None)
+        ),
     }
     if stream_key is not None:
         data["stream_key"] = stream_key
@@ -246,8 +261,21 @@ def delete_stream(db: Session, stream_id: str, user_id: int) -> dict:
         logger.warning("CDN purge on live delete failed for %s: %s", stream_id, exc)
 
     _stop_live_encoders(stream_id)
+    archive_id = None
+    try:
+        from src.application import live_archive
+
+        video = live_archive.promote(db, stream)
+        if video is not None:
+            archive_id = video.upload_id
+            db.refresh(stream)
+    except Exception as exc:
+        logger.warning("Live archive on revoke failed for %s: %s", stream_id, exc)
     stream = live_stream_repository.revoke(db, stream)
-    _safe_emit_live(db, stream, "live.ended", extra={"reason": "revoked"})
+    extra = {"reason": "revoked"}
+    if archive_id:
+        extra["archived_upload_id"] = archive_id
+    _safe_emit_live(db, stream, "live.ended", extra=extra)
     logger.info("Deleted live stream")
     return _to_response(stream)
 
@@ -346,6 +374,7 @@ def authorize_publish(
             live_abr.start_abr(stream.stream_id, key)
         else:
             live_normalize.start_normalize(stream.stream_id, key)
+        live_record.start_record(stream.stream_id, key)
 
         previous_status = stream.status
         stream = live_stream_repository.set_live(
@@ -373,7 +402,7 @@ def authorize_publish(
 
     if action in ("unpublish", "unpublish_all"):
         previous_status = stream.status
-        _stop_live_encoders(stream.stream_id)
+        _stop_live_encoders(stream.stream_id, finalize_archive=False)
         stream = live_stream_repository.set_idle(db, stream)
         if previous_status == "live":
             _safe_emit_live(

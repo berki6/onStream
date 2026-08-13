@@ -116,7 +116,7 @@ Registration and login establish control-plane credentials. Login uses OAuth2 pa
 
 ## Videos — `/v1/videos`
 
-Video identifiers in paths are public `upload_id` values. Multipart create is the convenience upload; prefer `/v1/uploads` for large or resumable transfers ([`MEDIA_CORE.md`](MEDIA_CORE.md)).
+Video identifiers in paths are public `upload_id` values. Multipart create is the convenience upload; prefer `/v1/uploads` for large or resumable transfers ([`MEDIA_CORE.md`](MEDIA_CORE.md)). Responses include `source` (`upload` or `live`) and `live_stream_id` when the row was archived from a live stream.
 
 | Method | Path |
 |--------|------|
@@ -201,7 +201,7 @@ Playback routes serve HLS masters and assets for VOD and live. Authorization acc
 
 ## Live — `/v1/live`
 
-Create returns sensitive publish material once (`stream_key`, `whip_url`, `whep_url`). MediaMTX calls `/mediamtx-auth` on publish and read. Operational recipes: [`PLAYBACK_CLIENTS.md`](PLAYBACK_CLIENTS.md).
+Create returns sensitive publish material once (`stream_key`, `whip_url`, `whep_url`). MediaMTX calls `/mediamtx-auth` on publish and read. Operational recipes: [`PLAYBACK_CLIENTS.md`](PLAYBACK_CLIENTS.md). GET/DELETE include `archived_upload_id` and `archive_playback_url` after a successful live → VOD promote.
 
 | Method | Path |
 |--------|------|
@@ -209,7 +209,7 @@ Create returns sensitive publish material once (`stream_key`, `whip_url`, `whep_
 | GET | `/` list (`include_ended=true` includes revoked rows) |
 | GET | `/{stream_id}` |
 | GET | `/{stream_id}/health` |
-| DELETE | `/{stream_id}` |
+| DELETE | `/{stream_id}` revoke (archives VOD when `LIVE_ARCHIVE_ENABLED`) |
 | POST | `/{stream_id}/tokens` |
 | POST | `/mediamtx-auth` MediaMTX webhook |
 
@@ -222,7 +222,7 @@ Register endpoints under `/v1/webhooks` (HMAC via `X-OnStream-Signature`). Live 
 | `live.created` | Stream row created (`POST /v1/live`) |
 | `live.started` | First successful publish auth (idle → live); not re-emitted while already live |
 | `live.idle` | Unpublish auth, or health soft-fail (missing/stale playlist) |
-| `live.ended` | Explicit revoke (`DELETE /v1/live/{id}`) only |
+| `live.ended` | Explicit revoke (`DELETE /v1/live/{id}`) only; `data.archived_upload_id` when a VOD replay was saved |
 
 Payload shape: `{ "type", "created_at", "data": { stream_id, user_id, title, status, …, reason? } }`. Subscribe with those names or `*`. Worker delivers pending rows on its webhook tick.
 

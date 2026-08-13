@@ -14,6 +14,8 @@ export type LiveStream = {
   webrtc_base?: string | null;
   hls_path?: string | null;
   abr_hls_path?: string | null;
+  archived_upload_id?: string | null;
+  archive_playback_url?: string | null;
   started_at?: string | null;
   ended_at?: string | null;
   created_at?: string | null;

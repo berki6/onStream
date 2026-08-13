@@ -84,6 +84,7 @@ More encoder/player recipes: [`docs/PLAYBACK_CLIENTS.md`](docs/PLAYBACK_CLIENTS.
 | Captions in demo UI | **Ready** | Status + Open in `/demo/` for track menu; Expo player has no full track picker |
 | Watch & collect | **Ready** | Unlisted visibility, playlists, instant clips, storyboard filmstrip, embed iframe, RSS feeds |
 | Live list ended history | **Ready** | `include_ended=true`; Expo shows Active + Recently ended |
+| Live → VOD replay | **Ready** | Revoke archives HLS; Expo **Watch replay** |
 | Direct upload `/v1/uploads` | **Ready** | Expo **+** → **Resumable** + `/demo/upload/` (chunked Content-Range) |
 | WHIP publish | **Ready (browser)** | `/demo/whip/` + Expo **Go Live** opens it; Expo Go has no native WebRTC encoder |
 | WHEP watch | **Ready (PC Chrome)** | Tokenized `/demo/whep/?stream=&token=`; Expo **Watch live (low latency)** opens it; Expo Go has no WebRTC player |
@@ -98,7 +99,7 @@ More encoder/player recipes: [`docs/PLAYBACK_CLIENTS.md`](docs/PLAYBACK_CLIENTS.
 
 ## Prerequisites
 
-1. Postgres up, DB `onstream`, migrations: `alembic upgrade head` (must include `PROCESSING` on `videostatus` **and** `i9c0d1e2f3a4` visibility/clips)
+1. Postgres up, DB `onstream`, migrations: `alembic upgrade head` (must include `PROCESSING` on `videostatus`, `i9c0d1e2f3a4` visibility/clips, and `j0a1b2c3d4e5` live → VOD archive)
 2. Redis reachable (`REDIS_URL` in `.env`, e.g. WSL → `127.0.0.1:6379`)
 3. FFmpeg on `PATH` (VOD transcode)
 4. Python venv activated; deps installed (`requirements.txt`; AI path needs `requirements-ai.txt` if testing captions)
@@ -527,6 +528,19 @@ HLS on Expo stays ~3s. WHEP is a different protocol: authorized signaling throug
 4. **Watch** — should be near real-time vs the ~3s HLS player. Stop on the page when done.
 
 The demo page POSTs SDP to `/v1/playback/live/{stream_id}/whep` (token in query). It never uses the create-once encoder `whep_url`.
+
+---
+
+### 8) Live → VOD replay
+
+Requires `alembic upgrade head` (`j0a1b2c3d4e5`) and `LIVE_ARCHIVE_ENABLED=true`.
+
+1. Go live (WHIP or RTMP) for at least a few seconds so archive segments exist.
+2. Expo → **Revoke stream**.
+3. Same screen: **Watch replay** opens the Library VOD (`/video/{upload_id}`). HLS should play the recording; live playlist 404s.
+4. Library list should show a new READY video with the live title.
+
+Revoke without a dedicated archive playlist still ends the stream (`archived_upload_id` null). The sliding live window is never promoted.
 
 ---
 

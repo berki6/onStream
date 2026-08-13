@@ -202,6 +202,7 @@ def emit_live_event(
         "abr_hls_path": stream.abr_hls_path,
         "started_at": stream.started_at.isoformat() if stream.started_at else None,
         "ended_at": stream.ended_at.isoformat() if stream.ended_at else None,
+        "archived_upload_id": getattr(stream, "archived_upload_id", None),
     }
     if extra:
         data.update(extra)

@@ -9,6 +9,8 @@ export type Video = {
   status: string;
   is_public: boolean;
   visibility?: VideoVisibility;
+  source?: string | null;
+  live_stream_id?: string | null;
   duration?: number | null;
   hls_path?: string | null;
   thumbnail_path?: string | null;

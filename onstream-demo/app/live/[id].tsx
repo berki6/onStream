@@ -1,5 +1,5 @@
 import * as Linking from "expo-linking";
-import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
@@ -13,7 +13,7 @@ import { HlsPlayer } from "@/components/HlsPlayer";
 import { Screen } from "@/components/Screen";
 import { StatusPill } from "@/components/StatusPill";
 import { toast } from "@/lib/toast";
-import { liveKeys } from "@/query/keys";
+import { liveKeys, videoKeys } from "@/query/keys";
 import { useLiveHealthQuery, useLiveStreamQuery } from "@/query/live";
 import { scrollPhysics } from "@/theme/scroll";
 import { colors, spacing } from "@/theme/tokens";
@@ -93,9 +93,8 @@ export default function LiveDetailScreen() {
 
           {ended ? (
             <Text style={styles.endedNote}>
-              Stream revoked. New playlist requests return 404. Buffered seconds
-              may finish, then the player stalls. The encoder may keep
-              publishing until kicked or stopped.
+              Stream revoked. Live playlist requests return 404. If a replay
+              was saved, Watch replay opens it in Library like any VOD.
             </Text>
           ) : null}
 
@@ -157,9 +156,14 @@ export default function LiveDetailScreen() {
                   await qc.invalidateQueries({
                     queryKey: liveKeys.health(id),
                   });
+                  await qc.invalidateQueries({ queryKey: videoKeys.list() });
                   setPlaybackUrl(null);
                   setPlaybackToken(null);
-                  toast.success("Stream revoked. Playback through OnStream is ended.");
+                  toast.success(
+                    res.data.archived_upload_id
+                      ? "Stream revoked. Replay is in Library."
+                      : "Stream revoked. Playback through OnStream is ended."
+                  );
                 } catch (e) {
                   toast.error(userFacingError(e, "Delete failed"));
                 } finally {
@@ -168,11 +172,21 @@ export default function LiveDetailScreen() {
               }}
             />
           ) : (
-            <Button
-              label="Back to live list"
-              variant="ghost"
-              onPress={() => router.back()}
-            />
+            <>
+              {stream?.archived_upload_id ? (
+                <Button
+                  label="Watch replay"
+                  onPress={() =>
+                    router.push(`/video/${stream.archived_upload_id}` as Href)
+                  }
+                />
+              ) : null}
+              <Button
+                label="Back to live list"
+                variant="ghost"
+                onPress={() => router.back()}
+              />
+            </>
           )}
 
           {playbackUrl && !ended ? (

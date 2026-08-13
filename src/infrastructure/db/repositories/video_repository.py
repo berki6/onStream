@@ -20,6 +20,17 @@ def get_by_upload_id(db: Session, upload_id: str):
     )
 
 
+def get_by_live_stream_id(db: Session, live_stream_id: str):
+    if not live_stream_id:
+        return None
+    return (
+        db.query(models.Video)
+        .filter(models.Video.live_stream_id == live_stream_id)
+        .filter(models.Video.status != VideoStatus.DELETED)
+        .first()
+    )
+
+
 def get_by_id(db: Session, video_id: int):
     return db.query(models.Video).filter(models.Video.id == video_id).first()
 

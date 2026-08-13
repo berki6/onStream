@@ -44,6 +44,8 @@ class Video(Base):
     status = Column(Enum(VideoStatus), default=VideoStatus.PENDING, index=True)
     is_public = Column(Boolean, default=False)
     visibility = Column(String(16), nullable=False, default="private")
+    source = Column(String(16), nullable=False, default="upload")
+    live_stream_id = Column(String(12), nullable=True, unique=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

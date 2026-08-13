@@ -138,3 +138,4 @@ def test_emit_live_event_payload_shape(test_user, db_session: Session):
     assert data["user_id"] == test_user.id
     assert data["reason"] == "test"
     assert "hls_path" in data
+    assert "archived_upload_id" in data
