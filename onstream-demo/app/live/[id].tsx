@@ -59,6 +59,7 @@ export default function LiveDetailScreen() {
   const ended = String(stream?.status || "").toLowerCase() === "ended";
   const cold = isPending && !stream;
   const loadError = queryErrorText(Boolean(isError && !stream), error);
+  const llAvailable = Boolean(stream?.ll_hls && stream?.ll_playback_url);
 
   return (
     <Screen>
@@ -106,8 +107,11 @@ export default function LiveDetailScreen() {
           ) : (
             <Text style={styles.endedNote}>
               HLS is DVR: join at the live edge, then scrub the timeline.
-              Jump to live returns to the edge. LL-HLS is a separate playlist
-              (no scrub). WHEP stays sub-second.
+              Jump to live returns to the edge.
+              {llAvailable
+                ? " LL-HLS is a separate playlist (no scrub)."
+                : ""}{" "}
+              WHEP stays sub-second.
             </Text>
           )}
 
@@ -167,7 +171,7 @@ export default function LiveDetailScreen() {
               }
             }}
           />
-          {playbackToken && !ended ? (
+          {playbackToken && !ended && llAvailable ? (
             <Button
               label="Play LL-HLS (no scrub)"
               variant="ghost"
