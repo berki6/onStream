@@ -13,6 +13,7 @@ from src.infrastructure.db.models.engagement import (
     VideoFavorite,
     VideoWatchProgress,
 )
+from src.infrastructure.db.models.highlight import VideoHighlight
 from src.infrastructure.db.models.idempotency import IdempotencyRecord
 from src.infrastructure.db.models.job import QueuedJob, VideoJob
 from src.infrastructure.db.models.live_stream import LiveStream
@@ -35,6 +36,7 @@ __all__ = [
     "VideoWatchProgress",
     "ShareLink",
     "VideoFavorite",
+    "VideoHighlight",
     "LiveStream",
     "Playlist",
     "PlaylistVideo",

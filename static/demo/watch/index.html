@@ -182,6 +182,7 @@
     const s = params.get("s");
     const t = params.get("t");
     const v = params.get("v");
+    const h = params.get("h");
     const embed = params.get("embed") === "1";
     const playlistId = params.get("playlist");
     const root = document.getElementById("root");
@@ -193,7 +194,7 @@
       if (!link) return;
       const u = new URL(location.href);
       u.searchParams.delete("embed");
-      if (u.searchParams.get("v") || (u.searchParams.get("s") && u.searchParams.get("t"))) {
+      if (u.searchParams.get("v") || u.searchParams.get("h") || (u.searchParams.get("s") && u.searchParams.get("t"))) {
         link.href = apiBase + "/v1/oembed?url=" + encodeURIComponent(u.toString());
       }
     })();
@@ -384,13 +385,40 @@
       mountPlayer(json.data || {});
     }
 
+    async function playHighlight() {
+      let res;
+      try {
+        res = await fetch(`${apiBase}/v1/highlights/${encodeURIComponent(h)}`);
+      } catch (e) {
+        showError("Network error", "Could not reach the API.");
+        return;
+      }
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showError("Unavailable", json?.error?.message || "This highlight is not public.");
+        return;
+      }
+      const data = json.data || {};
+      mountPlayer({
+        title: data.title,
+        playback_url: data.playback_url,
+        upload_id: data.video_id,
+        clip_start: data.start,
+        clip_end: data.end,
+      });
+    }
+
     async function main() {
+      if (h) {
+        await playHighlight();
+        return;
+      }
       if (v) {
         await playPublic();
         return;
       }
       if (!s || !t) {
-        showError("Invalid link", "Use ?v={upload_id} for public/unlisted, or ?s= and ?t= for a share.");
+        showError("Invalid link", "Use ?v={upload_id}, ?h={highlight}, or ?s= and ?t= for a share.");
         return;
       }
       if (embed) await embedGate();

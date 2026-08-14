@@ -103,6 +103,8 @@ def get_health_snapshot(db: Session, stream: models.LiveStream) -> Dict[str, Any
         "is_stale": bool(stream.status == "live" and is_stale),
         "abr_running": live_abr.abr_running(stream.stream_id),
         "normalize_running": live_normalize.normalize_running(stream.stream_id),
+        "ll_hls": live_normalize.ll_enabled(),
+        "ll_playlist_present": live_normalize.ll_available(stream.stream_id),
         "archive_running": live_record.record_running(stream.stream_id),
         "dvr": dvr,
         "dvr_duration_seconds": (

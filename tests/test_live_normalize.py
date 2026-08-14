@@ -39,6 +39,7 @@ def test_extract_track_names_from_dicts():
 
 def test_start_normalize_spawns_ffmpeg_for_webrtc_tracks(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "LIVE_NORMALIZE_ENABLED", True)
+    monkeypatch.setattr(settings, "LIVE_LL_HLS_ENABLED", False)
     monkeypatch.setattr(settings, "LIVE_NORMALIZE_POLL_ATTEMPTS", 1)
     monkeypatch.setattr(settings, "LIVE_NORMALIZE_POLL_INTERVAL", 0.0)
     monkeypatch.setattr(settings, "LIVE_HLS_DIR", tmp_path)
@@ -70,6 +71,7 @@ def test_start_normalize_spawns_ffmpeg_for_webrtc_tracks(tmp_path, monkeypatch):
 
 def test_webrtc_without_tracks_still_spawns(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "LIVE_NORMALIZE_ENABLED", True)
+    monkeypatch.setattr(settings, "LIVE_LL_HLS_ENABLED", False)
     monkeypatch.setattr(settings, "LIVE_NORMALIZE_POLL_ATTEMPTS", 1)
     monkeypatch.setattr(settings, "LIVE_NORMALIZE_POLL_INTERVAL", 0.0)
     monkeypatch.setattr(settings, "LIVE_HLS_DIR", tmp_path)
@@ -87,6 +89,7 @@ def test_webrtc_without_tracks_still_spawns(tmp_path, monkeypatch):
 
 def test_short_live_segments_reencode_h264_for_idrs(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "LIVE_NORMALIZE_ENABLED", True)
+    monkeypatch.setattr(settings, "LIVE_LL_HLS_ENABLED", False)
     monkeypatch.setattr(settings, "LIVE_NORMALIZE_POLL_ATTEMPTS", 1)
     monkeypatch.setattr(settings, "LIVE_NORMALIZE_POLL_INTERVAL", 0.0)
     monkeypatch.setattr(settings, "LIVE_HLS_SEGMENT_SECONDS", 1)
@@ -112,6 +115,7 @@ def test_short_live_segments_reencode_h264_for_idrs(tmp_path, monkeypatch):
 
 def test_passthrough_does_not_spawn(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "LIVE_NORMALIZE_ENABLED", True)
+    monkeypatch.setattr(settings, "LIVE_LL_HLS_ENABLED", False)
     monkeypatch.setattr(settings, "LIVE_NORMALIZE_POLL_ATTEMPTS", 1)
     monkeypatch.setattr(settings, "LIVE_NORMALIZE_POLL_INTERVAL", 0.0)
     monkeypatch.setattr(settings, "LIVE_HLS_DIR", tmp_path)
@@ -144,3 +148,51 @@ def test_resolve_master_prefers_normalized_hls(tmp_path, monkeypatch):
     got = live_service.resolve_master(stream)
     assert got == norm_dir / "index.m3u8"
     assert "normalized" in got.read_text()
+
+
+def test_passthrough_still_spawns_ll(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "LIVE_NORMALIZE_ENABLED", True)
+    monkeypatch.setattr(settings, "LIVE_LL_HLS_ENABLED", True)
+    monkeypatch.setattr(settings, "LIVE_NORMALIZE_POLL_ATTEMPTS", 1)
+    monkeypatch.setattr(settings, "LIVE_NORMALIZE_POLL_INTERVAL", 0.0)
+    monkeypatch.setattr(settings, "LIVE_HLS_DIR", tmp_path)
+    monkeypatch.setattr(settings, "MEDIAMTX_RTSP_URL", "rtsp://127.0.0.1:8554")
+    fake_proc = MagicMock()
+    fake_proc.poll.return_value = None
+    path_info = {"tracks": ["H264", "MPEG-4 Audio"], "source": {"type": "rtmpConn"}}
+    with patch.object(ln.mediamtx_client, "get_path", return_value=path_info):
+        with patch.object(ln.shutil, "which", return_value="ffmpeg"):
+            with patch.object(ln.subprocess, "Popen", return_value=fake_proc) as popen:
+                stop = ln.threading.Event()
+                ln._probe_and_run("idPassLlHls1", "obsKey", stop)
+                popen.assert_called_once()
+                cmd = popen.call_args[0][0]
+                assert "-hls_part_size" in cmd
+                assert "fmp4" in cmd
+    ln.stop_normalize("idPassLlHls1")
+
+
+def test_webrtc_with_ll_spawns_both(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "LIVE_NORMALIZE_ENABLED", True)
+    monkeypatch.setattr(settings, "LIVE_LL_HLS_ENABLED", True)
+    monkeypatch.setattr(settings, "LIVE_NORMALIZE_POLL_ATTEMPTS", 1)
+    monkeypatch.setattr(settings, "LIVE_NORMALIZE_POLL_INTERVAL", 0.0)
+    monkeypatch.setattr(settings, "LIVE_HLS_DIR", tmp_path)
+    monkeypatch.setattr(settings, "MEDIAMTX_RTSP_URL", "rtsp://127.0.0.1:8554")
+    fake_proc = MagicMock()
+    fake_proc.poll.return_value = None
+    path_info = {
+        "ready": True,
+        "tracks": ["Opus", "VP8"],
+        "source": {"type": "webRTCSession", "id": "s1"},
+    }
+    with patch.object(ln.mediamtx_client, "get_path", return_value=path_info):
+        with patch.object(ln.shutil, "which", return_value="ffmpeg"):
+            with patch.object(ln.subprocess, "Popen", return_value=fake_proc) as popen:
+                stop = ln.threading.Event()
+                ln._probe_and_run("webRtcLlBoth", "whipKeyLl", stop)
+                assert popen.call_count == 2
+                cmds = [c[0][0] for c in popen.call_args_list]
+                assert any("-hls_part_size" in cmd for cmd in cmds)
+                assert any("-hls_part_size" not in cmd for cmd in cmds)
+    ln.stop_normalize("webRtcLlBoth")

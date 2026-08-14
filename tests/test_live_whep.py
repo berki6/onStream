@@ -71,6 +71,7 @@ def test_token_includes_whep_playback_url(test_user, db_session: Session):
     ]
     assert created["stream_key"] not in data["whep_playback_url"]
     assert created["whep_url"] != data["whep_playback_url"]
+    assert data.get("ll_playback_url") in (None, "")
 
 
 def test_whep_private_requires_token(test_user, db_session: Session):

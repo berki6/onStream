@@ -9,7 +9,8 @@ export type LiveStream = {
   stream_key?: string;
   rtmp_url?: string | null;
   playback_url?: string | null;
-  whip_url?: string | null;
+  ll_playback_url?: string | null;
+  ll_hls?: boolean;
   whep_url?: string | null;
   webrtc_base?: string | null;
   hls_path?: string | null;
@@ -33,6 +34,8 @@ export type LiveHealth = {
   archive_running?: boolean;
   dvr?: boolean;
   dvr_duration_seconds?: number | null;
+  ll_hls?: boolean;
+  ll_playlist_present?: boolean;
   hls_path?: string | null;
 };
 
@@ -40,6 +43,7 @@ export type LiveToken = {
   token: string;
   expires_in: number;
   playback_url: string;
+  ll_playback_url?: string;
   whep_playback_url?: string;
 };
 

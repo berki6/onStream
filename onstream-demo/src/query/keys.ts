@@ -8,6 +8,7 @@ export const videoKeys = {
   progress: (id: string) => [...videoKeys.all, "progress", id] as const,
   shares: (id: string) => [...videoKeys.all, "shares", id] as const,
   chapters: (id: string) => [...videoKeys.all, "chapters", id] as const,
+  highlights: (id: string) => [...videoKeys.all, "highlights", id] as const,
 };
 
 export const playlistKeys = {

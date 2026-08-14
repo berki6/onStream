@@ -63,6 +63,9 @@ class Video(Base):
     favorites = relationship(
         "VideoFavorite", back_populates="video", cascade="all, delete-orphan"
     )
+    highlights = relationship(
+        "VideoHighlight", back_populates="video", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (Index("idx_videos_user_status", "user_id", "status"),)
 

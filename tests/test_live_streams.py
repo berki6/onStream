@@ -34,11 +34,13 @@ def _live_defaults(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "MEDIAMTX_AUTH_SECRET", "")
     live_abr._processes.clear()
     live_normalize._processes.clear()
+    live_normalize._ll_processes.clear()
     live_normalize._stops.clear()
     live_normalize._probing.clear()
     yield
     live_abr._processes.clear()
     live_normalize._processes.clear()
+    live_normalize._ll_processes.clear()
     live_normalize._stops.clear()
     live_normalize._probing.clear()
 
@@ -71,6 +73,8 @@ def test_create_stream_returns_rtmp_and_key(test_user, db_session: Session):
     assert data["stream_key_prefix"] == data["stream_key"][:8]
     assert data["rtmp_url"] == "rtmp://localhost:1935/live"
     assert f"/v1/playback/live/{data['stream_id']}/master.m3u8" in data["playback_url"]
+    assert data["ll_hls"] is False
+    assert data.get("ll_playback_url") in (None, "")
     assert data["status"] == "idle"
     assert data["whip_url"] == f"http://localhost:8889/live/{data['stream_key']}/whip"
     assert data["whep_url"] == f"http://localhost:8889/live/{data['stream_key']}/whep"
@@ -85,6 +89,24 @@ def test_create_stream_returns_rtmp_and_key(test_user, db_session: Session):
     assert "whip_url" not in body
     assert "whep_url" not in body
     assert body.get("webrtc_base") == "http://localhost:8889"
+
+
+def test_ll_playback_url_only_when_enabled(test_user, db_session: Session, monkeypatch):
+    monkeypatch.setattr(settings, "LIVE_NORMALIZE_ENABLED", True)
+    monkeypatch.setattr(settings, "LIVE_LL_HLS_ENABLED", True)
+    token = _auth_token()
+    data = _create_stream(token, title="LL urls")
+    assert data["ll_hls"] is True
+    assert f"/v1/playback/live/{data['stream_id']}/ll/master.m3u8" in (
+        data["ll_playback_url"] or ""
+    )
+    tok = client.post(
+        f"/v1/live/{data['stream_id']}/tokens",
+        headers={"Authorization": f"Bearer {token}"},
+        json={},
+    )
+    assert tok.status_code == 200
+    assert f"/ll/master.m3u8?token=" in tok.json()["data"]["ll_playback_url"]
 
 
 def test_list_get_delete(test_user, db_session: Session):
@@ -264,6 +286,7 @@ def test_normalize_started_when_abr_off(test_user, db_session: Session, monkeypa
 def test_abr_skips_normalize(test_user, db_session: Session, monkeypatch):
     monkeypatch.setattr(settings, "LIVE_ABR_ENABLED", True)
     monkeypatch.setattr(settings, "LIVE_NORMALIZE_ENABLED", True)
+    monkeypatch.setattr(settings, "LIVE_LL_HLS_ENABLED", False)
     token = _auth_token()
     created = _create_stream(token)
     key = created["stream_key"]
@@ -278,9 +301,33 @@ def test_abr_skips_normalize(test_user, db_session: Session, monkeypatch):
             mock_norm.assert_not_called()
 
 
+def test_ll_starts_normalize_with_archive_and_abr(
+    test_user, db_session: Session, monkeypatch
+):
+    monkeypatch.setattr(settings, "LIVE_ABR_ENABLED", True)
+    monkeypatch.setattr(settings, "LIVE_ARCHIVE_ENABLED", True)
+    monkeypatch.setattr(settings, "LIVE_NORMALIZE_ENABLED", True)
+    monkeypatch.setattr(settings, "LIVE_LL_HLS_ENABLED", True)
+    token = _auth_token()
+    created = _create_stream(token)
+    key = created["stream_key"]
+    stream_id = created["stream_id"]
+
+    with patch.object(live_normalize, "start_normalize") as mock_norm:
+        with patch.object(live_abr, "start_abr") as mock_abr:
+            with patch("src.application.live_service.live_record.start_record"):
+                client.post(
+                    "/v1/live/mediamtx-auth",
+                    json={"action": "publish", "path": f"live/{key}"},
+                )
+                mock_abr.assert_called_once()
+                mock_norm.assert_called_once_with(stream_id, key)
+
+
 def test_archive_skips_sliding_normalize(test_user, db_session: Session, monkeypatch):
     monkeypatch.setattr(settings, "LIVE_ABR_ENABLED", False)
     monkeypatch.setattr(settings, "LIVE_ARCHIVE_ENABLED", True)
+    monkeypatch.setattr(settings, "LIVE_LL_HLS_ENABLED", False)
     token = _auth_token()
     created = _create_stream(token)
     key = created["stream_key"]

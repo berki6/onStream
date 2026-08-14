@@ -14,7 +14,13 @@ import {
   Alert,
 } from "react-native";
 
-import { getApiBase, queryErrorText, userFacingError } from "@/api/client";
+import {
+  createHighlight,
+  createHighlightToken,
+  deleteHighlight,
+  importHighlightsFromChapters,
+  listHighlights,
+} from "@/api/highlights";
 import { favoriteVideo, listSavedVideos, unfavoriteVideo } from "@/api/favorites";
 import {
   createShareLink,
@@ -118,6 +124,7 @@ export default function VideoDetailScreen() {
   const [clipOpen, setClipOpen] = useState(false);
   const [clipStart, setClipStart] = useState("0");
   const [clipEnd, setClipEnd] = useState("");
+  const [playClipEnd, setPlayClipEnd] = useState<number | null>(null);
   const [playlistOpen, setPlaylistOpen] = useState(false);
   const [playlistBusyId, setPlaylistBusyId] = useState<number | null>(null);
   const [createdEmbed, setCreatedEmbed] = useState<string | null>(null);
@@ -205,6 +212,12 @@ export default function VideoDetailScreen() {
     },
   });
 
+  const highlightsQuery = useQuery({
+    queryKey: videoKeys.highlights(id || ""),
+    enabled: Boolean(id) && isReady,
+    queryFn: async () => (await listHighlights(id!)).data ?? [],
+  });
+
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
@@ -228,6 +241,7 @@ export default function VideoDetailScreen() {
   useEffect(() => {
     setPlaybackUrl(null);
     setResumeAt(0);
+    setPlayClipEnd(null);
     resumeAppliedForId.current = null;
   }, [id]);
 
@@ -654,6 +668,7 @@ export default function VideoDetailScreen() {
             uri={playbackUrl}
             title={video?.title}
             initialPositionSeconds={resumeAt}
+            clipEndSeconds={playClipEnd}
             onEnded={() => {
               if (!Number.isFinite(playlistId) || !id) return;
               const items = playlistsQuery.data;
@@ -745,6 +760,77 @@ export default function VideoDetailScreen() {
             </View>
           ) : null}
 
+          {isReady ? (
+            <View style={styles.infoBox}>
+              <Text style={styles.section}>Highlights</Text>
+              {(highlightsQuery.data?.length ?? 0) > 0 ? (
+                <View style={styles.chapterList}>
+                  {highlightsQuery.data!.map((h) => (
+                    <Pressable
+                      key={h.public_id}
+                      onPress={() => {
+                        if (!id) return;
+                        void createHighlightToken(id, h.public_id)
+                          .then((res) => {
+                            setPlayClipEnd(h.end);
+                            setResumeAt(h.start);
+                            resumeAppliedForId.current = null;
+                            setPlaybackUrl(res.data.playback_url);
+                            toast.success(h.title);
+                          })
+                          .catch((e) =>
+                            toast.error(userFacingError(e, "Highlight play failed"))
+                          );
+                      }}
+                      onLongPress={() => {
+                        Alert.alert("Delete highlight?", h.title, [
+                          { text: "Cancel", style: "cancel" },
+                          {
+                            text: "Delete",
+                            style: "destructive",
+                            onPress: () => {
+                              if (!id) return;
+                              void deleteHighlight(id, h.public_id)
+                                .then(() =>
+                                  qc.invalidateQueries({
+                                    queryKey: videoKeys.highlights(id),
+                                  })
+                                )
+                                .catch((e) =>
+                                  toast.error(userFacingError(e, "Delete failed"))
+                                );
+                            },
+                          },
+                        ]);
+                      }}
+                      style={({ pressed }) => [
+                        styles.chapterRow,
+                        pressed && { opacity: 0.85 },
+                      ]}
+                    >
+                      <Text style={styles.chapterTime}>
+                        {formatChapterTime(h.start)}
+                      </Text>
+                      <Text style={styles.chapterTitle} numberOfLines={2}>
+                        {h.title}
+                      </Text>
+                      <Ionicons
+                        name="play-circle-outline"
+                        size={20}
+                        color={colors.brand}
+                      />
+                    </Pressable>
+                  ))}
+                </View>
+              ) : (
+                <Text style={styles.infoLine}>
+                  Save a window from Instant clip. Same HLS, no re-encode.
+                  Long-press a row to delete.
+                </Text>
+              )}
+            </View>
+          ) : null}
+
           <Button
             label={
               playbackUrl
@@ -760,6 +846,7 @@ export default function VideoDetailScreen() {
               setTokenLoading(true);
               try {
                 const res = await createPlaybackToken(id);
+                setPlayClipEnd(null);
                 setPlaybackUrl(res.data.playback_url);
               } catch (e) {
                 toast.error(userFacingError(e, "Token request failed"));
@@ -1175,6 +1262,56 @@ export default function VideoDetailScreen() {
             );
           }}
         />
+        <Button
+          label="Save highlight"
+          loading={shareBusy}
+          onPress={() => {
+            const start = Number(clipStart);
+            const end = clipEnd.trim() ? Number(clipEnd) : NaN;
+            if (!id || !Number.isFinite(start) || !Number.isFinite(end)) {
+              toast.error("Highlights need both start and end.");
+              return;
+            }
+            setShareBusy(true);
+            void createHighlight(id, { start, end })
+              .then(async () => {
+                toast.success("Highlight saved on this video.");
+                await qc.invalidateQueries({
+                  queryKey: videoKeys.highlights(id),
+                });
+                setClipOpen(false);
+              })
+              .catch((e) => {
+                toast.error(userFacingError(e, "Could not save highlight"));
+              })
+              .finally(() => setShareBusy(false));
+          }}
+        />
+        {(chaptersQuery.data ?? []).length > 0 ? (
+          <Button
+            label="Save chapters as highlights"
+            variant="ghost"
+            loading={shareBusy}
+            onPress={() => {
+              if (!id) return;
+              setShareBusy(true);
+              void importHighlightsFromChapters(id)
+                .then(async (res) => {
+                  const n = (res.data || []).length;
+                  toast.success(
+                    n ? `Saved ${n} highlight(s) from chapters.` : "No new chapter windows."
+                  );
+                  await qc.invalidateQueries({
+                    queryKey: videoKeys.highlights(id),
+                  });
+                })
+                .catch((e) => {
+                  toast.error(userFacingError(e, "Chapter import failed"));
+                })
+                .finally(() => setShareBusy(false));
+            }}
+          />
+        ) : null}
         <Button
           label="Create clip share link"
           loading={shareBusy}

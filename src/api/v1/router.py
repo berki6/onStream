@@ -12,6 +12,7 @@ from src.api.v1.routes import (
     oembed,
     playback,
     playlists,
+    highlights,
     search,
     share_links,
     uploads,
@@ -38,6 +39,7 @@ api_router.include_router(feeds.router, prefix="/feeds", tags=["feeds"])
 api_router.include_router(moderation.router, prefix="/moderation", tags=["moderation"])
 api_router.include_router(search.router, prefix="/search", tags=["search"])
 api_router.include_router(oembed.router, tags=["oembed"])
+api_router.include_router(highlights.router, tags=["highlights"])
 api_router.include_router(
     share_links.router, prefix="/share-links", tags=["share-links"]
 )

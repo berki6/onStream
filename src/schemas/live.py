@@ -29,6 +29,8 @@ class LiveStreamResponse(BaseModel):
     stream_key_prefix: str
     rtmp_url: Optional[str] = None
     playback_url: Optional[str] = None
+    ll_playback_url: Optional[str] = None
+    ll_hls: bool = False
     hls_path: Optional[str] = None
     abr_hls_path: Optional[str] = None
     webrtc_base: Optional[str] = None
@@ -60,6 +62,7 @@ class LivePlaybackTokenResponse(BaseModel):
     token: str
     expires_in: int
     playback_url: str
+    ll_playback_url: Optional[str] = None
     whep_playback_url: str
 
 

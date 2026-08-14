@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -10,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from src.api.v1.deps import get_optional_user
 from src.api.v1.responses import raise_app_error
-from src.application import live_service, live_whep, playback_service
+from src.application import live_service, live_whep, ll_hls, playback_service
 from src.application.errors import AppError
 from src.application.error_codes import ErrorCode
 from src.application.playback_headers import cache_headers
@@ -39,6 +40,37 @@ def _inc_playback(kind: str) -> None:
         pass
 
 
+def _parse_msn(request: Request) -> tuple:
+    msn_raw = request.query_params.get("_HLS_msn")
+    part_raw = request.query_params.get("_HLS_part")
+    msn = int(msn_raw) if msn_raw and str(msn_raw).isdigit() else None
+    part = int(part_raw) if part_raw and str(part_raw).isdigit() else None
+    return msn, part
+
+
+async def _playlist_response(path, stream_token, token, request, *, inject_edge: bool):
+    msn, part = _parse_msn(request)
+    try:
+        raw = await asyncio.to_thread(
+            ll_hls.wait_for_playlist, path, msn=msn, part=part
+        )
+    except OSError:
+        raise_app_error(
+            AppError("Live playlist not available", code=ErrorCode.LIVE_NOT_FOUND)
+        )
+    if inject_edge and not ll_hls.is_ll_playlist(raw):
+        raw = playback_service.inject_live_edge_start(raw)
+    body = playback_service.rewrite_playlist(raw, stream_token or token)
+    headers = cache_headers(
+        live=True, asset_name=path.name, ll=ll_hls.is_ll_playlist(raw)
+    )
+    return StreamingResponse(
+        iter([body]),
+        media_type="application/vnd.apple.mpegurl",
+        headers=headers,
+    )
+
+
 @router.get("/{stream_id}/master.m3u8")
 async def live_master_playlist(
     stream_id: str,
@@ -57,16 +89,37 @@ async def live_master_playlist(
             origin_or_referer=_origin(request),
         )
         path = live_service.resolve_master(stream)
-        raw = path.read_text(encoding="utf-8", errors="ignore")
-        raw = playback_service.inject_live_edge_start(raw)
-        body = playback_service.rewrite_playlist(raw, stream_token or token)
     except AppError as e:
         raise_app_error(e)
     _inc_playback("master")
-    return StreamingResponse(
-        iter([body]),
-        media_type="application/vnd.apple.mpegurl",
-        headers=cache_headers(live=True, asset_name="master.m3u8"),
+    return await _playlist_response(
+        path, stream_token, token, request, inject_edge=True
+    )
+
+
+@router.get("/{stream_id}/ll/master.m3u8")
+async def live_ll_master_playlist(
+    stream_id: str,
+    request: Request,
+    token: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_optional_user),
+):
+    try:
+        stream = live_service.get_playable_stream(db, stream_id)
+        stream_token = live_service.authorize_playback(
+            stream,
+            token,
+            _bearer(request),
+            current_user,
+            origin_or_referer=_origin(request),
+        )
+        path = live_service.resolve_master(stream, latency="ll")
+    except AppError as e:
+        raise_app_error(e)
+    _inc_playback("ll_master")
+    return await _playlist_response(
+        path, stream_token, token, request, inject_edge=False
     )
 
 
@@ -163,16 +216,20 @@ async def live_playback_asset(
     headers = cache_headers(live=not archive_seg, asset_name=safe)
 
     if safe.endswith(".m3u8"):
-        raw = path.read_text(encoding="utf-8", errors="ignore")
-        body = playback_service.rewrite_playlist(raw, stream_token or token)
         _inc_playback("playlist")
-        return StreamingResponse(
-            iter([body]),
-            media_type="application/vnd.apple.mpegurl",
-            headers=headers,
+        return await _playlist_response(
+            path,
+            stream_token,
+            token,
+            request,
+            inject_edge=False,
         )
 
     media_type = "video/MP2T" if safe.endswith(".ts") else "application/octet-stream"
+    if safe.endswith(".m4s"):
+        media_type = "video/iso.segment"
+    if safe.endswith(".mp4"):
+        media_type = "video/mp4"
     if safe.endswith(".jpg") or safe.endswith(".jpeg"):
         media_type = "image/jpeg"
     if safe.endswith(".vtt"):
@@ -183,5 +240,7 @@ async def live_playback_asset(
             for chunk in iter(lambda: f.read(4096), b""):
                 yield chunk
 
-    _inc_playback("segment" if safe.endswith(".ts") else "asset")
+    _inc_playback(
+        "segment" if safe.endswith(".ts") or safe.endswith(".m4s") else "asset"
+    )
     return StreamingResponse(iterfile(), media_type=media_type, headers=headers)

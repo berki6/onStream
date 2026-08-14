@@ -131,6 +131,11 @@ class Settings(BaseSettings):
     LIVE_HLS_SEGMENT_SECONDS: int = int(
         os.environ.get("LIVE_HLS_SEGMENT_SECONDS", "1")
     )
+    # Sliding fMP4 + PART playlist at {LIVE_HLS_DIR}/{id}/ll/. DVR stays EVENT archive.
+    LIVE_LL_HLS_ENABLED: bool = _env_bool("LIVE_LL_HLS_ENABLED", "true")
+    LIVE_LL_HLS_PART_SECONDS: float = float(
+        os.environ.get("LIVE_LL_HLS_PART_SECONDS", "0.33")
+    )
     MEDIAMTX_RTSP_URL: str = os.environ.get(
         "MEDIAMTX_RTSP_URL", "rtsp://127.0.0.1:8554"
     )

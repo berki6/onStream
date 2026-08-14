@@ -19,6 +19,7 @@ erDiagram
     User ||--o{ VideoWatchProgress : resumes
     User ||--o{ ShareLink : creates
     User ||--o{ VideoFavorite : saves
+    User ||--o{ VideoHighlight : creates
     User ||--o{ ApiKey : has
     User ||--o{ WebhookEndpoint : owns
 
@@ -27,6 +28,7 @@ erDiagram
     Video ||--o{ ShareLink : shared_as
     Video ||--o{ VideoFavorite : favorited_in
     Video ||--o{ PlaylistVideo : listed_in
+    Video ||--o{ VideoHighlight : highlighted_as
     Video ||--o{ VideoEmbedding : embedded_as
     Video ||--o| VideoJob : progress
     Video ||--o| UploadSession : uploaded_via
@@ -47,6 +49,7 @@ erDiagram
 | `videos` | `Video` | VOD metadata; public id = `upload_id`; AI + `quality_score`; Postgres `search_vector` FTS; `visibility` (`private`/`unlisted`/`public`) with derived `is_public` |
 | `video_watch_progress` | `VideoWatchProgress` | Per-user resume position / completed |
 | `share_links` | `ShareLink` | Expiring share credentials (hashed token); optional `clip_start_seconds` / `clip_end_seconds` |
+| `video_highlights` | `VideoHighlight` | Named clip windows (`public_id`, start/end seconds); unique per video window; playback is JWT clip, no extra encode |
 | `video_favorites` | `VideoFavorite` | Saved / liked videos |
 | `video_jobs` | `VideoJob` | User-visible transcode progress / stages |
 | `queued_jobs` | `QueuedJob` | Redis outage fallback queue rows |

@@ -31,6 +31,7 @@ _VIDEO_TRANSCODE = frozenset({"vp8", "vp9", "av1", "h263", "theora"})
 _AUDIO_TRANSCODE = frozenset({"opus", "vorbis", "pcmu", "pcma", "g711", "speex"})
 
 _processes: Dict[str, subprocess.Popen] = {}
+_ll_processes: Dict[str, subprocess.Popen] = {}
 _stops: Dict[str, threading.Event] = {}
 _probing: Set[str] = set()
 _lock = threading.Lock()
@@ -129,11 +130,38 @@ def _clear_dir(stream_id: str) -> None:
             pass
 
 
+def ll_enabled() -> bool:
+    return bool(getattr(settings, "LIVE_LL_HLS_ENABLED", True)) and is_enabled()
+
+
+def ll_dir(stream_id: str, *, create: bool = True) -> Path:
+    path = Path(settings.LIVE_HLS_DIR) / stream_id / "ll"
+    if create:
+        path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def ll_playlist(stream_id: str, *, create: bool = False) -> Path:
+    return ll_dir(stream_id, create=create) / "index.m3u8"
+
+
+def ll_available(stream_id: str) -> bool:
+    path = ll_playlist(stream_id, create=False)
+    return path.is_file() and path.stat().st_size > 0
+
+
 def _live_segment_seconds() -> int:
     return max(1, int(getattr(settings, "LIVE_HLS_SEGMENT_SECONDS", 1) or 1))
 
 
-def _ffmpeg_cmd(stream_key: str, out: Path, *, copy_video: bool, copy_audio: bool) -> List[str]:
+def _ffmpeg_cmd(
+    stream_key: str,
+    out: Path,
+    *,
+    copy_video: bool,
+    copy_audio: bool,
+    ll: bool = False,
+) -> List[str]:
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise FileNotFoundError("ffmpeg")
@@ -202,25 +230,52 @@ def _ffmpeg_cmd(stream_key: str, out: Path, *, copy_video: bool, copy_audio: boo
             "0",
             "-f",
             "hls",
-            "-hls_time",
-            seg,
-            "-hls_init_time",
-            seg,
-            "-hls_list_size",
-            "3",
-            "-hls_flags",
-            "delete_segments+independent_segments+omit_endlist+split_by_time",
-            "-hls_segment_filename",
-            str(out / "seg_%05d.ts"),
-            str(out / "index.m3u8"),
         ]
     )
+    if ll:
+        part = max(0.2, float(getattr(settings, "LIVE_LL_HLS_PART_SECONDS", 0.33) or 0.33))
+        cmd.extend(
+            [
+                "-hls_time",
+                seg,
+                "-hls_list_size",
+                "15",
+                "-hls_segment_type",
+                "fmp4",
+                "-hls_fmp4_init_filename",
+                "init.mp4",
+                "-hls_part_size",
+                f"{part:.3f}",
+                "-hls_flags",
+                "delete_segments+independent_segments+omit_endlist+program_date_time+split_by_time+temp_file",
+                "-hls_segment_filename",
+                str(out / "seg_%05d.m4s"),
+                str(out / "index.m3u8"),
+            ]
+        )
+    else:
+        cmd.extend(
+            [
+                "-hls_time",
+                seg,
+                "-hls_init_time",
+                seg,
+                "-hls_list_size",
+                "3",
+                "-hls_flags",
+                "delete_segments+independent_segments+omit_endlist+split_by_time",
+                "-hls_segment_filename",
+                str(out / "seg_%05d.ts"),
+                str(out / "index.m3u8"),
+            ]
+        )
     return cmd
 
 
-def _kill_proc(stream_id: str) -> None:
+def _kill_proc(stream_id: str, *, ll: bool = False) -> None:
+    store = _ll_processes if ll else _processes
     with _lock:
-        proc = _processes.pop(stream_id, None)
+        proc = store.pop(stream_id, None)
     if proc is None:
         return
     try:
@@ -234,14 +289,23 @@ def _kill_proc(stream_id: str) -> None:
         logger.warning("Error stopping live normalize for %s: %s", stream_id, exc)
 
 
-def _spawn(stream_id: str, stream_key: str, copy_video: bool, copy_audio: bool) -> None:
-    _kill_proc(stream_id)
+def _spawn(
+    stream_id: str,
+    stream_key: str,
+    copy_video: bool,
+    copy_audio: bool,
+    *,
+    ll: bool = False,
+) -> None:
+    _kill_proc(stream_id, ll=ll)
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         logger.warning("ffmpeg not found; cannot normalize live %s", stream_id)
         return
-    out = _out_dir(stream_id)
-    cmd = _ffmpeg_cmd(stream_key, out, copy_video=copy_video, copy_audio=copy_audio)
+    out = ll_dir(stream_id) if ll else _out_dir(stream_id)
+    cmd = _ffmpeg_cmd(
+        stream_key, out, copy_video=copy_video, copy_audio=copy_audio, ll=ll
+    )
     kwargs = {
         "stdout": subprocess.DEVNULL,
         "stderr": subprocess.DEVNULL,
@@ -253,13 +317,15 @@ def _spawn(stream_id: str, stream_key: str, copy_video: bool, copy_audio: bool) 
     except OSError as exc:
         logger.warning("Failed to start live normalize for %s: %s", stream_id, exc)
         return
+    store = _ll_processes if ll else _processes
     with _lock:
-        _processes[stream_id] = proc
+        store[stream_id] = proc
     logger.info(
-        "Live normalize started for %s (copy_video=%s copy_audio=%s) → %s",
+        "Live normalize started for %s (copy_video=%s copy_audio=%s ll=%s) → %s",
         stream_id,
         copy_video,
         copy_audio,
+        ll,
         out / "index.m3u8",
     )
 
@@ -283,6 +349,31 @@ def _probe_and_run(stream_id: str, stream_key: str, stop: threading.Event) -> No
                 break
             stop.wait(interval)
         if stop.is_set():
+            return
+        classified = classify_tracks(tracks) if tracks else {
+            "has_video": False,
+            "has_audio": False,
+            "video_copy": False,
+            "audio_copy": False,
+            "needs_transcode": True,
+        }
+        webrtc = "webRTC" in source_type or "whip" in source_type.lower()
+        copy_v = bool(classified["video_copy"]) if tracks else (not webrtc)
+        copy_a = bool(classified["audio_copy"]) if tracks else (not webrtc)
+        if ll_enabled():
+            logger.info(
+                "Live LL-HLS mux for %s tracks=%s",
+                stream_id,
+                ", ".join(tracks) or source_type or "unknown",
+            )
+            _spawn(
+                stream_id,
+                stream_key,
+                copy_video=copy_v,
+                copy_audio=copy_a,
+                ll=True,
+            )
+        if settings.LIVE_ABR_ENABLED:
             return
         if not tracks:
             # WHIP often lists tracks a beat after auth; RTMP is usually already muxable.
@@ -353,9 +444,13 @@ def stop_normalize(stream_id: str) -> None:
         _probing.discard(stream_id)
     if stop is not None:
         stop.set()
-    _kill_proc(stream_id)
+    _kill_proc(stream_id, ll=False)
+    _kill_proc(stream_id, ll=True)
 
 
 def normalize_running(stream_id: str) -> bool:
-    proc = _processes.get(stream_id)
-    return proc is not None and proc.poll() is None
+    classic = _processes.get(stream_id)
+    ll = _ll_processes.get(stream_id)
+    return (classic is not None and classic.poll() is None) or (
+        ll is not None and ll.poll() is None
+    )

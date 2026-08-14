@@ -94,7 +94,9 @@ More encoder/player recipes: [`docs/PLAYBACK_CLIENTS.md`](docs/PLAYBACK_CLIENTS.
 | Share-link inbox | **Ready** | Lab / Library link icon → audit + revoke; token still once at create |
 | API keys | **Ready** | Account / Lab → create (secret once) + revoke; scopes enforced on `X-API-Key` |
 | Semantic search | **Ready** | Library search → Keyword / Semantic; needs embeddings job for hits |
-| oEmbed | **Ready** | `GET /v1/oembed?url=` (bare JSON); watch `?v=` + share peek |
+| oEmbed | **Ready** | `GET /v1/oembed?url=` (bare JSON); watch `?v=` / `?h=` + share peek |
+| Highlights | **Ready** | Named clip windows; Expo Instant clip **Save highlight**; `/demo/watch/?h=` |
+| LL-HLS | **Ready** | Sibling `/ll/master.m3u8`; default live URL stays DVR; Expo **Play LL-HLS (no scrub)** |
 
 **Critical DB fix (was blocking VOD):** Postgres `videostatus` enum was missing `PROCESSING`. Migration `f6a7b8c9d0e1` adds it.
 
@@ -104,7 +106,7 @@ More encoder/player recipes: [`docs/PLAYBACK_CLIENTS.md`](docs/PLAYBACK_CLIENTS.
 
 ## Prerequisites
 
-1. Postgres up, DB `onstream`, migrations: `alembic upgrade head` (must include `PROCESSING` on `videostatus`, `i9c0d1e2f3a4` visibility/clips, and `j0a1b2c3d4e5` live → VOD archive)
+1. Postgres up, DB `onstream`, migrations: `alembic upgrade head` (must include `PROCESSING` on `videostatus`, `i9c0d1e2f3a4` visibility/clips, `j0a1b2c3d4e5` live → VOD archive, and `k1c2d3e4f5a6` video highlights)
 2. Redis reachable (`REDIS_URL` in `.env`, e.g. WSL → `127.0.0.1:6379`)
 3. FFmpeg on `PATH` (VOD transcode)
 4. Python venv activated; deps installed (`requirements.txt`; AI path needs `requirements-ai.txt` if testing captions)
@@ -428,9 +430,10 @@ Requires `alembic upgrade head` through `i9c0d1e2f3a4`. Use a **READY** VOD.
 
 **Instant clips**
 
-1. Video detail → scissors → set start/end (or tap a chapter) → **Preview start** → **Create clip share link**.
-2. Open `watch_url` (`/demo/watch/?s=&t=`) — player should seek in and pause at end.
-3. Share sheet also copies an **iframe** snippet (`embed=1`).
+1. Video detail → scissors → set start/end (or tap a chapter) → **Preview start** → **Save highlight** (catalog on this video) and/or **Create clip share link**.
+2. Highlights list under the player: tap to play the window (same HLS + clip JWT), long-press to delete. **Save chapters as highlights** when chapters exist.
+3. Open `watch_url` (`/demo/watch/?s=&t=`) — player should seek in and pause at end. Public/unlisted highlight: `/demo/watch/?h=`.
+4. Share sheet also copies an **iframe** snippet (`embed=1`).
 
 **Storyboard**
 
@@ -443,8 +446,8 @@ Requires `alembic upgrade head` through `i9c0d1e2f3a4`. Use a **READY** VOD.
 1. From the share sheet, copy **Embed iframe**.
 2. Or open `http://localhost:8000/demo/watch/?s=<public_id>&t=<token>&embed=1` — brand/kicker/home should be gone; **Play** should appear (peek, no view burn) until you click.
 3. Optional: `&playlist=<id>` shows a side panel only if that playlist is **public**.
-4. Public/unlisted: `/demo/watch/?v=<upload_id>` should play without a share token.
-5. `GET /v1/oembed?url=<watch URL>` returns bare JSON (`type`/`html` at the root, not `{success,data}`). Private share must omit `thumbnail_url`. `format=xml` is 400.
+4. Public/unlisted: `/demo/watch/?v=<upload_id>` should play without a share token. Highlights: `/demo/watch/?h=<highlight_id>` (404 if the video is private).
+5. `GET /v1/oembed?url=<watch URL>` returns bare JSON (`type`/`html` at the root, not `{success,data}`). Private share must omit `thumbnail_url`. `format=xml` is 400. `?h=` on a private highlight is `OEMBED_NOT_FOUND`.
 
 **RSS**
 
@@ -540,14 +543,15 @@ The demo page POSTs SDP to `/v1/playback/live/{stream_id}/whep` (token in query)
 
 ### 8) Live → VOD replay
 
-Requires `alembic upgrade head` (`j0a1b2c3d4e5`) and `LIVE_ARCHIVE_ENABLED=true`.
+Requires `alembic upgrade head` (`j0a1b2c3d4e5`) and `LIVE_ARCHIVE_ENABLED=true`. LL-HLS is on by default (`LIVE_LL_HLS_ENABLED`).
 
 1. Go live (WHIP or RTMP) for at least a few seconds so archive segments exist.
 2. Expo → issue a live playback token. HLS starts at the live edge; scrub the native timeline backward, then **Jump to live**.
-3. `/demo/?url=` with the tokenized live master — hls.js timeline should seek within the EVENT playlist.
-4. Expo → **Revoke stream**.
-5. Same screen: **Watch replay** opens the Library VOD (`/video/{upload_id}`). HLS should play the recording; live playlist 404s.
-6. Library list should show a new READY video with the live title. After the worker runs the `storyboard` job, Library/Watch replay get a poster and filmstrip.
+3. Same screen → **Play LL-HLS (no scrub)** uses `ll_playback_url` (no DVR timeline). Health should show LL playlist ready after a few seconds.
+4. `/demo/?url=` with the tokenized live master — hls.js timeline should seek within the EVENT playlist. Paste `ll_playback_url` to check `lowLatencyMode`.
+5. Expo → **Revoke stream**.
+6. Same screen: **Watch replay** opens the Library VOD (`/video/{upload_id}`). HLS should play the recording; live playlist 404s.
+7. Library list should show a new READY video with the live title. After the worker runs the `storyboard` job, Library/Watch replay get a poster and filmstrip.
 
 Revoke without a dedicated archive playlist still ends the stream (`archived_upload_id` null). The sliding live window is never promoted.
 
@@ -581,10 +585,10 @@ Worker injects `#EXT-X-MEDIA:TYPE=SUBTITLES` into `data/hls/{id}/master.m3u8` af
 
 ### Watch & collect
 - **Visibility:** `private` | `unlisted` | `public`. `is_public` is derived (`true` only when public). Unlisted is tokenless playback, omitted from RSS.
-- **Clips:** share create / `POST /v1/videos/{id}/tokens` accept `clip_start` / `clip_end`. Stream JWT carries the window; master injects `#EXT-X-START`. Players seek/stop; no re-encode.
+- **Clips:** share create / `POST /v1/videos/{id}/tokens` accept `clip_start` / `clip_end`. Stream JWT carries the window; master injects `#EXT-X-START`. Players seek/stop; no re-encode. **Highlights** persist named windows (`POST /v1/videos/{id}/highlights`); play via highlight token or `/demo/watch/?h=`.
 - **Storyboard:** transcode writes `storyboard.jpg` + `.vtt`; serve via `/v1/playback/{id}/storyboard.*`. Video GET and share exchange return tokenized URLs. `/demo/` hover uses `seekable.end` for live DVR; live masters do not fetch a sprite.
 - **Playlists:** `PATCH /v1/playlists/{id}` (`name`, `is_public`); `GET /v1/playlists/public/{id}` for embeds. Expo: `/playlist`, Library shelf, add-to-playlist, play-next.
-- **Embed / oEmbed:** `/demo/watch/?v=` or `?s=&t=&embed=1` (+ optional `playlist=`). Share embeds peek then click-to-play. `GET /v1/oembed` is spec JSON.
+- **Embed / oEmbed:** `/demo/watch/?v=` / `?h=` or `?s=&t=&embed=1` (+ optional `playlist=`). Share embeds peek then click-to-play. `GET /v1/oembed` is spec JSON.
 - **RSS:** `GET /v1/feeds/{username}/videos.rss` and `.../playlists/{id}.rss`.
 
 ---
@@ -593,5 +597,7 @@ Worker injects `#EXT-X-MEDIA:TYPE=SUBTITLES` into `data/hls/{id}/master.m3u8` af
 
 - Native in-app WHIP / WHEP — **build last** (Expo Go cannot encode; needs `expo-dev-client` + WebRTC). Until then: `/demo/whip/` and `/demo/whep/`
 - Channels / orgs (new tenancy model) — **build last**
+- Comments / likes / reactions (TODO #2) — **build last**
+- Live chat (per-stream room) — **build last**
 - Production SMTP inbox branding beyond text/HTML body already sent
 - Multi-tenant admin moderation (queue is per authenticated owner)

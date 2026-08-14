@@ -64,7 +64,7 @@ Publish auth, kick, and path health are MediaMTX-specific today. A future `LiveC
 1. **Default:** `LIVE_ABR_ENABLED=false`, `LIVE_NORMALIZE_ENABLED=true` — RTMP H.264+AAC is MediaMTX remux only (no extra CPU). Browser WHIP (VP8/Opus, or H.264+Opus) is FFmpeg RTSP → `{LIVE_HLS_DIR}/{stream_id}/index.m3u8`.
 2. **Optional:** `LIVE_ABR_ENABLED=true` — FFmpeg multi-bitrate from the same RTSP URL under `{LIVE_HLS_DIR}/{stream_id}/abr` (CPU intensive; skips the single-rendition normalize sidecar).
 3. Playback prefers `{stream_id}/index.m3u8` over MediaMTX `live/{key}/`, so a crashed MPEG-TS muxer (VP8/Opus) cannot win. WHEP is unchanged on the ingest path.
-4. **Latency ladder (Mux / industry):** Expo Go plays **classic HLS** — `LIVE_HLS_SEGMENT_SECONDS=1` targets ~3–6s glass-to-glass (not VOD’s 4s segments). Next rung is **LL-HLS** (~2–4s, not wired yet). Sub-second is **WHEP / WebRTC**, which Expo Go cannot play natively.
+4. **Latency ladder (Mux / industry):** Default live HLS is the **EVENT DVR archive** (scrub). Sibling **LL-HLS** is `{LIVE_HLS_DIR}/{stream_id}/ll/` served at `/v1/playback/live/{id}/ll/master.m3u8` (~2–4s, fMP4 parts, `LIVE_LL_HLS_ENABLED`). Sub-second is **WHEP / WebRTC**, which Expo Go cannot play natively. Do not treat the DVR playlist as low-latency.
 5. Do not enable live ABR solely because VOD uses ABR; the cost models differ.
 
 ### TURN / Caddy
@@ -97,7 +97,7 @@ Clip shares bake `clip_start` / `clip_end` into the stream JWT. Compatible playe
 
 `/demo/` (when `DEMO_PLAYER_ENABLED`) is the lab player: ABR quality menu, keyboard (`K`/`J`/`L`/`F`/`0–9`), captions, DVR-safe scrub thumbs.
 
-`/demo/watch/?s=&t=` is the share landing page. `/demo/watch/?v={upload_id}` plays `public`/`unlisted` without a share token. Append `embed=1` for iframe chrome, `playlist={id}` when the playlist is public. Share embeds peek first and start playback on click so crawlers cannot burn `max_views`. oEmbed discovery: `GET /v1/oembed?url=` (bare JSON, not the API envelope).
+`/demo/watch/?s=&t=` is the share landing page. `/demo/watch/?v={upload_id}` plays `public`/`unlisted` without a share token. `/demo/watch/?h={highlight_id}` plays a named clip window on a public/unlisted video. Append `embed=1` for iframe chrome, `playlist={id}` when the playlist is public. Share embeds peek first and start playback on click so crawlers cannot burn `max_views`. oEmbed discovery: `GET /v1/oembed?url=` (bare JSON, not the API envelope).
 
 Example URL shape:
 
@@ -151,7 +151,7 @@ Path remains `live/{plaintext_stream_key}` on MediaMTX (same auth as RTMP). Use 
 
 **Viewer WHEP** goes through OnStream so playback tokens apply and the stream key never appears in the player. The API talks to MediaMTX at `MEDIAMTX_WEBRTC_URL` (loopback/docker), not `PUBLIC_WEBRTC_BASE_URL` (browser/encoder). Signaling is proxied; ICE/RTP still terminates on MediaMTX (`:8889` / `:8189`). Lab player: `http://127.0.0.1:8000/demo/whep/?stream=&token=` (secure context). Expo Go keeps HLS; **Watch live (low latency)** opens the demo page.
 
-Browser WHIP is usually VP8 + Opus, which MediaMTX’s MPEG-TS HLS muxer cannot remux. OnStream pulls the same path over RTSP and writes a GOP-aligned **EVENT** archive under `{LIVE_HLS_DIR}/{stream_id}/archive/` (H.264 + AAC). Live HLS playback serves that playlist so viewers can DVR-scrub; `#EXT-X-START` keeps new joiners at the live edge. WHEP plays the **raw ingest** (sub-second, no timeline). MPEG-TS muxer crashes on Opus are expected and irrelevant to WHEP. Lab camera: open `http://127.0.0.1:8000/demo/whip/` on the PC (LAN HTTP hides `getUserMedia`). TURN / Caddy still apply for internet WebRTC.
+Browser WHIP is usually VP8 + Opus, which MediaMTX’s MPEG-TS HLS muxer cannot remux. OnStream pulls the same path over RTSP and writes a GOP-aligned **EVENT** archive under `{LIVE_HLS_DIR}/{stream_id}/archive/` (H.264 + AAC). Live HLS playback serves that playlist so viewers can DVR-scrub; `#EXT-X-START` keeps new joiners at the live edge. When `LIVE_LL_HLS_ENABLED` (default), a second FFmpeg mux writes fMP4 + PART tags under `{LIVE_HLS_DIR}/{stream_id}/ll/`. That URL is not the DVR archive and has no timeline to scrub. WHEP plays the **raw ingest** (sub-second, no timeline). MPEG-TS muxer crashes on Opus are expected and irrelevant to WHEP. Lab camera: open `http://127.0.0.1:8000/demo/whip/` on the PC (LAN HTTP hides `getUserMedia`). TURN / Caddy still apply for internet WebRTC. `/demo/` hls.js sets `lowLatencyMode` when the URL contains `/ll/`.
 
 ### 4. Watch in VLC
 
@@ -164,13 +164,14 @@ curl -s -X POST "http://localhost:8000/v1/live/{stream_id}/tokens" \
   -d '{}'
 ```
 
-Open `playback_url` in VLC (Network stream). The timeline is the DVR window (full session while `LIVE_ARCHIVE_ENABLED`). Jump near the end for live edge.
+Open `playback_url` in VLC (Network stream). The timeline is the DVR window (full session while `LIVE_ARCHIVE_ENABLED`). Jump near the end for live edge. `ll_playback_url` is the sliding LL-HLS edge (fMP4 parts; VLC support varies; no DVR scrub).
 
 ```text
 http://localhost:8000/v1/playback/live/{stream_id}/master.m3u8?token=...
+http://localhost:8000/v1/playback/live/{stream_id}/ll/master.m3u8?token=...
 ```
 
-`/demo/` (hls.js) keeps an infinite back-buffer so you can scrub. Expo: native timeline + **Jump to live**.
+`/demo/` (hls.js) keeps an infinite back-buffer on DVR URLs and sets `lowLatencyMode` on `/ll/`. Expo: native timeline + **Jump to live** on DVR; **Play LL-HLS (no scrub)** for the edge playlist.
 
 ### 5. Stop / revoke
 
@@ -183,7 +184,7 @@ Revoking ends the stream key; further OBS/WHIP publish fails auth; live playback
 
 If `LIVE_ARCHIVE_ENABLED` (default on), revoke also promotes the archive HLS (kept for the whole session, not the sliding live window) into a READY VOD. Unpublish / OBS reconnect does not close the archive; `#EXT-X-ENDLIST` is written only on revoke. The live GET then includes `archived_upload_id` and `archive_playback_url`. Play that through `/v1/playback/{upload_id}/` like any other video (share, playlists, `/demo/watch`). Expo: ended stream → **Watch replay**.
 
-`alembic upgrade head` through `j0a1b2c3d4e5` is required.
+`alembic upgrade head` through `k1c2d3e4f5a6` is required.
 
 ## Demo HTML player
 

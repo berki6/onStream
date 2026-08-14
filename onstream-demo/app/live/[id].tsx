@@ -29,6 +29,7 @@ export default function LiveDetailScreen() {
   const qc = useQueryClient();
   const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
   const [playbackToken, setPlaybackToken] = useState<string | null>(null);
+  const [llMode, setLlMode] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [focused, setFocused] = useState(true);
   const playerRef = useRef<HlsPlayerHandle>(null);
@@ -97,11 +98,16 @@ export default function LiveDetailScreen() {
               Stream revoked. Live playlist requests return 404. If a replay
               was saved, Watch replay opens it in Library like any VOD.
             </Text>
+          ) : llMode ? (
+            <Text style={styles.endedNote}>
+              Playing LL-HLS: a sliding live edge (~2–4s), not the DVR
+              archive. There is no timeline to scrub. Sub-second remains WHEP.
+            </Text>
           ) : (
             <Text style={styles.endedNote}>
               HLS is DVR: join at the live edge, then scrub the timeline.
-              Jump to live returns to the edge. WHEP stays low-latency
-              without a timeline.
+              Jump to live returns to the edge. LL-HLS is a separate playlist
+              (no scrub). WHEP stays sub-second.
             </Text>
           )}
 
@@ -112,7 +118,7 @@ export default function LiveDetailScreen() {
             liveEdge
           />
 
-          {playbackUrl && !ended ? (
+          {playbackUrl && !ended && !llMode ? (
             <Button
               label="Jump to live"
               variant="ghost"
@@ -138,6 +144,11 @@ export default function LiveDetailScreen() {
                   {health.archive_running ? " · recording" : ""}
                 </Text>
               ) : null}
+              {health.ll_hls ? (
+                <Text style={styles.healthLine}>
+                  LL-HLS {health.ll_playlist_present ? "playlist ready" : "waiting"}
+                </Text>
+              ) : null}
             </View>
           ) : null}
 
@@ -148,6 +159,7 @@ export default function LiveDetailScreen() {
               if (!id || ended) return;
               try {
                 const res = await createLiveToken(id);
+                setLlMode(false);
                 setPlaybackUrl(res.data.playback_url);
                 setPlaybackToken(res.data.token);
               } catch (e) {
@@ -155,6 +167,29 @@ export default function LiveDetailScreen() {
               }
             }}
           />
+          {playbackToken && !ended ? (
+            <Button
+              label="Play LL-HLS (no scrub)"
+              variant="ghost"
+              disabled={ended}
+              onPress={async () => {
+                if (!id || ended) return;
+                try {
+                  const res = await createLiveToken(id);
+                  const url = res.data.ll_playback_url;
+                  if (!url) {
+                    toast.error("LL-HLS is not enabled on this API.");
+                    return;
+                  }
+                  setLlMode(true);
+                  setPlaybackUrl(url);
+                  setPlaybackToken(res.data.token);
+                } catch (e) {
+                  toast.error(userFacingError(e, "LL token failed"));
+                }
+              }}
+            />
+          ) : null}
           <Button
             label="Refresh health"
             variant="ghost"
@@ -181,6 +216,7 @@ export default function LiveDetailScreen() {
                   await qc.invalidateQueries({ queryKey: videoKeys.list() });
                   setPlaybackUrl(null);
                   setPlaybackToken(null);
+                  setLlMode(false);
                   toast.success(
                     res.data.archived_upload_id
                       ? "Stream revoked. Replay is in Library."
@@ -212,7 +248,10 @@ export default function LiveDetailScreen() {
           )}
 
           {playbackUrl && !ended ? (
-            <CopyRow label="Playback URL" value={playbackUrl} />
+            <CopyRow
+              label={llMode ? "LL-HLS playback" : "Playback URL"}
+              value={playbackUrl}
+            />
           ) : null}
           {playbackToken && id && !ended ? (
             <>
@@ -235,7 +274,10 @@ export default function LiveDetailScreen() {
             </>
           ) : null}
           {stream?.playback_url ? (
-            <CopyRow label="Public playback" value={stream.playback_url} />
+            <CopyRow label="Public DVR playback" value={stream.playback_url} />
+          ) : null}
+          {stream?.ll_playback_url ? (
+            <CopyRow label="Public LL-HLS" value={stream.ll_playback_url} />
           ) : null}
           {stream?.webrtc_base ? (
             <CopyRow label="WebRTC base" value={stream.webrtc_base} />

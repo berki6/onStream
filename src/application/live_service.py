@@ -110,6 +110,16 @@ def _playback_url(stream_id: str, token: Optional[str] = None) -> str:
     return base
 
 
+def _ll_playback_url(stream_id: str, token: Optional[str] = None) -> str:
+    base = (
+        f"{settings.PUBLIC_API_BASE_URL.rstrip('/')}"
+        f"/v1/playback/live/{stream_id}/ll/master.m3u8"
+    )
+    if token:
+        return f"{base}?token={token}"
+    return base
+
+
 def _whep_playback_url(stream_id: str, token: Optional[str] = None) -> str:
     base = (
         f"{settings.PUBLIC_API_BASE_URL.rstrip('/')}"
@@ -174,6 +184,12 @@ def _to_response(
         "stream_key_prefix": stream.stream_key_prefix,
         "rtmp_url": _rtmp_url_for_client(),
         "playback_url": _playback_url(stream.stream_id),
+        "ll_hls": live_normalize.ll_enabled(),
+        "ll_playback_url": (
+            _ll_playback_url(stream.stream_id)
+            if live_normalize.ll_enabled()
+            else None
+        ),
         "hls_path": stream.hls_path,
         "abr_hls_path": stream.abr_hls_path,
         "started_at": stream.started_at,
@@ -320,6 +336,11 @@ def issue_live_token(
         "token": token,
         "expires_in": ttl,
         "playback_url": _playback_url(stream_id, token=token),
+        "ll_playback_url": (
+            _ll_playback_url(stream_id, token=token)
+            if live_normalize.ll_enabled()
+            else None
+        ),
         "whep_playback_url": _whep_playback_url(stream_id, token=token),
     }
 
@@ -392,7 +413,9 @@ def authorize_publish(
         if settings.LIVE_ABR_ENABLED:
             abr_path = f"{stream.stream_id}/abr"
             live_abr.start_abr(stream.stream_id, key)
-        elif not live_record.is_enabled():
+        if live_normalize.ll_enabled() or (
+            not live_record.is_enabled() and not settings.LIVE_ABR_ENABLED
+        ):
             live_normalize.start_normalize(stream.stream_id, key)
         live_record.start_record(stream.stream_id, key)
 
@@ -515,40 +538,44 @@ def _live_root() -> Path:
     return root
 
 
-def resolve_master(stream: models.LiveStream) -> Path:
+def resolve_master(stream: models.LiveStream, *, latency: Optional[str] = None) -> Path:
     """Resolve master/index playlist under LIVE_HLS_DIR.
 
-    The EVENT archive is preferred so HLS viewers can DVR-scrub. Sliding
-    window / MediaMTX remux remain fallbacks until the archive has segments.
+    Default prefers the EVENT archive so HLS viewers can DVR-scrub.
+    ``latency='ll'`` is the sliding LL-HLS edge only (no archive).
     """
     root = _live_root()
+    want_ll = (latency or "").lower() in {"ll", "low", "low-latency"}
 
     candidates = []
-    dvr = _dvr_playlist(stream)
-    if dvr is not None:
-        arch = dvr.parent
-        candidates.extend([arch / "master.m3u8", arch / "index.m3u8"])
+    if want_ll:
+        ll = root / stream.stream_id / "ll"
+        candidates.extend([ll / "master.m3u8", ll / "index.m3u8"])
+    else:
+        dvr = _dvr_playlist(stream)
+        if dvr is not None:
+            arch = dvr.parent
+            candidates.extend([arch / "master.m3u8", arch / "index.m3u8"])
 
-    if settings.LIVE_ABR_ENABLED and stream.abr_hls_path:
-        abr_dir = root / stream.abr_hls_path
-        candidates.extend([abr_dir / "master.m3u8", abr_dir / "index.m3u8"])
+        if settings.LIVE_ABR_ENABLED and stream.abr_hls_path:
+            abr_dir = root / stream.abr_hls_path
+            candidates.extend([abr_dir / "master.m3u8", abr_dir / "index.m3u8"])
 
-    # Normalized WHIP HLS (H.264+AAC) wins over MediaMTX remux of VP8/Opus.
-    candidates.extend(
-        [
-            root / stream.stream_id / "master.m3u8",
-            root / stream.stream_id / "index.m3u8",
-        ]
-    )
-
-    if stream.hls_path:
-        hls_dir = root / stream.hls_path
         candidates.extend(
             [
-                hls_dir / "master.m3u8",
-                hls_dir / "index.m3u8",
+                root / stream.stream_id / "master.m3u8",
+                root / stream.stream_id / "index.m3u8",
             ]
         )
+
+        if stream.hls_path:
+            hls_dir = root / stream.hls_path
+            candidates.extend(
+                [
+                    hls_dir / "master.m3u8",
+                    hls_dir / "index.m3u8",
+                ]
+            )
 
     for path in candidates:
         if path.is_file():
@@ -579,7 +606,7 @@ def resolve_asset(stream: models.LiveStream, asset_path: str) -> Tuple[Path, str
 
     detail = (
         "Stream segment not found"
-        if safe.endswith(".ts")
+        if safe.endswith(".ts") or safe.endswith(".m4s")
         else "Stream asset not found"
     )
     raise AppError(detail, code=ErrorCode.LIVE_NOT_FOUND)

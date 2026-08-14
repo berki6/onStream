@@ -37,10 +37,12 @@ def test_live_playlist_edge_one_second(monkeypatch):
     assert "no-store" not in cc
 
 
-def test_live_segment_short_cache(monkeypatch):
+def test_live_ll_playlist_no_edge_cache(monkeypatch):
     monkeypatch.setattr(settings, "PLAYBACK_CDN_HEADERS_ENABLED", True)
-    h = cache_headers(live=True, asset_name="seg0.ts")
-    assert "max-age=4" in h["Cache-Control"]
+    h = cache_headers(live=True, asset_name="index.m3u8", ll=True)
+    assert "s-maxage=0" in h["Cache-Control"]
+    m4s = cache_headers(live=True, asset_name="seg_00001.m4s")
+    assert "max-age=4" in m4s["Cache-Control"]
 
 
 def test_live_captions_no_store(monkeypatch):

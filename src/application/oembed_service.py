@@ -118,6 +118,7 @@ def resolve(
     v = (qs.get("v") or [None])[0]
     s = (qs.get("s") or [None])[0]
     t = (qs.get("t") or [None])[0]
+    h = (qs.get("h") or [None])[0]
 
     try:
         if v:
@@ -126,6 +127,13 @@ def resolve(
             duration = card.get("duration")
             thumbnail = card.get("storyboard_url")
             watch_src = f"{base}/demo/watch/?v={quote(v, safe='')}&embed=1"
+        elif h:
+            from src.application import highlight_service
+
+            card = highlight_service.get_public(db, h)
+            title = card.get("title") or title
+            duration = None
+            watch_src = f"{base}/demo/watch/?h={quote(h, safe='')}&embed=1"
         elif s and t:
             peeked = share_link_service.peek(db, s, t)
             title = peeked["title"] or title

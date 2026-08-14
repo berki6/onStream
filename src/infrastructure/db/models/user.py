@@ -39,6 +39,9 @@ class User(Base):
     favorites = relationship(
         "VideoFavorite", back_populates="user", cascade="all, delete-orphan"
     )
+    highlights = relationship(
+        "VideoHighlight", back_populates="creator", cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<User(username='{self.username}', id={self.id})>"

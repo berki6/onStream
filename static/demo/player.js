@@ -167,8 +167,9 @@
     const hls = new Hls({
       enableWorker: true,
       renderTextTracksNatively: true,
-      backBufferLength: Infinity,
-      liveSyncDurationCount: 3,
+      backBufferLength: /\/ll\//.test(src) ? 30 : Infinity,
+      liveSyncDurationCount: /\/ll\//.test(src) ? 2 : 3,
+      lowLatencyMode: /\/ll\//.test(src),
     });
     if (opts.qualitySelect) wireQuality(hls, opts.qualitySelect);
     if (typeof opts.onHls === "function") opts.onHls(hls);

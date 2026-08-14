@@ -260,6 +260,9 @@ def rewrite_playlist(content: str, token: Optional[str]) -> bytes:
         dumped = playlist.dumps()
         if not dumped.endswith("\n"):
             dumped += "\n"
+        from src.application.ll_hls import append_token_to_quoted_uris
+
+        dumped = append_token_to_quoted_uris(dumped, token)
         return dumped.encode("utf-8")
     except Exception:
         # Fallback: line-based rewrite
@@ -273,12 +276,18 @@ def rewrite_playlist(content: str, token: Optional[str]) -> bytes:
                     out_lines.append(f"{stripped}?{q}")
             else:
                 out_lines.append(line)
-        return ("\n".join(out_lines) + "\n").encode("utf-8")
+        from src.application.ll_hls import append_token_to_quoted_uris
+
+        dumped = "\n".join(out_lines) + "\n"
+        dumped = append_token_to_quoted_uris(dumped, token)
+        return dumped.encode("utf-8")
 
 
 def inject_live_edge_start(content: str, offset: float = -2.0) -> str:
     """Point players at the live edge (negative TIME-OFFSET = from end of playlist)."""
     if not content or "#EXT-X-START:" in content:
+        return content
+    if "#EXT-X-PART:" in content:
         return content
     lines = content.splitlines()
     out = []

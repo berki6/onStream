@@ -86,6 +86,8 @@ All `/v1` errors (except MediaMTX auth webhook, which returns bare status) use:
 | `VALIDATION_BAD_REQUEST` | 400 | Generic validation |
 | `OEMBED_NOT_FOUND` | 404 | URL is not an embeddable OnStream watch page, or the video/share is not resolvable |
 | `OEMBED_BAD_REQUEST` | 400 | Missing url or `format` other than json |
+| `HIGHLIGHT_NOT_FOUND` | 404 | Highlight missing or not public |
+| `HIGHLIGHT_BAD_REQUEST` | 400 | Window/title/cap |
 | `RATE_LIMIT_EXCEEDED` | 429 | Auth rate limit |
 | `INTERNAL_SERVER_ERROR` | 500 | Unhandled / generic server |
 | `INTERNAL_STORAGE_FAILURE` | 500 | Object storage I/O |
@@ -158,7 +160,7 @@ DB-backed expiring watch links. Create returns plaintext token once; exchange (p
 | POST | `/{public_id}/peek` body `{ token }` (public); validates without minting a stream JWT or incrementing `max_views` |
 | POST | `/{public_id}/exchange` body `{ token }` (public); returns clip bounds + storyboard/caption URLs |
 
-Browser landing: `/demo/watch/?s={public_id}&t={token}` or tokenless `/demo/watch/?v={upload_id}` for `public`/`unlisted`. Add `embed=1` for iframe chrome (`embed=1` + share credentials **peek** first and wait for click so crawler iframes do not burn `max_views`). Optional `playlist={id}` for a public playlist side panel. Create also returns `app_url` (`onstream://watch?s=…&t=…`) for the Expo demo. Discovery: `<link rel="alternate" type="application/json+oembed" href="/v1/oembed?url=…">`.
+Browser landing: `/demo/watch/?s={public_id}&t={token}` or tokenless `/demo/watch/?v={upload_id}` for `public`/`unlisted`. Named highlights: `/demo/watch/?h={highlight_id}`. Add `embed=1` for iframe chrome (`embed=1` + share credentials **peek** first and wait for click so crawler iframes do not burn `max_views`). Optional `playlist={id}` for a public playlist side panel. Create also returns `app_url` (`onstream://watch?s=…&t=…`) for the Expo demo. Discovery: `<link rel="alternate" type="application/json+oembed" href="/v1/oembed?url=…">`.
 
 **Visibility.** `private` needs a token or owner JWT. `unlisted` and `public` play without a token when `READY`. Only `public` appears in RSS.
 
@@ -171,7 +173,7 @@ Browser landing: `/demo/watch/?s={public_id}&t={token}` or tokenless `/demo/watc
 
 ## oEmbed + public cards (no auth)
 
-`GET /v1/oembed` is **oEmbed 1.0 JSON at the document root** (not the `{ success, data }` envelope). Only `format=json`. The `url` host must match this request, `PUBLIC_API_BASE_URL`, or lab hosts (`localhost` / `127.0.0.1` / `testserver`). Share URLs are **peeked** (token checked, views not incremented). Private-via-share responses omit `thumbnail_url` so crawlers never get a tokenized sprite. Iframe `html` points at `/demo/watch/?…&embed=1`.
+`GET /v1/oembed` is **oEmbed 1.0 JSON at the document root** (not the `{ success, data }` envelope). Only `format=json`. The `url` host must match this request, `PUBLIC_API_BASE_URL`, or lab hosts (`localhost` / `127.0.0.1` / `testserver`). Share URLs are **peeked** (token checked, views not incremented). Private-via-share responses omit `thumbnail_url` so crawlers never get a tokenized sprite. Iframe `html` points at `/demo/watch/?…&embed=1`. Watch `?h=` resolves a public/unlisted highlight (private highlights 404 as `OEMBED_NOT_FOUND`).
 
 | Method | Path | Notes |
 |--------|------|--------|
@@ -191,6 +193,21 @@ Browser landing: `/demo/watch/?s={public_id}&t={token}` or tokenless `/demo/watc
 | GET | `/{playlist_id}/videos` |
 | POST / PUT / DELETE | `/{playlist_id}/videos/{video_id}` |
 
+## Highlights — `/v1/videos/{id}/highlights`
+
+Named clip windows on a READY VOD. Playback is the existing HLS tree plus a stream JWT with `clip_start` / `clip_end` — **no re-encode**. Cap 50 per video; unique `(video_id, start, end)`. Owner CRUD. List is visible to the owner or anyone when the video is tokenless (`public` / `unlisted`) READY. `GET /v1/highlights/{id}` 404s for private videos.
+
+| Method | Path |
+|--------|------|
+| GET | `/v1/videos/{video_id}/highlights` |
+| POST | `/v1/videos/{video_id}/highlights` body `{ start, end, title? }` or `{ from_chapters: true }` |
+| DELETE | `/v1/videos/{video_id}/highlights/{highlight_id}` |
+| POST | `/v1/videos/{video_id}/highlights/{highlight_id}/tokens` clip-window stream JWT |
+| POST | `/v1/videos/{video_id}/highlights/{highlight_id}/share` clip-window share link |
+| GET | `/v1/highlights/{highlight_id}` public/unlisted READY only |
+
+Browser: `/demo/watch/?h={highlight_id}`. Expo video detail lists highlights; Instant clip can **Save highlight** or import from chapters.
+
 ## Uploads — `/v1/uploads`
 
 Direct upload separates session creation, byte transfer, and completion so clients can retry `PUT`s without re-creating metadata.
@@ -203,20 +220,21 @@ Direct upload separates session creation, byte transfer, and completion so clien
 
 ## Playback
 
-Playback routes serve HLS masters and assets for VOD and live. Authorization accepts a stream token query parameter, a Bearer token, or public/unlisted visibility. Stream JWTs may include `clip_start` / `clip_end`; the master playlist injects `#EXT-X-START` when `clip_start` is present. Storyboard sprites live at `/v1/playback/{id}/storyboard.jpg` and `.vtt` (live archives enqueue a `storyboard` worker job after revoke so Watch replay gets the same filmstrip). Live `POST /v1/playback/live/{stream_id}/whep` is the viewer WHEP gateway (SDP in/out, opaque session `Location`); it does not expose the encoder stream key. `POST /v1/live/{id}/tokens` returns `playback_url` (HLS) and `whep_playback_url` (signaling).
+Playback routes serve HLS masters and assets for VOD and live. Authorization accepts a stream token query parameter, a Bearer token, or public/unlisted visibility. Stream JWTs may include `clip_start` / `clip_end`; the master playlist injects `#EXT-X-START` when `clip_start` is present. Storyboard sprites live at `/v1/playback/{id}/storyboard.jpg` and `.vtt` (live archives enqueue a `storyboard` worker job after revoke so Watch replay gets the same filmstrip). Live `POST /v1/playback/live/{stream_id}/whep` is the viewer WHEP gateway (SDP in/out, opaque session `Location`); it does not expose the encoder stream key. `POST /v1/live/{id}/tokens` returns `playback_url` (DVR HLS), `ll_playback_url` (LL-HLS edge, no scrub), and `whep_playback_url` (signaling). Default live `master.m3u8` stays the EVENT DVR archive. `GET .../ll/master.m3u8` is a separate fMP4 + PART playlist (`LIVE_LL_HLS_ENABLED`, default true) and honors blocking `_HLS_msn` / `_HLS_part`.
 
 | Method | Path |
 |--------|------|
 | GET | `/v1/playback/{video_id}/master.m3u8` |
 | GET | `/v1/playback/{video_id}/{asset}` |
 | GET | `/v1/playback/live/{stream_id}/master.m3u8` |
+| GET | `/v1/playback/live/{stream_id}/ll/master.m3u8` LL-HLS edge (not DVR) |
 | GET | `/v1/playback/live/{stream_id}/{asset}` |
 | POST | `/v1/playback/live/{stream_id}/whep` SDP offer (tokenized WHEP signaling) |
 | DELETE | `/v1/playback/live/{stream_id}/whep/sessions/{session_id}` |
 
 ## Live — `/v1/live`
 
-Create returns sensitive publish material once (`stream_key`, `whip_url`, `whep_url`). MediaMTX calls `/mediamtx-auth` on publish and read. Operational recipes: [`PLAYBACK_CLIENTS.md`](PLAYBACK_CLIENTS.md). GET/DELETE include `archived_upload_id` and `archive_playback_url` after a successful live → VOD promote. While live, `dvr` and `dvr_duration_seconds` reflect the EVENT archive (same playlist the live HLS URL serves).
+Create returns sensitive publish material once (`stream_key`, `whip_url`, `whep_url`). MediaMTX calls `/mediamtx-auth` on publish and read. Operational recipes: [`PLAYBACK_CLIENTS.md`](PLAYBACK_CLIENTS.md). GET/DELETE include `archived_upload_id` and `archive_playback_url` after a successful live → VOD promote. While live, `dvr` and `dvr_duration_seconds` reflect the EVENT archive (same playlist the default live HLS URL serves). `ll_playback_url` / `ll_hls` describe the sibling LL-HLS edge. Health includes `ll_playlist_present`.
 
 | Method | Path |
 |--------|------|
@@ -258,6 +276,7 @@ Payload shape: `{ "type", "created_at", "data": { stream_id, user_id, title, sta
 | `/feeds` | public RSS (user library / playlist) |
 | `/moderation` | quarantine queue + review |
 | `/search` | keyword (Postgres FTS) / semantic (dim-safe, cap 2000 chunks). `GET /capabilities` reports provider + index size. |
+| `/videos/{id}/highlights` | named clip windows (JWT clip playback, no re-encode) |
 
 ## Non-`/v1` operational endpoints
 
@@ -271,7 +290,7 @@ These routes are mounted on the application root for probes, metrics scrapers, a
 | `/metrics` | Prometheus (if enabled) |
 | `/scalar` | Scalar interactive API reference |
 | `/demo/` | static hls.js (if `DEMO_PLAYER_ENABLED`) — quality menu, keyboard, DVR-safe scrub thumbs |
-| `/demo/watch/` | watch landing (`?v=` public/unlisted, or `?s=` + `?t=` share; `embed=1`, `playlist=`) |
+| `/demo/watch/` | watch landing (`?v=` public/unlisted, `?h=` highlight, or `?s=` + `?t=` share; `embed=1`, `playlist=`) |
 
 ## Client guides
 
