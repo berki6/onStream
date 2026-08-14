@@ -4,35 +4,20 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import { ApiError, getApiBase } from "@/api/client";
+import { ApiError } from "@/api/client";
 import { createLiveStream, createLiveToken, LiveStream } from "@/api/live";
 import { Button } from "@/components/Button";
 import { CopyRow } from "@/components/CopyRow";
 import { Field } from "@/components/Field";
 import { FormScroll } from "@/components/FormScroll";
 import { Screen } from "@/components/Screen";
+import {
+  PC_DEMO_ORIGIN,
+  whepWatchUrl,
+  whipPublisherUrl,
+} from "@/lib/labOrigins";
 import { liveKeys } from "@/query/keys";
 import { colors, spacing } from "@/theme/tokens";
-
-function whipPublisherUrl(whipUrl: string, host = ""): string {
-  const base = (host || getApiBase()).replace(/\/$/, "");
-  let whip = whipUrl;
-  if (host.includes("127.0.0.1")) {
-    try {
-      const u = new URL(whipUrl);
-      u.hostname = "127.0.0.1";
-      whip = u.href;
-    } catch {
-      /* keep original */
-    }
-  }
-  return `${base}/demo/whip/?whip=${encodeURIComponent(whip)}`;
-}
-
-function whepWatchUrl(streamId: string, token: string, host = "") {
-  const base = (host || getApiBase()).replace(/\/$/, "");
-  return `${base}/demo/whep/?stream=${encodeURIComponent(streamId)}&token=${encodeURIComponent(token)}`;
-}
 
 export default function CreateLiveScreen() {
   const router = useRouter();
@@ -55,8 +40,8 @@ export default function CreateLiveScreen() {
       <FormScroll contentContainerStyle={styles.content}>
         <Text style={styles.lead}>
           Stream key, WHIP, and WHEP are shown once. Copy them before leaving.
-          The in-app Go Live button opens a phone browser on http://LAN-IP —
-          Chrome blocks the camera there. Use the PC localhost link for webcam.
+          Go Live opens HTTPS on the phone (install the lab CA first). PC Chrome
+          can use the localhost camera link without TLS.
         </Text>
 
         {!created ? (
@@ -106,9 +91,13 @@ export default function CreateLiveScreen() {
                 <CopyRow
                   label="PC camera link (localhost)"
                   value={whipPublisherUrl(
-                    created.whip_url,
-                    "http://127.0.0.1:8000"
+                    created.whip_url!,
+                    PC_DEMO_ORIGIN
                   )}
+                />
+                <CopyRow
+                  label="Phone camera (HTTPS)"
+                  value={whipPublisherUrl(created.whip_url!)}
                 />
                 <Button
                   label="Go Live (WHIP in browser)"

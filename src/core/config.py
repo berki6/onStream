@@ -165,7 +165,8 @@ class Settings(BaseSettings):
     MEDIA_PYAV_ENABLED: bool = _env_bool("MEDIA_PYAV_ENABLED", "true")
     QOE_CANARY_ENABLED: bool = _env_bool("QOE_CANARY_ENABLED", "true")
 
-    # WebRTC / WHIP-WHEP
+    # WebRTC / WHIP-WHEP (browser/encoder). Empty HTTPS → PUBLIC_WEBRTC_BASE_URL.
+    # Lab edge: PUBLIC_HTTPS_BASE_URL=https://<LAN> (Caddy :443, path /live/...).
     PUBLIC_WEBRTC_BASE_URL: str = os.environ.get(
         "PUBLIC_WEBRTC_BASE_URL", "http://localhost:8889"
     )

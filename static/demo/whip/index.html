@@ -86,7 +86,8 @@
   <p>
     Camera / mic → WebRTC WHIP → MediaMTX. The camera only works on a
     <strong>secure origin</strong> (<code>http://127.0.0.1</code> or HTTPS).
-    Expo’s phone link is <code>http://LAN-IP</code>, which browsers block.
+    Phone: install the lab CA, then open this page on <code>https://LAN</code>.
+    PC: <code>http://127.0.0.1:8000</code> is already a secure origin.
   </p>
   <div class="panel">
     <div id="hint" hidden></div>
@@ -121,23 +122,50 @@
       statusEl.className = kind || "";
     }
 
+    function isLoopbackHost(hostname) {
+      return hostname === "localhost" || hostname === "127.0.0.1";
+    }
+
     function toLoopback(urlStr) {
       try {
         const u = new URL(urlStr, location.href);
-        if (u.hostname !== "localhost" && u.hostname !== "127.0.0.1") {
-          u.hostname = "127.0.0.1";
-        }
+        u.protocol = "http:";
+        u.hostname = "127.0.0.1";
+        u.port = "8000";
         const nested = u.searchParams.get("whip");
         if (nested) {
           const w = new URL(nested);
-          if (w.hostname !== "localhost" && w.hostname !== "127.0.0.1") {
-            w.hostname = "127.0.0.1";
-            u.searchParams.set("whip", w.href);
-          }
+          w.protocol = "http:";
+          w.hostname = "127.0.0.1";
+          w.port = "8889";
+          u.searchParams.set("whip", w.href);
         }
         return u.href;
       } catch {
         return urlStr;
+      }
+    }
+
+    function caUrl() {
+      return "http://" + location.hostname + "/lab/ca.crt";
+    }
+
+    function httpsPageUrl() {
+      try {
+        const u = new URL(location.href);
+        u.protocol = "https:";
+        if (u.port === "8000" || u.port === "80") u.port = "";
+        return u.href;
+      } catch {
+        return location.href;
+      }
+    }
+
+    function sameOrigin(urlStr) {
+      try {
+        return new URL(urlStr, location.href).origin === location.origin;
+      } catch {
+        return false;
       }
     }
 
@@ -151,19 +179,74 @@
 
     function showInsecureHint() {
       const page = toLoopback(location.href);
+      const ca = caUrl();
+      const httpsPage = httpsPageUrl();
       hintEl.hidden = false;
+      if (isLoopbackHost(location.hostname)) {
+        hintEl.innerHTML =
+          "This origin is not a secure context. Open " +
+          "<a href=\"" + page + "\">" + page + "</a> on this PC.";
+        return;
+      }
       hintEl.innerHTML =
-        "Browsers block the camera on <code>http://LAN-IP</code> (that is what Expo opens). " +
-        "On <strong>this PC</strong> open " +
-        "<a href=\"" + page + "\">" + page + "</a> " +
-        "then tap Go Live. Localhost is a secure origin.";
+        "Browsers block the camera on <code>http://</code> LAN. " +
+        "<strong>Phone:</strong> 1) install the lab CA from " +
+        "<a href=\"" + ca + "\">" + ca + "</a> " +
+        "(iOS: Settings → General → VPN & Device Management → install, then " +
+        "General → About → Certificate Trust Settings → Full Trust). " +
+        "2) open <a href=\"" + httpsPage + "\">" + httpsPage + "</a>. " +
+        "<strong>PC:</strong> <a href=\"" + page + "\">" + page + "</a> " +
+        "(localhost is already a secure origin).";
+    }
+
+    async function postWhip(whipUrl, sdp) {
+      if (sameOrigin(whipUrl)) {
+        const res = await fetch(whipUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/sdp" },
+          body: sdp,
+        });
+        const body = await res.text();
+        const loc = res.headers.get("Location");
+        return {
+          status: res.status,
+          sdp: body,
+          session_url: loc ? new URL(loc, whipUrl).href : null,
+          error: res.status === 201 ? null : body.slice(0, 200),
+        };
+      }
+      const res = await fetch(
+        "/demo/whip/session?target=" + encodeURIComponent(whipUrl),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/sdp" },
+          body: sdp,
+        }
+      );
+      const payload = await res.json().catch(() => ({}));
+      return {
+        status: res.status,
+        sdp: payload.sdp,
+        session_url: payload.session_url || null,
+        error: payload.error || payload.sdp || null,
+      };
+    }
+
+    async function deleteWhipSession(url) {
+      if (!url) return;
+      if (sameOrigin(url)) {
+        await fetch(url, { method: "DELETE" }).catch(() => {});
+        return;
+      }
+      const q = "/demo/whip/session?target=" + encodeURIComponent(url);
+      await fetch(q, { method: "DELETE" }).catch(() => {});
     }
 
     async function getMedia() {
       if (!cameraAvailable()) {
         showInsecureHint();
         throw new Error(
-          "Camera API missing. Open this page via http://127.0.0.1:8000 on the PC."
+          "Camera API missing. Phone: install CA + HTTPS. PC: http://127.0.0.1:8000."
         );
       }
       try {
@@ -193,8 +276,7 @@
     async function stop() {
       try {
         if (sessionUrl) {
-          const q = "/demo/whip/session?target=" + encodeURIComponent(sessionUrl);
-          await fetch(q, { method: "DELETE" }).catch(() => {});
+          await deleteWhipSession(sessionUrl);
         }
       } finally {
         sessionUrl = null;
@@ -215,7 +297,7 @@
 
     if (!cameraAvailable()) {
       showInsecureHint();
-      setStatus("Open the localhost link above on this PC to use the camera.", "err");
+      setStatus("Install the lab CA, then open the HTTPS link — or use localhost on this PC.", "err");
     }
 
     goBtn.addEventListener("click", async () => {
@@ -254,22 +336,13 @@
         await pc.setLocalDescription(offer);
         await waitIce(pc);
         setStatus("WHIP POST…");
-        const res = await fetch(
-          "/demo/whip/session?target=" + encodeURIComponent(whipUrl),
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/sdp" },
-            body: pc.localDescription.sdp,
-          }
-        );
-        const payload = await res.json().catch(() => ({}));
-        if (res.status !== 201) {
-          const msg =
-            payload.error || payload.sdp || "WHIP failed HTTP " + res.status;
+        const posted = await postWhip(whipUrl, pc.localDescription.sdp);
+        if (posted.status !== 201) {
+          const msg = posted.error || "WHIP failed HTTP " + posted.status;
           throw new Error(String(msg).slice(0, 200));
         }
-        sessionUrl = payload.session_url || null;
-        await pc.setRemoteDescription({ type: "answer", sdp: payload.sdp });
+        sessionUrl = posted.session_url || null;
+        await pc.setRemoteDescription({ type: "answer", sdp: posted.sdp });
         stopBtn.disabled = false;
         setStatus("Live — publishing to MediaMTX", "ok");
       } catch (e) {
@@ -281,10 +354,13 @@
 
     stopBtn.addEventListener("click", () => stop());
     window.addEventListener("beforeunload", () => {
-      if (sessionUrl) {
-        const q = "/demo/whip/session?target=" + encodeURIComponent(sessionUrl);
-        navigator.sendBeacon?.(q);
+      if (!sessionUrl) return;
+      if (sameOrigin(sessionUrl)) {
+        fetch(sessionUrl, { method: "DELETE", keepalive: true }).catch(() => {});
+        return;
       }
+      const q = "/demo/whip/session?target=" + encodeURIComponent(sessionUrl);
+      navigator.sendBeacon?.(q);
     });
   </script>
 </body>

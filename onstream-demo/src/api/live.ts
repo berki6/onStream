@@ -11,6 +11,7 @@ export type LiveStream = {
   playback_url?: string | null;
   ll_playback_url?: string | null;
   ll_hls?: boolean;
+  whip_url?: string | null;
   whep_url?: string | null;
   webrtc_base?: string | null;
   hls_path?: string | null;

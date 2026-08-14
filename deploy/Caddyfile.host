@@ -1,0 +1,56 @@
+# OnStream lab edge — native Caddy (no Docker)
+#
+# Same planes as deploy/Caddyfile:
+#   :443  TLS → uvicorn :8000 and MediaMTX WHIP/WHEP :8889
+#   :80   lab CA + redirect to HTTPS
+#   UDP 8189 stays on MediaMTX
+#
+# From repo root (elevated shell if Windows refuses :80/:443):
+#   python scripts/lab_https.py --apply-env
+#   caddy run --config deploy/Caddyfile.host --adapter caddyfile
+#
+# Paths are relative to this file (deploy/certs).
+
+{
+	auto_https off
+	admin off
+}
+
+:80 {
+	handle /lab/ca.crt {
+		root * ./certs
+		rewrite * /rootCA.pem
+		header Content-Type application/x-x509-ca-cert
+		header Content-Disposition inline
+		file_server
+	}
+	handle /lab/ca.pem {
+		root * ./certs
+		rewrite * /rootCA.pem
+		header Content-Type application/x-x509-ca-cert
+		file_server
+	}
+	handle {
+		redir https://{host}{uri} 308
+	}
+}
+
+:443 {
+	tls ./certs/lab.pem ./certs/lab-key.pem
+
+	handle /live/* {
+		header Access-Control-Expose-Headers Location
+		reverse_proxy 127.0.0.1:8889 {
+			flush_interval -1
+			header_up X-Forwarded-Proto {scheme}
+			header_down Location ^https?://[^/]+(?::8889)? https://{http.request.host}
+		}
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:8000 {
+			flush_interval -1
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+}

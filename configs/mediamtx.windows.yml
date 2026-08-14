@@ -39,6 +39,10 @@ rtspAddress: :8554
 webrtc: yes
 webrtcAddress: :8889
 webrtcLocalUDPAddress: :8189
+# Host NIC IPs are advertised automatically. If ICE still offers 172.x,
+# set MTX_WEBRTCADDITIONALHOSTS=<LAN-IP> in the process environment.
+webrtcIPsFromInterfaces: yes
+webrtcAdditionalHosts: []
 
 ###############################################
 # HLS (must match LIVE_HLS_DIR in .env → data/live)

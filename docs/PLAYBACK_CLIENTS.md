@@ -71,7 +71,7 @@ Publish auth, kick, and path health are MediaMTX-specific today. A future `LiveC
 
 - LAN demonstration networks typically do not need TURN.
 - Internet or NAT traversal: enable `docker compose --profile turn` and configure ICE using `configs/mediamtx.turn.example.yml`.
-- Browser WHIP over HTTPS: enable `--profile edge` (Caddy) and HTTPS public base URLs — see [`OPS_MEDIA.md`](OPS_MEDIA.md).
+- Browser WHIP over HTTPS (phone camera): `python scripts/lab_https.py --apply-env` then `--profile edge`. See the Caddy section below.
 
 ## VOD → VLC or OBS (already available)
 
@@ -139,19 +139,19 @@ MediaMTX authenticates publish via `POST /v1/live/mediamtx-auth`.
 
 ### 3. WHIP / WHEP (WebRTC)
 
-MediaMTX WebRTC listens on `PUBLIC_WEBRTC_BASE_URL` (default `http://localhost:8889`).
+MediaMTX WebRTC signaling listens at `PUBLIC_WEBRTC_BASE_URL` (default `http://localhost:8889`). When `PUBLIC_HTTPS_BASE_URL` is set (Caddy edge), create-once WHIP/WHEP URLs use that origin (`https://<host>/live/{key}/whip`) — the HTTP listener on `:8889` stays internal.
 
 | Use | URL shape |
 |-----|-----------|
-| Publish (WHIP, encoder) | `{PUBLIC_WEBRTC_BASE_URL}/live/{stream_key}/whip` (create-once) |
-| Play (WHEP, encoder/debug) | `{PUBLIC_WEBRTC_BASE_URL}/live/{stream_key}/whep` (create-once; do not give to viewers) |
+| Publish (WHIP, encoder) | `{webrtc_base}/live/{stream_key}/whip` (create-once) |
+| Play (WHEP, encoder/debug) | `{webrtc_base}/live/{stream_key}/whep` (create-once; do not give to viewers) |
 | Play (WHEP, viewers) | `POST /v1/playback/live/{stream_id}/whep?token=` then `DELETE` the `Location` session |
 
 Path remains `live/{plaintext_stream_key}` on MediaMTX (same auth as RTMP). Use a WHIP-capable encoder (OBS WHIP plugin, browser WHIP client, etc.).
 
-**Viewer WHEP** goes through OnStream so playback tokens apply and the stream key never appears in the player. The API talks to MediaMTX at `MEDIAMTX_WEBRTC_URL` (loopback/docker), not `PUBLIC_WEBRTC_BASE_URL` (browser/encoder). Signaling is proxied; ICE/RTP still terminates on MediaMTX (`:8889` / `:8189`). Lab player: `http://127.0.0.1:8000/demo/whep/?stream=&token=` (secure context). Expo Go keeps HLS; **Watch live (low latency)** opens the demo page.
+**Viewer WHEP** goes through OnStream so playback tokens apply and the stream key never appears in the player. The API talks to MediaMTX at `MEDIAMTX_WEBRTC_URL` (loopback/docker), not `PUBLIC_WEBRTC_BASE_URL` (browser/encoder). Signaling is proxied; ICE/RTP still terminates on MediaMTX (`:8889` / UDP `:8189`). Lab player: PC `http://127.0.0.1:8000/demo/whep/?stream=&token=` or phone `https://<LAN>/demo/whep/…` after the lab CA. Expo Go keeps HLS; **Watch live (low latency)** opens the demo page.
 
-Browser WHIP is usually VP8 + Opus, which MediaMTX’s MPEG-TS HLS muxer cannot remux. OnStream pulls the same path over RTSP and writes a GOP-aligned **EVENT** archive under `{LIVE_HLS_DIR}/{stream_id}/archive/` (H.264 + AAC). Live HLS playback serves that playlist so viewers can DVR-scrub; `#EXT-X-START` keeps new joiners at the live edge. When `LIVE_LL_HLS_ENABLED` (default), a second FFmpeg mux writes fMP4 + PART tags under `{LIVE_HLS_DIR}/{stream_id}/ll/`. That URL is not the DVR archive and has no timeline to scrub. WHEP plays the **raw ingest** (sub-second, no timeline). MPEG-TS muxer crashes on Opus are expected and irrelevant to WHEP. Lab camera: open `http://127.0.0.1:8000/demo/whip/` on the PC (LAN HTTP hides `getUserMedia`). TURN / Caddy still apply for internet WebRTC. `/demo/` hls.js sets `lowLatencyMode` when the URL contains `/ll/`.
+Browser WHIP is usually VP8 + Opus, which MediaMTX’s MPEG-TS HLS muxer cannot remux. OnStream pulls the same path over RTSP and writes a GOP-aligned **EVENT** archive under `{LIVE_HLS_DIR}/{stream_id}/archive/` (H.264 + AAC). Live HLS playback serves that playlist so viewers can DVR-scrub; `#EXT-X-START` keeps new joiners at the live edge. When `LIVE_LL_HLS_ENABLED` (default), a second FFmpeg mux writes fMP4 + PART tags under `{LIVE_HLS_DIR}/{stream_id}/ll/`. That URL is not the DVR archive and has no timeline to scrub. WHEP plays the **raw ingest** (sub-second, no timeline). MPEG-TS muxer crashes on Opus are expected and irrelevant to WHEP. Lab camera: **phone** installs the mkcert CA from `http://<LAN>/lab/ca.crt` then opens `https://<LAN>/demo/whip/` (Expo Go still cannot encode). **PC** can keep `http://127.0.0.1:8000/demo/whip/` without TLS. TURN still applies for internet WebRTC. `/demo/` hls.js sets `lowLatencyMode` when the URL contains `/ll/`.
 
 ### 4. Watch in VLC
 
@@ -192,11 +192,37 @@ Set `DEMO_PLAYER_ENABLED=true` and open `http://localhost:8000/demo/` (hls.js). 
 
 ## Caddy edge (profile `edge`)
 
+Lab HTTPS is **mkcert**, not Let’s Encrypt. Caddy terminates TLS and proxies:
+
+- `/v1`, `/demo`, `/health`, `/metrics` → API
+- `/live/*` → MediaMTX WHIP/WHEP **signaling** (`:8889`)
+- `:80 /lab/ca.crt` → public CA so phones can trust TLS **before** HTTPS works
+
+ICE/RTP is **UDP 8189 on the host**. Caddy does not carry media. Host MediaMTX already advertises NIC IPs; Compose MediaMTX needs `ONSTREAM_LAN_IP` (`MTX_WEBRTCADDITIONALHOSTS`) so ICE is not Docker `172.x`.
+
+```bash
+python scripts/lab_https.py --apply-env
+```
+
+**No Docker** (this lab: uvicorn + `mediamtx.exe` on Windows) — install [Caddy](https://caddyserver.com/docs/install) and [mkcert](https://github.com/FiloSottile/mkcert#installation) on the host. From repo root, elevated if `:80`/`:443` bind fails:
+
+```powershell
+caddy run --config deploy/Caddyfile.host --adapter caddyfile
+```
+
+`deploy/Caddyfile.host` proxies `127.0.0.1:8000` and `127.0.0.1:8889` and reads `deploy/certs/`.
+
+**Compose** (Caddy in a container, API/MediaMTX still on the host by default):
+
 ```bash
 docker compose --profile edge up caddy
 ```
 
-`deploy/Caddyfile` reverse-proxies the API and MediaMTX WebRTC. Set `PUBLIC_HTTPS_BASE_URL` when terminating TLS in front of the stack.
+`deploy/Caddyfile` uses `host.docker.internal`. Full-compose: `ONSTREAM_EDGE_API=api:8000` and `ONSTREAM_EDGE_WEBRTC=mediamtx:8889`.
+
+Then: phone installs `http://<LAN>/lab/ca.crt` (iOS: profile + **Full Trust**), API `.env` has `PUBLIC_HTTPS_BASE_URL=https://<LAN>` and Expo stays on `http://<LAN>:8000` (Expo Go does not trust user CAs). Restart the API after `--apply-env`.
+
+Production: public hostname + Let’s Encrypt. Do not ship `deploy/certs/*.pem`.
 
 ## TURN / coturn (profile `turn`)
 
@@ -235,6 +261,7 @@ MEDIAMTX_RTSP_URL=rtsp://127.0.0.1:8554
 PUBLIC_RTMP_BASE_URL=rtmp://localhost:1935/live
 PUBLIC_WEBRTC_BASE_URL=http://localhost:8889
 PUBLIC_HTTPS_BASE_URL=
+ONSTREAM_LAN_IP=
 LIVE_HLS_DIR=data/live
 LIVE_HEALTH_ENABLED=true
 LIVE_STALE_SECONDS=20

@@ -125,7 +125,7 @@ OpenTelemetry setup is in `src/core/otel.py` when `OTEL_ENABLED` is set (API ser
 
 ## Caddy edge (`edge` profile)
 
-`deploy/Caddyfile` terminates TLS and reverse-proxies the API and MediaMTX WebRTC ports. Set `PUBLIC_HTTPS_BASE_URL` (and related public bases) so issued playback, WHIP, and WHEP URLs match the certificate hostname. LAN-only demos may omit Caddy; browser WHIP over the public internet should not.
+`deploy/Caddyfile` (Compose) or `deploy/Caddyfile.host` (native Caddy, no Docker) terminates TLS (mkcert at `deploy/certs/`) and reverse-proxies the API plus MediaMTX WHIP/WHEP **signaling** (`/live/*`). ICE/RTP is UDP `:8189` on the host — Caddy does not carry media. Run `python scripts/lab_https.py --apply-env`, then either `caddy run --config deploy/Caddyfile.host --adapter caddyfile` or `docker compose --profile edge up caddy`. `PUBLIC_HTTPS_BASE_URL` / `PUBLIC_WEBRTC_BASE_URL` become `https://<LAN>`; Expo stays on `http://<LAN>:8000`. Phones install `http://<LAN>/lab/ca.crt` before opening `/demo/whip/` over HTTPS.
 
 ## Profile cheat sheet
 

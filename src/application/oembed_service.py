@@ -33,16 +33,19 @@ def _norm_host(netloc: str) -> str:
 def _host_allowed(url_host: str, request_host: str) -> bool:
     url_h = _norm_host(url_host).split(":")[0]
     req_h = _norm_host(request_host).split(":")[0]
-    public = ""
-    try:
-        public = _norm_host(urlparse(settings.PUBLIC_API_BASE_URL).netloc).split(":")[0]
-    except Exception:
-        pass
-    lab = {"testserver", "localhost", "127.0.0.1"}
     if url_h == req_h:
         return True
-    if public and url_h == public:
+    configured: set[str] = set()
+    for raw in (settings.PUBLIC_API_BASE_URL, settings.PUBLIC_HTTPS_BASE_URL):
+        try:
+            host = _norm_host(urlparse(raw or "").netloc).split(":")[0]
+        except Exception:
+            host = ""
+        if host:
+            configured.add(host)
+    if url_h in configured:
         return True
+    lab = {"testserver", "localhost", "127.0.0.1"}
     return url_h in lab and req_h in lab
 
 

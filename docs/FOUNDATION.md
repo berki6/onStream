@@ -37,7 +37,7 @@ src/
 
 In the default Compose stack, **five kinds of process** cooperate. The API answers quickly and enqueues work. The worker is the only place that should burn CPU on encode (and optional AI). Postgres is the system of record. Redis is a *fast path* for jobs, not the source of truth. MediaMTX is a specialized media server OnStream trusts via an HTTP auth webhook and a shared live HLS volume.
 
-You can hit the API directly on `:8000` for LAN demos. The optional Caddy (`edge`) profile sits in front when you need TLS and stable HTTPS URLs for browsers / WHIP.
+You can hit the API directly on `:8000` for LAN demos. The optional Caddy (`edge`) profile terminates **lab TLS** (mkcert) or production TLS and reverse-proxies API + WHIP/WHEP **signaling**. ICE/RTP stays on MediaMTX UDP `:8189` — Caddy cannot proxy media.
 
 ```mermaid
 flowchart TB
@@ -98,7 +98,7 @@ Profiles keep the **happy path small**. A laptop `docker compose up` should not 
 | `ai` | `worker-ai` | heavier AI deps (`requirements-ai.txt`) |
 | `gpu` | `worker-gpu` | `FFMPEG_HWACCEL=nvenc` |
 | `turn` | coturn (+ overlay) | ICE for internet WebRTC |
-| `edge` | Caddy | TLS / HTTPS base URLs |
+| `edge` | Caddy | TLS terminator (mkcert lab / Let’s Encrypt prod). WHIP signaling only. |
 | `obs` | Prometheus + Grafana | scrape `/metrics` |
 
 ## Auth model

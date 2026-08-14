@@ -87,8 +87,8 @@ More encoder/player recipes: [`docs/PLAYBACK_CLIENTS.md`](docs/PLAYBACK_CLIENTS.
 | Live → VOD replay | **Ready** | Revoke archives HLS; Expo **Watch replay** |
 | Live HLS DVR scrub | **Ready** | EVENT archive is the live playlist; Expo **Jump to live** |
 | Direct upload `/v1/uploads` | **Ready** | Expo **+** → **Resumable** + `/demo/upload/` (chunked Content-Range) |
-| WHIP publish | **Ready (browser)** | `/demo/whip/` + Expo **Go Live** opens it; Expo Go has no native WebRTC encoder |
-| WHEP watch | **Ready (PC Chrome)** | Tokenized `/demo/whep/?stream=&token=`; Expo **Watch live (low latency)** opens it; Expo Go has no WebRTC player |
+| WHIP publish | **Ready (browser)** | PC `127.0.0.1` or phone HTTPS after lab CA; Expo Go cannot encode |
+| WHEP watch | **Ready (browser)** | Tokenized `/demo/whep/`; PC localhost or phone HTTPS; Expo Go has no WebRTC player |
 | Password reset UX | **Ready** | Expo forgot/reset + `/demo/reset/`; `EMAIL_PROVIDER=log` (lab) / `smtp` (prod) |
 | Moderation review | **Ready** | Lab → Moderation queue (approve / reject) |
 | Share-link inbox | **Ready** | Lab / Library link icon → audit + revoke; token still once at create |
@@ -127,7 +127,21 @@ When your Wi‑Fi IP changes, from repo root:
 ```
 
 Updates only local `.env` and `onstream-demo/.env` (not committed examples/docs).  
-(`--dry-run` / `--ip 192.168.x.x` available.) Then restart API + Expo.
+(`--dry-run` / `--ip 192.168.x.x` / `--https` available.) Then restart API + Expo.
+
+Phone camera over HTTPS (Caddy + mkcert):
+
+```powershell
+.\.venv\Scripts\python.exe scripts\lab_https.py --apply-env
+```
+
+Needs [mkcert](https://github.com/FiloSottile/mkcert#installation) on PATH. Then start Caddy — **this lab has no Docker**, so use the host file (install [Caddy](https://caddyserver.com/docs/install); elevated PowerShell if `:80`/`:443` bind fails):
+
+```powershell
+caddy run --config deploy\Caddyfile.host --adapter caddyfile
+```
+
+Compose alternative: `docker compose --profile edge up caddy`. PC camera does not need Caddy: `http://127.0.0.1:8000/demo/whip/`.
 
 Tokenized `playback_url` values are built from `PUBLIC_API_BASE_URL`. Expo’s in-app API base alone is not enough — the player follows the URL returned by the API.
 
@@ -367,7 +381,7 @@ Hard `live.ended` is revoke-only; health soft-fail emits `live.idle`, not `live.
 - [ ] Optional: captions appear after AI jobs (Expo VOD detail shows READY vs captions-pending); on-disk `master.m3u8` gains `SUBTITLES`
 - [ ] Optional: Lab → Webhooks subscribe + delivery log shows `live.*`
 - [ ] Optional: Library → **+** → Resumable direct upload (or `/demo/upload/`) → READY
-- [ ] Optional: Live create → **Go Live (WHIP in browser)** → camera publish (LAN `PUBLIC_WEBRTC_BASE_URL`)
+- [ ] Optional: Live create → **Go Live** (phone HTTPS + lab CA) or PC localhost camera
 - [ ] Optional: Lab → Moderation queue approve/reject
 - [ ] Optional: Forgot password → log/SMTP → Expo reset screen
 
@@ -480,17 +494,30 @@ Requires `alembic upgrade head` through `i9c0d1e2f3a4`. Use a **READY** VOD.
 
 ### 4) WHIP Go Live (camera → MediaMTX)
 
-Camera must run in **PC Chrome** at `http://127.0.0.1:8000/demo/whip/` (Expo Go has no native WebRTC; browsers hide `getUserMedia` on insecure LAN HTTP). Expo **Go Live** still opens the page; copy the **PC camera link (localhost)** if the phone browser cannot capture.
+Browsers hide `getUserMedia` on `http://LAN-IP`. Two secure origins:
 
-1. Expo → Live → **New live** → Create stream (copy key/WHIP once if you want).
-2. On the PC, open `/demo/whip/?whip=…` (or the localhost copy row) → Allow camera/mic → **Go Live**.
-3. MediaMTX may log `MPEG-TS … MPEG-4 Audio only` for VP8/Opus — expected. OnStream normalizes to H.264+AAC HLS under `data/live/{stream_id}/`.
-4. Back in Expo → **Open stream** → wait a few seconds for the first normalized playlist.
-5. **Stop** on the WHIP page → revoke the stream when done.
+- **PC Chrome:** `http://127.0.0.1:8000/demo/whip/` (no TLS). Expo **PC camera link**.
+- **Phone Chrome/Safari:** install the lab CA, then `https://<LAN>/demo/whip/`. Expo **Go Live** / **Phone camera (HTTPS)**.
 
-Restart MediaMTX after pulling RTSP config (`rtsp: yes` on `:8554`). `LIVE_NORMALIZE_ENABLED` defaults on; FFmpeg must be on `PATH`.
+Expo Go still cannot encode. This is not in-app WHIP.
 
-If WHIP POST fails: browser must reach MediaMTX (`PUBLIC_WEBRTC_BASE_URL`). Restart API after any `sync_lan_ip` change.
+```bash
+python scripts/lab_https.py --apply-env
+```
+
+No Docker: install Caddy + mkcert on the host, then `caddy run --config deploy/Caddyfile.host --adapter caddyfile` (elevated if `:80`/`:443` bind fails). Compose: `docker compose --profile edge up caddy`.
+
+1. Phone: open `http://<LAN>/lab/ca.crt` and install. iOS: Settings → General → VPN & Device Management → install profile, then General → About → Certificate Trust Settings → **Full Trust**.
+2. Restart the API so `PUBLIC_HTTPS_BASE_URL=https://<LAN>` is loaded. Expo stays on `http://<LAN>:8000`.
+3. Expo → Live → **New live** → Create stream.
+4. Phone: **Go Live (WHIP in browser)** (HTTPS page) → Allow camera/mic → **Go Live**. Or PC: open the localhost copy row.
+5. MediaMTX may log `MPEG-TS … MPEG-4 Audio only` for VP8/Opus — expected. OnStream normalizes to H.264+AAC HLS under `data/live/{stream_id}/`.
+6. Back in Expo → **Open stream** → wait a few seconds for the first normalized playlist.
+7. **Stop** on the WHIP page → revoke the stream when done.
+
+Restart MediaMTX after pulling RTSP config (`rtsp: yes` on `:8554`). `LIVE_NORMALIZE_ENABLED` defaults on; FFmpeg must be on `PATH`. ICE is UDP `:8189` on the host — Caddy does not proxy media. Native `mediamtx.exe` advertises the NIC; Compose MediaMTX needs `ONSTREAM_LAN_IP`.
+
+If WHIP POST fails on the phone: CA not trusted, Caddy not listening on `:443`, or ICE offering a bad address. Restart API after `--apply-env`. Native MediaMTX uses the host NIC; Compose MediaMTX needs `ONSTREAM_LAN_IP`.
 
 ---
 
@@ -520,7 +547,7 @@ Auth still returns immediately. Track probing runs in a background thread so `/v
 **Retest WHIP**
 
 1. Restart MediaMTX so `rtsp: yes` on `:8554` is loaded (`configs/mediamtx.windows.yml`). Uvicorn `--reload` should already have the Python changes.
-2. Open **PC Chrome** at `http://127.0.0.1:8000/demo/whip/` (LAN HTTP still hides the camera).
+2. Open **PC Chrome** at `http://127.0.0.1:8000/demo/whip/` or the phone HTTPS page after the lab CA.
 3. Go live, then in Expo open the stream and wait a few seconds for the first normalized playlist.
 4. A MediaMTX log line about MPEG-TS / MPEG-4 Audio is expected for VP8. Expo should play from the normalized HLS, not that muxer.
 
@@ -534,7 +561,7 @@ HLS on Expo stays ~3s. WHEP is a different protocol: authorized signaling throug
 
 1. Go live with WHIP ([§4](#4-whip-go-live-camera--mediamtx)) so the path is `live`.
 2. Expo stream detail → **Issue live playback token** → copy **PC WHEP watch (localhost)** or tap **Watch live (low latency)**.
-3. Open `http://127.0.0.1:8000/demo/whep/?stream=&token=` in **PC Chrome** (LAN HTTP is not a secure context for `RTCPeerConnection`).
+3. Open `http://127.0.0.1:8000/demo/whep/?stream=&token=` in **PC Chrome**, or `https://<LAN>/demo/whep/…` on the phone after the lab CA (`RTCPeerConnection` needs a secure origin).
 4. **Watch** — should be near real-time vs the ~3s HLS player. Stop on the page when done.
 
 The demo page POSTs SDP to `/v1/playback/live/{stream_id}/whep` (token in query). It never uses the create-once encoder `whep_url`.
@@ -575,9 +602,9 @@ Worker injects `#EXT-X-MEDIA:TYPE=SUBTITLES` into `data/hls/{id}/master.m3u8` af
 ### Live ingest / WHIP
 - Sidecar design and retest: [§6](#6-live-ingest-normalize-sidecar). Camera walkthrough: [§4](#4-whip-go-live-camera--mediamtx). WHEP watch: [§7](#7-whep-watch-sub-second-pc-chrome).
 - Expo Live create → **Go Live (WHIP in browser)** opens `/demo/whip/?whip=…`.
-- Use **PC Chrome** at `http://127.0.0.1:8000/demo/whip/` for camera (LAN HTTP has no `getUserMedia`).
+- Use **PC Chrome** at `http://127.0.0.1:8000/demo/whip/` or the phone HTTPS page (lab CA + Caddy). LAN HTTP has no `getUserMedia`.
 - VP8/Opus ingest is normalized to H.264+AAC HLS (`LIVE_NORMALIZE_ENABLED`, RTSP `:8554`). Viewer WHEP is `/demo/whep/?stream=&token=` (gateway); encoder `whep_url` is create-once only.
-- Phone WHIP POST still needs LAN `PUBLIC_WEBRTC_BASE_URL`. `scripts/sync_lan_ip.py` updates this.
+- Phone WHIP needs Caddy HTTPS + lab CA. `scripts/lab_https.py --apply-env` (or `sync_lan_ip.py --https`) sets `PUBLIC_HTTPS_BASE_URL`. Expo stays on `http://LAN:8000`.
 - OBS / FFmpeg / `scripts/live_lab_publish.py` still valid for RTMP (passthrough remux, no extra encode).
 
 ### Moderation

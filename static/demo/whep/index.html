@@ -87,7 +87,7 @@
     Authorized WebRTC playback (sub-second). Uses <code>stream_id</code> + playback
     token — not the encoder WHEP URL. <code>RTCPeerConnection</code> needs a
     <strong>secure origin</strong> (<code>http://127.0.0.1</code> or HTTPS).
-    Expo HLS stays the in-app player.
+    Phone: install the lab CA, then open this page on <code>https://LAN</code>.
   </p>
   <div class="panel">
     <div id="hint" hidden></div>
@@ -123,26 +123,55 @@
       statusEl.className = kind || "";
     }
 
+    function isLoopbackHost(hostname) {
+      return hostname === "localhost" || hostname === "127.0.0.1";
+    }
+
     function toLoopback(urlStr) {
       try {
         const u = new URL(urlStr, location.href);
-        if (u.hostname !== "localhost" && u.hostname !== "127.0.0.1") {
-          u.hostname = "127.0.0.1";
-        }
+        u.protocol = "http:";
+        u.hostname = "127.0.0.1";
+        u.port = "8000";
         return u.href;
       } catch {
         return urlStr;
       }
     }
 
+    function caUrl() {
+      return "http://" + location.hostname + "/lab/ca.crt";
+    }
+
+    function httpsPageUrl() {
+      try {
+        const u = new URL(location.href);
+        u.protocol = "https:";
+        if (u.port === "8000" || u.port === "80") u.port = "";
+        return u.href;
+      } catch {
+        return location.href;
+      }
+    }
+
     function showInsecureHint() {
-      const here = location.href;
-      const loop = toLoopback(here);
-      if (loop === here) return;
+      const loop = toLoopback(location.href);
+      const ca = caUrl();
+      const httpsPage = httpsPageUrl();
       hintEl.hidden = false;
+      if (isLoopbackHost(location.hostname)) {
+        if (loop === location.href) return;
+        hintEl.innerHTML =
+          "This origin is not a secure context, so WebRTC is blocked. Open on this PC: " +
+          '<a href="' + loop + '">' + loop + "</a>";
+        return;
+      }
       hintEl.innerHTML =
-        "This origin is not a secure context, so WebRTC is blocked. Open on this PC: " +
-        '<a href="' + loop + '">' + loop + "</a>";
+        "WebRTC is blocked on <code>http://</code> LAN. " +
+        "<strong>Phone:</strong> install the lab CA from " +
+        '<a href="' + ca + '">' + ca + "</a>, then open " +
+        '<a href="' + httpsPage + '">' + httpsPage + "</a>. " +
+        "<strong>PC:</strong> <a href=\"" + loop + "\">" + loop + "</a>.";
     }
 
     function webrtcAvailable() {
@@ -171,7 +200,7 @@
 
     if (!webrtcAvailable()) {
       showInsecureHint();
-      setStatus("Open the localhost link above on this PC to watch WHEP.", "err");
+      setStatus("Install the lab CA, then open the HTTPS link — or use localhost on this PC.", "err");
     }
 
     goBtn.addEventListener("click", async () => {

@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { queryErrorText, userFacingError, getApiBase } from "@/api/client";
+import { queryErrorText, userFacingError } from "@/api/client";
 import { createLiveToken, deleteLiveStream } from "@/api/live";
 import { Button } from "@/components/Button";
 import { CopyRow } from "@/components/CopyRow";
@@ -12,16 +12,12 @@ import { DetailSkeleton } from "@/components/DetailSkeleton";
 import { HlsPlayer, type HlsPlayerHandle } from "@/components/HlsPlayer";
 import { Screen } from "@/components/Screen";
 import { StatusPill } from "@/components/StatusPill";
+import { PC_DEMO_ORIGIN, whepWatchUrl } from "@/lib/labOrigins";
 import { toast } from "@/lib/toast";
 import { liveKeys, videoKeys } from "@/query/keys";
 import { useLiveHealthQuery, useLiveStreamQuery } from "@/query/live";
 import { scrollPhysics } from "@/theme/scroll";
 import { colors, spacing } from "@/theme/tokens";
-
-function whepWatchUrl(streamId: string, token: string, host = "") {
-  const base = (host || getApiBase()).replace(/\/$/, "");
-  return `${base}/demo/whep/?stream=${encodeURIComponent(streamId)}&token=${encodeURIComponent(token)}`;
-}
 
 export default function LiveDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -261,7 +257,11 @@ export default function LiveDetailScreen() {
             <>
               <CopyRow
                 label="PC WHEP watch (localhost)"
-                value={whepWatchUrl(id, playbackToken, "http://127.0.0.1:8000")}
+                value={whepWatchUrl(id, playbackToken, PC_DEMO_ORIGIN)}
+              />
+              <CopyRow
+                label="Phone WHEP (HTTPS)"
+                value={whepWatchUrl(id, playbackToken)}
               />
               <Button
                 label="Watch live (low latency)"

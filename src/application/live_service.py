@@ -159,6 +159,9 @@ def _dvr_fields(stream: models.LiveStream) -> dict:
 
 
 def _webrtc_base() -> str:
+    https = (settings.PUBLIC_HTTPS_BASE_URL or "").strip().rstrip("/")
+    if https:
+        return https
     return settings.PUBLIC_WEBRTC_BASE_URL.rstrip("/")
 
 

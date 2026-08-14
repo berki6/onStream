@@ -14,8 +14,12 @@ auto.key
 # Environment Variables
 .env
 
+# Lab mkcert material for Caddy (never commit keys or the CA)
+deploy/certs/*.pem
+
 # Local working notes (not for the repo)
 TODO.md
+LAB_EDGE_REVIEW.md
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

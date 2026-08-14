@@ -450,3 +450,13 @@ def test_whip_proxy_allows_lab_mediamtx_hosts(monkeypatch):
     assert whip_proxy_allowed("http://127.0.0.1:8889/live/abc12xyz/whip")
     assert not whip_proxy_allowed("https://evil.example/live/abc12xyz/whip")
     assert not whip_proxy_allowed("http://127.0.0.1:8889/live/abc12xyz/whep")
+
+
+def test_whip_proxy_allows_https_caddy_origin(monkeypatch):
+    from src.application.demo_whip_proxy import whip_proxy_allowed
+
+    monkeypatch.setattr(settings, "PUBLIC_WEBRTC_BASE_URL", "https://192.168.1.9")
+    monkeypatch.setattr(settings, "PUBLIC_HTTPS_BASE_URL", "https://192.168.1.9")
+    monkeypatch.setattr(settings, "PUBLIC_API_BASE_URL", "http://192.168.1.9:8000")
+    assert whip_proxy_allowed("https://192.168.1.9/live/abc12xyz/whip")
+    assert whip_proxy_allowed("http://127.0.0.1:8889/live/abc12xyz/whip")

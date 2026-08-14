@@ -1,31 +1,59 @@
-# OnStream edge reverse proxy (profile: edge)
-# docker compose --profile edge up caddy
+# OnStream lab / production edge (Compose profile: edge)
+#
+# Signaling (HTTPS) vs media (UDP) are different planes:
+#   :443  TLS terminate → API + MediaMTX WHIP/WHEP HTTP (SDP only)
+#   :80   lab CA download + redirect to HTTPS
+#   UDP 8189 stays on MediaMTX. Caddy cannot proxy ICE/RTP.
+#
+# Lab TLS is mkcert (deploy/certs/lab.pem), not Let's Encrypt.
+# Generate first:  python scripts/lab_https.py
+#
+# Upstream defaults match the documented Windows/host lab (uvicorn + MediaMTX
+# on the host, Caddy in Docker). Full-compose override:
+#   ONSTREAM_EDGE_API=api:8000
+#   ONSTREAM_EDGE_WEBRTC=mediamtx:8889
 
 {
 	auto_https off
+	admin off
 }
 
 :80 {
-	# API + demo static (when DEMO_PLAYER_ENABLED)
-	handle /v1/* {
-		reverse_proxy api:8000
+	handle /lab/ca.crt {
+		root * /certs
+		rewrite * /rootCA.pem
+		header Content-Type application/x-x509-ca-cert
+		header Content-Disposition inline
+		file_server
 	}
-	handle /metrics {
-		reverse_proxy api:8000
+	handle /lab/ca.pem {
+		root * /certs
+		rewrite * /rootCA.pem
+		header Content-Type application/x-x509-ca-cert
+		file_server
 	}
-	handle /demo/* {
-		reverse_proxy api:8000
+	handle {
+		redir https://{host}{uri} 308
 	}
-	handle /health* {
-		reverse_proxy api:8000
-	}
+}
 
-	# MediaMTX WebRTC (WHIP/WHEP)
+:443 {
+	tls /certs/lab.pem /certs/lab-key.pem
+
+	# Do not strip /live — MediaMTX paths are /live/{key}/whip|whep.
 	handle /live/* {
-		reverse_proxy mediamtx:8889
+		header Access-Control-Expose-Headers Location
+		reverse_proxy {$ONSTREAM_EDGE_WEBRTC:host.docker.internal:8889} {
+			flush_interval -1
+			header_up X-Forwarded-Proto {scheme}
+			header_down Location ^https?://[^/]+(?::8889)? https://{http.request.host}
+		}
 	}
 
 	handle {
-		reverse_proxy api:8000
+		reverse_proxy {$ONSTREAM_EDGE_API:host.docker.internal:8000} {
+			flush_interval -1
+			header_up X-Forwarded-Proto {scheme}
+		}
 	}
 }

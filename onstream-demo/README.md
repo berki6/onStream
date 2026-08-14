@@ -99,7 +99,7 @@ npm start
 |--------|-----------|
 | Sign in / register | `/v1/auth/*`, API base override, `/health` |
 | VOD | list, multipart upload, status poll, playback token, HLS via `expo-video` |
-| Live | create (copy stream key / RTMP / WHIP / WHEP once), health, token play, revoke |
+| Live | create (copy stream key / RTMP / WHIP / WHEP once), health, token play, revoke. Phone camera is HTTPS `/demo/whip/` after the lab CA — not Expo Go. |
 | Lab | Moderation, webhooks, browser upload/WHIP |
 | Account | API URL, health ping, sign out |
 

@@ -39,6 +39,12 @@ rtspAddress: :8554
 webrtc: yes
 webrtcAddress: :8889
 webrtcLocalUDPAddress: :8189
+# ICE: advertise the host LAN IP for phone browsers (Compose sets
+# MTX_WEBRTCADDITIONALHOSTS from ONSTREAM_LAN_IP). Signaling is HTTPS via
+# Caddy; UDP :8189 is still published on the host — Caddy cannot proxy ICE.
+webrtcIPsFromInterfaces: yes
+webrtcAdditionalHosts: []
+webrtcTrustedProxies: [127.0.0.1, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
 
 ###############################################
 # HLS (disk-backed for OnStream to serve)

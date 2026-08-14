@@ -82,6 +82,9 @@ services:
       - "8889:8889"
       - "8189:8189/udp"
       - "9997:9997"
+    environment:
+      # Phone ICE must advertise the host LAN IP, not Docker 172.x.
+      MTX_WEBRTCADDITIONALHOSTS: ${ONSTREAM_LAN_IP:-}
     volumes:
       - ./configs/mediamtx.yml:/mediamtx.yml:ro
       - live_data:/hls
@@ -188,13 +191,18 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      # Host lab (uvicorn + MediaMTX on the machine). Full compose:
+      # ONSTREAM_EDGE_API=api:8000 ONSTREAM_EDGE_WEBRTC=mediamtx:8889
+      ONSTREAM_EDGE_API: ${ONSTREAM_EDGE_API:-host.docker.internal:8000}
+      ONSTREAM_EDGE_WEBRTC: ${ONSTREAM_EDGE_WEBRTC:-host.docker.internal:8889}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/certs:/certs:ro
       - caddy_data:/data
       - caddy_config:/config
-    depends_on:
-      - api
-      - mediamtx
 
   prometheus:
     profiles: ["obs"]
